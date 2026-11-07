@@ -1,0 +1,46 @@
+name: iOS SDK probe
+# One-off diagnostics on a real Apple SDK: header layouts and sysctl/os availability.
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: macos-15
+    steps:
+      - name: task_vm_info layout from the iOS SDK header
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path); echo "SDK=$SDK"; xcodebuild -version
+          H="$SDK/usr/include/mach/task_info.h"
+          awk '/^struct task_vm_info/,/^typedef struct task_vm_info/' "$H" | grep -v '^\s*$' | head -90
+          grep -n "TASK_VM_INFO\b\|TASK_VM_INFO_COUNT\|TASK_VM_INFO_REV" "$H" | head
+      - name: Compile and run a layout check against the iOS SDK (compile only, arm64 iphoneos)
+        run: |
+          cat > /tmp/l.c <<'EOC'
+          #include <mach/task_info.h>
+          #include <stddef.h>
+          #include <stdio.h>
+          #include <os/proc.h>
+          int main(void){
+            printf("sizeof(task_vm_info_data_t)=%zu\n", sizeof(task_vm_info_data_t));
+            printf("TASK_VM_INFO=%d TASK_VM_INFO_COUNT=%zu\n", TASK_VM_INFO, (size_t)TASK_VM_INFO_COUNT);
+            printf("offsetof(phys_footprint)=%zu\n", offsetof(task_vm_info_data_t, phys_footprint));
+            printf("offsetof(internal)=%zu\n", offsetof(task_vm_info_data_t, internal));
+            printf("offsetof(compressed)=%zu\n", offsetof(task_vm_info_data_t, compressed));
+            printf("offsetof(ledger_phys_footprint_peak)=%zu\n", offsetof(task_vm_info_data_t, ledger_phys_footprint_peak));
+            return 0; }
+          EOC
+          sed -i 's/^          //' /tmp/l.c
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=16.0 -fsyntax-only /tmp/l.c && echo "iphoneos syntax OK"
+          xcrun --sdk macosx clang /tmp/l.c -o /tmp/l_mac && /tmp/l_mac
+      - name: os_proc_available_memory in the iOS SDK
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          grep -n "os_proc_available_memory" -B3 "$SDK/usr/include/os/proc.h"
+      - name: malloc_zone_pressure_relief in the iOS SDK
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          grep -rn "malloc_zone_pressure_relief" "$SDK/usr/include/malloc/" | head -3
+          echo "tbd export check:"; grep -c "malloc_zone_pressure_relief" "$SDK/usr/lib/system/libsystem_malloc.tbd" || true
+      - name: sysctl hw.perflevel0 availability notes
+        run: |
+          sysctl hw.perflevel0.physicalcpu hw.ncpu 2>&1 | head -3
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path); grep -c "sysctlbyname" "$SDK/usr/include/sys/sysctl.h"

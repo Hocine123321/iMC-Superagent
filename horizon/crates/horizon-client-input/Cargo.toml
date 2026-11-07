@@ -12,9 +12,13 @@ winit = "0.30.13"
 # The window icon.
 horizon-theme = { path = "../horizon-theme" }
 png = "0.18"
-arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
+arboard = { version = "3.6.1", default-features = false }
 # The DualSense's trigger effects (the `controllers` feature).
 horizon-dualsense = { path = "../horizon-dualsense", optional = true }
+
+# Wayland's clipboard protocol exists only where Wayland does; its crates do not build for iOS.
+[target.'cfg(all(unix, not(target_vendor = "apple"), not(target_os = "android")))'.dependencies]
+arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
 
 [features]
 controllers = ["dep:horizon-dualsense"]
