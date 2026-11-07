@@ -39,6 +39,10 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     continue-on-error: ${{ matrix.allow_failure }}
+    env:
+      # Rust's default iOS target is 10.0, which lacks ___chkstk_darwin (needed by mimalloc's C code)
+      # and os_proc_available_memory (iOS 13). 16.0 is a working choice, not a final support decision.
+      IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     strategy:
       fail-fast: false
       matrix:
