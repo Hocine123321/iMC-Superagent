@@ -1,5 +1,7 @@
 # Horizon iOS Memory Strategy
 
+> **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
+
 **Status:** analysis and plan. No code changed. No on-device measurement exists yet.
 **Base:** `77af961`. Target device for first work: iPhone 12 (A14, 4 GB RAM).
 **Labels:** VERIFIED (read in source or run here), INFERRED (follows from verified facts), UNRESOLVED (needs a device or a decision).
@@ -282,7 +284,7 @@ Ranking is a hypothesis to be re-ordered by M6. Nothing here should be implement
 
 1. M2: `phys_footprint` and `os_proc_available_memory` telemetry; extended `gpu_census`.
 2. M4: memory-warning trim, with a test that footprint falls.
-3. M6: baseline report set in `benchmarks/ios/`.
+3. M6: baseline report set in the repository root `benchmarks/ios/`.
 4. M7: mobile profile table with before/after evidence per change; updated ADR-4.
 5. Ongoing: this document revised with measured values replacing "UNRESOLVED".
 

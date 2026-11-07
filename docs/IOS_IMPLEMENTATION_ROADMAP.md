@@ -1,5 +1,7 @@
 # Horizon iOS Implementation Roadmap
 
+> **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
+
 **Status:** proposal. No implementation has started. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
 **Base:** `horizon-rust/horizon` `77af961`, Minecraft 26.3, protocol 777.
 
@@ -225,7 +227,7 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 **Risks.** Thermal throttling makes runs non-comparable; control by starting each run at a recorded thermal state and room temperature, and by recording rather than hiding it. Performance mode differences with the device plugged in.
 
-**Success test.** Three repeated runs per scenario agree within a spread you define after seeing the first set; reports stored in `benchmarks/ios/` with the device metadata.
+**Success test.** Three repeated runs per scenario agree within a spread you define after seeing the first set; reports stored in the repository root `benchmarks/ios/` (not upstream's `horizon/benchmarks/`) with the device metadata.
 
 **Depends on.** M5 (or M3 for the non-interactive scenes, which can start earlier).
 

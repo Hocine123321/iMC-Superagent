@@ -1,0 +1,59 @@
+name: iOS build
+
+# Builds the Horizon engine for iOS on a macOS runner. This is the evidence
+# source for "does it link?" (the Linux sandbox can only type-check).
+on:
+  push:
+    branches: [main]
+    paths: ["horizon/**", "platform/**", ".github/workflows/ios-build.yml"]
+  pull_request:
+    paths: ["horizon/**", "platform/**", ".github/workflows/ios-build.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: ${{ matrix.target }} (${{ matrix.package }})
+    runs-on: macos-15
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.allow_failure }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Crates that are expected to pass on the unmodified upstream snapshot.
+          - { target: aarch64-apple-ios,     package: horizon-world,         allow_failure: false }
+          - { target: aarch64-apple-ios,     package: horizon-protocol,      allow_failure: false }
+          # The renderer and client: the known blockers B1-B4 live here
+          # (docs/IOS_FEASIBILITY_REPORT.md section 3). Allowed to fail until fixed.
+          - { target: aarch64-apple-ios,     package: horizon-client-lib,    allow_failure: true }
+          - { target: aarch64-apple-ios,     package: horizon-client,        allow_failure: true }
+          - { target: aarch64-apple-ios-sim, package: horizon-client-lib,    allow_failure: true }
+    defaults:
+      run:
+        working-directory: horizon
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain with iOS targets
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          rustc --version; xcodebuild -version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: horizon
+      - name: Build (release, links C crates: ring, mimalloc)
+        run: cargo build --locked --release --target ${{ matrix.target }} -p ${{ matrix.package }} 2>&1 | tee ../build.log
+      - name: Footprint of the result
+        if: always()
+        run: |
+          ls -la target/${{ matrix.target }}/release/*.a target/${{ matrix.target }}/release/horizon-client 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log-${{ matrix.target }}-${{ matrix.package }}
+          path: build.log

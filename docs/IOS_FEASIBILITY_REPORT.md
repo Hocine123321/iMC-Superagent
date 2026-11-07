@@ -1,5 +1,7 @@
 # Horizon iOS Feasibility Report
 
+> **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
+
 **Status:** Phase 1 and 2 findings. No source files were modified. Evidence artifacts are in `docs/ios-evidence/`.
 **Base:** `horizon-rust/horizon` `main` at `77af961663c48ef035b841cad68d84fc682918fd` (2026-11-07). Local branch `ios-port`; original remote renamed `upstream`.
 **Game version pinned by the repo:** Minecraft Java 26.3, network protocol 777 (`research-lock.json`, `horizon-core/src/version.rs`).
