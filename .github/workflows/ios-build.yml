@@ -34,6 +34,44 @@ jobs:
       - name: Run the process_memory tests (reads task_info on a real Apple kernel)
         run: cargo test --locked -p horizon-threads process_memory -- --nocapture
 
+  bridge:
+    name: static library for the app (${{ matrix.target }})
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-ios, aarch64-apple-ios-sim]
+    defaults:
+      run:
+        working-directory: horizon
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain with iOS targets
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: horizon
+      - name: Build libhorizon_ios_bridge.a
+        run: cargo build --locked --release --target ${{ matrix.target }} -p horizon-ios-bridge
+      - name: The archive, its exported entry point, and its size
+        run: |
+          A=target/${{ matrix.target }}/release/libhorizon_ios_bridge.a
+          ls -la "$A"
+          echo "--- exported symbol:"; nm -gU "$A" 2>/dev/null | grep -E " T _horizon_ios_main$" || { echo "MISSING horizon_ios_main"; exit 1; }
+          echo "--- architecture:"; lipo -info "$A"
+          echo "--- minimum OS recorded in the objects (sample):"; otool -l "$A" 2>/dev/null | grep -E "minos|platform" | sort | uniq -c | head -6
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libhorizon_ios_bridge-${{ matrix.target }}
+          path: horizon/target/${{ matrix.target }}/release/libhorizon_ios_bridge.a
+          retention-days: 7
+
   engine:
     name: ${{ matrix.target }} (${{ matrix.package }})
     runs-on: macos-15

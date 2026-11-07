@@ -103,6 +103,8 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 ## M2. Staticlib, Swift shell, Metal surface, footprint telemetry
 
+**Design decided from the source (VERIFIED, not yet run).** winit's own iOS guide recommends a static library exporting one C function that the app's `main` calls. `EventLoop::run_app` calls `UIApplicationMain` itself on iOS, so the Xcode project must **not** declare its own app delegate: the "Swift shell" is a thin `main` that builds an argv and calls `horizon_ios_main`, plus `Info.plist`, an icon and a launch screen. The engine's startup is already one plain function, `horizon_client::entry::main()`; it reads `std::env::args()` in two places (`entry.rs:19`, `game.rs:678`), so the shell passes `--home <container>/Library/Application Support/horizon --resources <path>` through the real `argv`. The bridge crate must be a member of the `horizon/` workspace, because the patched `wgpu-hal` (with a Metal HDR fix), `naga` and `libmimalloc-sys` are workspace-level `[patch]` entries that a separate workspace would silently lose.
+
 **Objective.** Prove the shape of the whole port with the smallest thing that can honestly be called a result: a signed app on an iPhone 12, Rust running natively, wgpu presenting through Metal, and a number for memory that matches what iOS enforces.
 
 **Existing components.** `horizon-client/src/entry.rs`, `game.rs` (`run_event_loop` at `:17066`), `horizon-client-render/src/gfx.rs` (`Renderer::new`, `open_backend`), `horizon-client-render/examples/` (candidate test scenes), `horizon-threads/src/process_memory.rs`.
@@ -163,6 +165,12 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 ---
 
 ## M4. Lifecycle correctness
+
+**Findings from reading winit 0.30.13 and the engine (VERIFIED in source, not yet run).**
+
+- winit's iOS backend observes `UIApplicationDidReceiveMemoryWarningNotification` itself and delivers it as `ApplicationHandler::memory_warning`, next to `suspended` and `resumed`. **No Swift observer is needed.**
+- Four `ApplicationHandler` implementations sit on the startup path, and **none implements `suspended` or `memory_warning`**, so both are silently dropped today: `game/no_resources.rs:91` (`Missing`, the first screen an iPhone user sees without resources), `game/loading_screen.rs:393` (`App`), `game/split.rs:592` (`Split`, which wraps `Game` and must forward every callback), and `game/window_handler.rs:201` (`Game`).
+- `Game::resumed` returns early when `self.window.is_some()` (`window_handler.rs:203`), so a return from the background never reaches `recreate_surface()`, which already exists.
 
 **Objective.** The app survives everything iOS does to it.
 

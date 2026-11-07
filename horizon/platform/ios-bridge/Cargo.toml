@@ -1,0 +1,19 @@
+[package]
+name = "horizon-ios-bridge"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Static library that lets an iOS app's main() start the Horizon client"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+horizon-client = { path = "../../crates/horizon-client" }
+horizon-threads = { path = "../../crates/horizon-threads" }
+horizon-mods = { path = "../../crates/horizon-mods", default-features = false, features = ["index"] }
+
+[lints]
+workspace = true
