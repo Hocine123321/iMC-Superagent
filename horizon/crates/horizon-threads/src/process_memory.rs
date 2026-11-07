@@ -62,23 +62,115 @@ pub fn resident_bytes() -> Option<u64> {
     Some(pages * u64::try_from(page).ok()?)
 }
 
+/// The first part of `task_vm_info` (`<mach/task_info.h>`), up to and including
+/// `phys_footprint`: revision 1, which every OS version that has `TASK_VM_INFO` fills in.
+/// Later revisions only append, so asking for this many words is stable.
+#[cfg(target_vendor = "apple")]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TaskVmInfo {
+    virtual_size: u64,
+    region_count: i32,
+    page_size: i32,
+    resident_size: u64,
+    resident_size_peak: u64,
+    device: u64,
+    device_peak: u64,
+    internal: u64,
+    internal_peak: u64,
+    external: u64,
+    external_peak: u64,
+    reusable: u64,
+    reusable_peak: u64,
+    purgeable_volatile_pmap: u64,
+    purgeable_volatile_resident: u64,
+    purgeable_volatile_virtual: u64,
+    compressed: u64,
+    compressed_peak: u64,
+    compressed_lifetime: u64,
+    phys_footprint: u64,
+}
+
+// The offsets and size the iOS 18.5 SDK reports for `task_vm_info_data_t`
+// (`offsetof`, and `TASK_VM_INFO_REV1_COUNT` = 38 words = 152 bytes).
+#[cfg(target_vendor = "apple")]
+const _: () = {
+    assert!(std::mem::offset_of!(TaskVmInfo, resident_size) == 16);
+    assert!(std::mem::offset_of!(TaskVmInfo, internal) == 48);
+    assert!(std::mem::offset_of!(TaskVmInfo, compressed) == 120);
+    assert!(std::mem::offset_of!(TaskVmInfo, phys_footprint) == 144);
+    assert!(std::mem::size_of::<TaskVmInfo>() == 152);
+};
+
+/// `TASK_VM_INFO`, and `TASK_VM_INFO_REV1_COUNT` (the size above in 32-bit words).
+#[cfg(target_vendor = "apple")]
+const TASK_VM_INFO: libc::task_flavor_t = 22;
+#[cfg(target_vendor = "apple")]
+const TASK_VM_INFO_REV1_COUNT: libc::mach_msg_type_number_t = 38;
+
+/// This process's virtual memory counters, from the kernel.
+#[cfg(target_vendor = "apple")]
+fn task_vm_info() -> Option<TaskVmInfo> {
+    unsafe extern "C" {
+        // What `<mach/mach_init.h>`'s `mach_task_self()` macro reads: the calling process's
+        // task port. `libc` declares it for macOS only, and deprecated.
+        static mach_task_self_: libc::mach_port_t;
+    }
+    // SAFETY: all-zero is a valid `TaskVmInfo` (plain integers). `task_info` writes at most
+    // `count` 32-bit words into it, and `count` is its size in words; the task port of the
+    // calling process is set before `main` and needs no releasing.
+    unsafe {
+        let mut info: TaskVmInfo = std::mem::zeroed();
+        let mut count = TASK_VM_INFO_REV1_COUNT;
+        let status = libc::task_info(
+            mach_task_self_,
+            TASK_VM_INFO,
+            (&raw mut info).cast(),
+            &mut count,
+        );
+        (status == 0 && count >= TASK_VM_INFO_REV1_COUNT).then_some(info)
+    }
+}
+
 /// The memory this process holds in RAM, in bytes.
 #[cfg(target_vendor = "apple")]
 pub fn resident_bytes() -> Option<u64> {
-    let size = std::mem::size_of::<libc::proc_taskinfo>() as libc::c_int;
-    // SAFETY: all-zero is a valid value of this plain C struct, and the call writes at most `size`
-    // bytes into it.
-    unsafe {
-        let mut info: libc::proc_taskinfo = std::mem::zeroed();
-        let written = libc::proc_pidinfo(
-            libc::getpid(),
-            libc::PROC_PIDTASKINFO,
-            0,
-            (&raw mut info).cast(),
-            size,
-        );
-        (written == size).then_some(info.pti_resident_size)
+    Some(task_vm_info()?.resident_size)
+}
+
+/// The process's physical footprint, in bytes: the figure iOS and macOS charge a process
+/// for (Xcode's memory gauge, and what the system weighs when it ends an app for memory).
+/// It counts dirty and compressed memory and memory graphics drivers hold for the process,
+/// which the resident size misses, and leaves out clean pages that can be dropped.
+#[cfg(target_vendor = "apple")]
+pub fn footprint_bytes() -> Option<u64> {
+    Some(task_vm_info()?.phys_footprint)
+}
+
+/// How much more memory this app may use before the system ends it, in bytes
+/// (`os_proc_available_memory`, iOS 13 and later). A moving figure: it shrinks as the app
+/// and the other apps grow.
+#[cfg(target_os = "ios")]
+pub fn available_bytes() -> Option<u64> {
+    unsafe extern "C" {
+        fn os_proc_available_memory() -> usize;
     }
+    // SAFETY: a call with no arguments that reads a kernel counter.
+    let bytes = unsafe { os_proc_available_memory() };
+    // It returns 0 when the limit cannot be known (an app with no memory limit, the simulator).
+    (bytes != 0).then_some(bytes as u64)
+}
+
+/// The footprint, where this system has a counter for it.
+#[cfg(not(target_vendor = "apple"))]
+pub fn footprint_bytes() -> Option<u64> {
+    None
+}
+
+/// How much more memory this app may use: only iOS says.
+#[cfg(not(target_os = "ios"))]
+pub fn available_bytes() -> Option<u64> {
+    None
 }
 
 /// The memory this process holds in RAM, in bytes: not known on this system.
@@ -95,6 +187,29 @@ pub fn resident_bytes() -> Option<u64> {
 #[cfg(all(test, any(windows, target_os = "linux", target_vendor = "apple")))]
 mod tests {
     use super::*;
+
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn touched_memory_counts_in_the_footprint() {
+        const SIZE: usize = 256 << 20;
+        let before = footprint_bytes().unwrap();
+        let block = vec![1u8; SIZE];
+        let during = footprint_bytes().unwrap();
+        std::hint::black_box(&block);
+        assert!(
+            during >= before + SIZE as u64 / 2,
+            "{before} then {during} bytes"
+        );
+        drop(block);
+    }
+
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn the_footprint_is_a_plausible_size() {
+        let footprint = footprint_bytes().unwrap();
+        // More than a megabyte, and not past the machine's address space: catches a misread struct.
+        assert!((1 << 20..1 << 44).contains(&footprint), "{footprint}");
+    }
 
     #[test]
     fn touched_memory_counts_as_resident() {

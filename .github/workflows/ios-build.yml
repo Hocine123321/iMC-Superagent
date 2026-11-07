@@ -15,6 +15,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  memory-telemetry:
+    name: footprint counters (macOS runner, same Mach API as iOS)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: horizon
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: horizon
+      - name: Run the process_memory tests (reads task_info on a real Apple kernel)
+        run: cargo test --locked -p horizon-threads process_memory -- --nocapture
+
   engine:
     name: ${{ matrix.target }} (${{ matrix.package }})
     runs-on: macos-15
