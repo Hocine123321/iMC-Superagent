@@ -250,7 +250,7 @@ Multiplayer protocol is 777 and handled in `horizon-protocol`. It does not depen
 
 ### 6.2 Why this cannot run on iOS (VERIFIED + well-established platform fact)
 
-- iOS apps cannot `fork`/`exec` a JDK, and a JVM needs a JIT (writable+executable memory). Third-party apps do not get the entitlement. Apple's policy position should be checked: see section 11.
+- iOS apps cannot `fork`/`exec` a JDK, and a JVM needs a JIT (writable+executable memory). A normally signed app does not get that capability. Some sideloading routes can enable JIT, but this project does not depend on that: the plan is ahead-of-time Rust only, so it works the same under any install method.
 - The memory is also prohibitive: 1.25 GB of JVMs on a 4 GB device.
 
 ### 6.3 The known way around it (VERIFIED as a proposal; implemented downstream)
@@ -343,7 +343,7 @@ I found no embedded WebAssembly engine in `Cargo.lock` (no wasmtime/wasmer/wasmi
 
 - Shader packs (OptiFine-style GLSL via naga) and Horizon's `.hshader` packs: heavy and memory-hungry; disable by default.
 - Bluemap far terrain, LOD distant horizons: disable until measured.
-- Discord Rich Presence (`discord` feature), `friends` tunnel, `heartbeat`/telemetry upload: disable or review for App Store rules.
+- Discord Rich Presence (`discord` feature), `friends` tunnel, `heartbeat`/telemetry upload: disable by default. Not an App Store matter any more, but they are network features with privacy implications for users, and they are not needed for the first builds.
 - Narrator: compiles to no-op on iOS; could be mapped to `AVSpeechSynthesizer` later.
 - DualSense output: already excluded on iOS by upstream.
 - Controllers: `gilrs` on iOS needs checking; Apple's GameController framework is the native way. UNRESOLVED.
@@ -401,31 +401,30 @@ Single pinned version 26.3 (`research-lock.json`), protocol 777. Horizon targets
 ### 11.3 Open questions (each needs verification against current primary sources)
 
 **A. Minecraft EULA and Usage Guidelines**
-1. Does the current EULA / Commercial Usage Guidelines permit a third-party client that reimplements gameplay and reads user-owned assets? Does it differ for a free vs. paid or App Store distributed app?
-2. Naming and branding: can the app's name, icon, store listing and screenshots reference Minecraft? (Trademark.) Horizon avoids the word in its name; you would need the same discipline.
+1. Does the current EULA / Commercial Usage Guidelines permit a third-party client that reimplements gameplay and reads user-owned assets? Does it differ for a free app distributed as a downloadable IPA versus a paid or store-distributed one?
+2. Naming and branding: can the app's name, icon, store listing and screenshots reference Minecraft? (Trademark.) Horizon avoids the word in its name; you would need the same discipline for the app name, icon and the page the IPA is downloaded from.
 3. Is "Java Edition" content licensed to be used on a platform where Mojang sells a different edition (Bedrock) for mobile? (Business question, not legal advice.)
 
 **B. Microsoft / Mojang API terms**
 4. Mojang app-ID review (`aka.ms/mce-reviewappid`): criteria, whether a mobile client is accepted, whether approval is per-platform, and expected timeline.
 5. Terms for calling `api.minecraftservices.com` entitlements/profile endpoints from a third-party iOS app.
 6. Terms for downloading client jars, libraries and assets from Mojang's CDN endpoints in a third-party app, including rate limits and attribution.
-7. Whether Microsoft Entra app registration for **personal accounts only**, public client, device-code flow, is acceptable for an App Store app, and what redirect URI types are allowed.
+7. Whether Microsoft Entra app registration for **personal accounts only**, public client, device-code flow, is acceptable for a sideloaded app, and what redirect URI types are allowed.
 
 **C. Derived data (issue #1750)**
 8. Whether "computed tables" derived by executing Mojang's code count as Mojang content for distribution purposes. Upstream says the maintainer decides this. If you host them: who hosts, under whose name, with what takedown plan.
 9. If a user's own PC/Mac produces the tables locally and transfers them, does that avoid the question? (Probably the same posture as desktop Horizon today, but confirm.)
 
-**D. Apple App Store**
-10. Review Guidelines on apps that download executable code or content (Guideline 2.5.2 concerns self-contained apps and downloaded code). This app downloads **data** and does not execute downloaded native code; confirm that data-only downloads of this size and kind are acceptable.
-11. Guideline 4.1 (copycats) and 5.2 (intellectual property): will review accept a clean-room engine that needs another company's game files, and does it matter that Mojang sells a mobile Minecraft?
-12. Account sign-in requirements (4.8, login services) and "Sign in with Apple" applicability when using only Microsoft login.
-13. Whether the **JIT** entitlement or any "dynamic code" behaviour is needed (it should not be; wgpu/Metal shader compilation uses system compilers, and Horizon's native mod compile step must not ship).
-14. Required privacy disclosures: Horizon has opt-in telemetry and a "heartbeat" ping; either remove them or declare them in the privacy nutrition label.
-15. Age rating and in-game chat/UGC rules for multiplayer (Guideline 1.2).
-16. Distribution channel alternatives if App Store review fails: TestFlight (limited), EU alternative marketplaces, AltStore/sideloading. Each has its own terms. The Android precedent distributes APKs on GitHub.
+**D. Distribution as an IPA (replaces the App Store questions; Apple review does not apply)**
+10. **Install method and its limits.** Which route will users take: a personal developer certificate, AltStore or SideStore, Sideloadly, TrollStore, or an enterprise or ad-hoc profile? Each decides how often the app must be re-signed (a free Apple account's certificates last 7 days and limit active app IDs; a paid account's last a year), whether a device must be registered, and whether anything beyond plain signing is available. Needs a decision from you; I will not guess it.
+11. **Entitlements.** The app needs none beyond the basics (no JIT, no extended virtual addressing, no increased memory limit is assumed). Whether the `com.apple.developer.kernel.increased-memory-limit` entitlement is obtainable and honoured under the chosen install method is UNRESOLVED and matters for a 4 GB phone. Some sideload tools rewrite entitlements; some cannot add ones that need a provisioning profile.
+12. **Third-party notices.** The IPA is a binary distribution, so the notices Horizon already maintains (`THIRD_PARTY_NOTICES.md`) and the licences of the iOS-specific dependencies must travel with it (see E).
+13. **Where the IPA is hosted** and under what name, given the trademark question in A2. The Android fork's precedent is GitHub releases.
+14. **Privacy.** Horizon has opt-in telemetry and a "heartbeat" ping. Not a store-disclosure matter now, but a build that phones home should say so; the simplest answer is to leave them out.
+15. **Auto-update.** Without a store there is no update channel. Decide whether the app checks a release page, relies on the sideload tool's refresh, or neither. A self-updater that downloads code would be a design problem; one that only points at a new IPA is not.
 
 **E. Licensing of dependencies**
-17. `THIRD_PARTY_NOTICES.md` (18 KB) lists notices; an App Store binary must reproduce them. A license audit of the iOS-specific dependency set (`objc2-*`, `coreaudio-rs`, `cpal`, `ring` OpenSSL/ISC-style terms) was not done.
+17. `THIRD_PARTY_NOTICES.md` (18 KB) lists notices; a distributed binary must reproduce them. A license audit of the iOS-specific dependency set (`objc2-*`, `coreaudio-rs`, `cpal`, `ring` OpenSSL/ISC-style terms) was not done.
 18. Reuse of code from the Android forks: check their licences before copying anything.
 
 ---
@@ -439,7 +438,7 @@ Single pinned version 26.3 (`research-lock.json`), protocol 777. Horizon targets
 | 3 | 4 GB device memory ceiling with a desktop-tuned engine (256 MiB arena pages, desktop render distances, mimalloc) | Technical | High; unmeasured | Telemetry first (footprint), then tune with data (see memory strategy) |
 | 4 | Touch input and mobile UI do not exist | Scope | High effort, low technical risk | Reuse the controller-registration path; Android design as a reference |
 | 5 | Lifecycle: surface loss on background, early-return `resumed()` | Correctness | High if missed (crash or black screen) | Implement `suspended`/`resumed` with `recreate_surface`; test on device |
-| 6 | App Store acceptance | Policy | Unknown | Open questions D1-D16; plan a non-App-Store fallback |
+| 6 | Install method and certificate lifetime for an IPA | Distribution | Medium; decides how users keep the app installed | Choose the route (section 11.3 D10); document re-signing for users |
 | 7 | Upstream churn: `game.rs` is a 17.8k-line monolith with fast-moving commits; a long-lived fork will conflict | Maintenance | Medium | Keep a minimal delta; upstream the platform fixes as small PRs |
 | 8 | C dependencies and link step | Technical | Closed for the library and binary | Verified on a Mac runner (section 3.5); an app bundle and signing remain untested |
 | 9 | Process-spawn sites fail at runtime | Technical | Low-medium | Audit and feature-gate |

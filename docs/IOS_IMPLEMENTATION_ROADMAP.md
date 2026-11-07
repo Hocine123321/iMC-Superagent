@@ -18,7 +18,7 @@
 | Need | Why | Who |
 |---|---|---|
 | A Mac with Xcode, current stable | Linking, signing, Instruments, device deploy. This sandbox has no Apple SDK | You |
-| Apple Developer Program membership and an iPhone 12 | Device builds, TestFlight | You |
+| An iPhone 12 and a way to install an unsigned IPA (AltStore, Sideloadly, a personal certificate, or similar) | Device builds. No App Store, TestFlight or paid developer programme is assumed | You |
 | A second device class (a newer or lower-memory iPhone) if available | One device cannot show spread | You |
 | A `.local/horizon-client/26.3` prepared on a PC/Mac | Parity runs and the M3 bootstrap path | You |
 | Your own Azure app registration | Needed from M8; Horizon's cannot be reused | You |
@@ -38,7 +38,7 @@
 | M8 | Java-free preparation (#1750) | Device | maintainer + legal | medium |
 | M9 | Microsoft sign-in and ownership gate | Device | Mojang app-ID | medium |
 | M10 | Multiplayer, audio polish, mobile UI | Device | no | large |
-| M11 | Distribution (TestFlight, store review) | Device | Apple | medium |
+| M11 | Distribution as a downloadable IPA | Device | no | small |
 
 The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9 can start after M2 in parallel but only ship after M5. M10 and M11 follow.
 
@@ -325,21 +325,23 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 ---
 
-## M11. Distribution
+## M11. Distribution as an IPA
 
-**Objective.** Get builds to testers, then decide the public channel with real information.
+**Objective.** Get builds to testers and users as a downloadable IPA, and make staying installed painless. No App Store, no TestFlight, no Apple review.
 
 **Work.**
-- TestFlight internal, then external. Include the third-party notices (`THIRD_PARTY_NOTICES.md`), a privacy policy, the "not an official Minecraft product" disclaimer used in `README.md:170`, and no Mojang assets in the bundle.
-- Answer the open policy questions (feasibility report section 11, D1-D16) with primary sources before submitting. Have a human who can take responsibility for legal positions review them.
-- Prepare fallback channels: ad-hoc signed IPA for registered devices, EU alternative marketplaces, sideloading. The Android fork's GitHub-APK model is the precedent for the open-source route.
-- Release engineering: reproducible build, symbols (dSYM) for crash triage, crash reporting that excludes tokens, an update path that does not re-download unchanged resources.
+- CI already produces an unsigned `Horizon-unsigned.ipa` (workflow `iOS app`). Add a release workflow that attaches it to a GitHub release with a checksum, so a tagged commit yields a downloadable file.
+- Write the install guide for the route you choose (feasibility report 11.3 D10): which tool, how to re-sign, how often, and what to do when a certificate expires. This is the part users will actually hit.
+- Include the third-party notices (`THIRD_PARTY_NOTICES.md` and the iOS dependency licences), the "not an official Minecraft product" disclaimer used in `README.md:170`, and no Mojang assets in the IPA.
+- Decide the update story (D15): a release page and the sideload tool's refresh, with no in-app code download.
+- Release engineering: reproducible build, dSYM files for crash triage, crash reports that exclude tokens, and an update path that does not re-download unchanged resources.
+- Answer the Mojang and Microsoft questions (feasibility report A, B, C) with primary sources before publishing widely. Have a human who can take responsibility for legal positions review them. Not publishing through Apple removes Apple's rules, not Mojang's.
 
-**Risks.** App Review rejection for IP, copycat or content reasons. Reviewer cannot test without a Minecraft account (provide a demo mode with `--test-terrain` and no resources?). A rejection is a possible outcome; plan for it.
+**Risks.** Certificate expiry makes the app stop launching until it is re-signed (a usability problem, not a technical one). A sideload tool may strip or refuse entitlements, so any feature that needs one (increased memory limit) must be tested under the real install route. A public IPA that mentions Minecraft invites a trademark complaint; keep the naming discipline.
 
-**Success test.** An external tester installs from TestFlight on a clean phone and completes the M5 scripted run.
+**Success test.** A tester who has never seen the project installs the IPA on a clean phone using only the written guide, and completes the M5 scripted run.
 
-**Depends on.** M7, M9, M10 and external approvals.
+**Depends on.** M7, M9, M10 and the install-route decision.
 
 ---
 
@@ -355,7 +357,7 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 ## Smallest end-to-end proof of concept
 
-M0 -> M1 -> M2 -> M3 (with a gamepad). That is a signed iPhone 12 app, Rust engine, wgpu on Metal, real prepared resources from the user's own machine, the title screen and a walkable test world, with honest footprint numbers. It needs no approvals and no hosting, and it answers the three largest open technical questions (Metal surface, startup memory, lifecycle seam). **I recommend stopping after M3 to review before investing in touch (M5) or the legal-dependent milestones (M8, M9).**
+M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your install tool), Rust engine, wgpu on Metal, real prepared resources from the user's own machine, the title screen and a walkable test world, with honest footprint numbers. It needs no approvals and no hosting, and it answers the three largest open technical questions (Metal surface, startup memory, lifecycle seam). **I recommend stopping after M3 to review before investing in touch (M5) or the legal-dependent milestones (M8, M9).**
 
 ## What would change this plan
 
