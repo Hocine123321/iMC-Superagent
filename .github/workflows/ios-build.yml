@@ -46,8 +46,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: horizon
-      - name: Build (release, links C crates: ring, mimalloc)
-        run: cargo build --locked --release --target ${{ matrix.target }} -p ${{ matrix.package }} 2>&1 | tee ../build.log
+      - name: "Build (release; links the C crates ring and mimalloc)"
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --locked --release --target ${{ matrix.target }} -p ${{ matrix.package }} 2>&1 | tee ../build.log
       - name: Footprint of the result
         if: always()
         run: |
