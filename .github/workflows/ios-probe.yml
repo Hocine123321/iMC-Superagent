@@ -12,24 +12,22 @@ jobs:
           H="$SDK/usr/include/mach/task_info.h"
           awk '/^struct task_vm_info/,/^typedef struct task_vm_info/' "$H" | grep -v '^\s*$' | head -90
           grep -n "TASK_VM_INFO\b\|TASK_VM_INFO_COUNT\|TASK_VM_INFO_REV" "$H" | head
-      - name: Compile and run a layout check against the iOS SDK (compile only, arm64 iphoneos)
+      - name: Layout check against the SDK headers
         run: |
           cat > /tmp/l.c <<'EOC'
           #include <mach/task_info.h>
           #include <stddef.h>
           #include <stdio.h>
-          #include <os/proc.h>
           int main(void){
             printf("sizeof(task_vm_info_data_t)=%zu\n", sizeof(task_vm_info_data_t));
-            printf("TASK_VM_INFO=%d TASK_VM_INFO_COUNT=%zu\n", TASK_VM_INFO, (size_t)TASK_VM_INFO_COUNT);
-            printf("offsetof(phys_footprint)=%zu\n", offsetof(task_vm_info_data_t, phys_footprint));
-            printf("offsetof(internal)=%zu\n", offsetof(task_vm_info_data_t, internal));
-            printf("offsetof(compressed)=%zu\n", offsetof(task_vm_info_data_t, compressed));
-            printf("offsetof(ledger_phys_footprint_peak)=%zu\n", offsetof(task_vm_info_data_t, ledger_phys_footprint_peak));
+            printf("TASK_VM_INFO=%d COUNT=%zu REV1_COUNT=%zu\n", TASK_VM_INFO, (size_t)TASK_VM_INFO_COUNT, (size_t)TASK_VM_INFO_REV1_COUNT);
+            printf("off phys_footprint=%zu\n", offsetof(task_vm_info_data_t, phys_footprint));
+            printf("off internal=%zu compressed=%zu resident_size=%zu\n", offsetof(task_vm_info_data_t, internal), offsetof(task_vm_info_data_t, compressed), offsetof(task_vm_info_data_t, resident_size));
+            printf("off limit_bytes_remaining=%zu\n", offsetof(task_vm_info_data_t, limit_bytes_remaining));
+            printf("off ledger_phys_footprint_peak=%zu\n", offsetof(task_vm_info_data_t, ledger_phys_footprint_peak));
             return 0; }
           EOC
-          sed -i 's/^          //' /tmp/l.c
-          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=16.0 -fsyntax-only /tmp/l.c && echo "iphoneos syntax OK"
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=16.0 -fsyntax-only /tmp/l.c && echo "iphoneos header compiles"
           xcrun --sdk macosx clang /tmp/l.c -o /tmp/l_mac && /tmp/l_mac
       - name: os_proc_available_memory in the iOS SDK
         run: |
