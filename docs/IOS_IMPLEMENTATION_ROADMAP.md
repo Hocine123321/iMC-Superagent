@@ -28,7 +28,7 @@
 | # | Milestone | Needs Mac+device | Needs approval | Est. size |
 |---|---|---|---|---|
 | M0 | Baseline and decision records | Mac | no | small |
-| M1 | Upstream-able compile fixes (B1-B4) | Mac (to link) | no | small |
+| M1 | Upstream-able compile fixes (B1-B4). **Done** (links on a Mac runner) | Mac (to link) | no | small |
 | M2 | Staticlib, Swift shell, Metal surface, test scene, footprint telemetry | Device | no | medium |
 | M3 | Resource bootstrap from the user's PC and the engine reaching the title screen | Device | no | medium |
 | M4 | Lifecycle correctness (background, foreground, memory warning) | Device | no | small-medium |
@@ -67,6 +67,8 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 ## M1. Upstream-able compile fixes
 
+**Status: done on the Mac runner (see the feasibility report, section 3.5).** B1-B4, the Apple graphics-choice and data-folder checks, and a deployment target of 16.0 make the whole client build and link for `aarch64-apple-ios`. Still open from this milestone: opening the changes as upstream PRs, and a CI job for the desktop tests on macOS.
+
 **Objective.** Make `cargo build --target aarch64-apple-ios` succeed for the engine crates, with changes small enough to merge upstream.
 
 **Existing components and the fixes (all VERIFIED as needed, see the feasibility report section 3 and `docs/ios-evidence/diagnostic-compile-fixes.patch`).**
@@ -85,9 +87,9 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 - Open each as its own PR; reference roadmap issue labels `roadmap:phones-and-browser`.
 
 **Risks.**
-- `ring` or `mimalloc` fail to build for iOS with Xcode's clang (UNRESOLVED, expected fine).
+- `ring` or `mimalloc` fail to build for iOS with Xcode's clang. **Resolved:** both build; the only link problem was the default 10.0 deployment target (`___chkstk_darwin`), fixed by setting 16.0.
 - The patched `third_party/wgpu-hal` may need an iOS check of its own.
-- Linking may reveal missing frameworks (Metal, QuartzCore, CoreAudio, AudioToolbox, UIKit).
+- Linking may reveal missing frameworks (Metal, QuartzCore, CoreAudio, AudioToolbox, UIKit). **Not seen** in the command-line link; an app link in M2 may still reveal some.
 - Upstream may reject or reshape a change. Mitigation: keep each isolated and behaviour-preserving on desktop.
 
 **Success test.**

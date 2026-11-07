@@ -7560,8 +7560,8 @@ mod tests {
                     Opt::GraphicsBackend => "graphics-api".to_owned(),
                     o => format!("{o:?}"),
                 };
-                // macOS has one graphics API: the graphics screen leaves the row out.
-                if id == "graphics-api" && cfg!(target_os = "macos") {
+                // Apple systems have one graphics API: the graphics screen leaves the row out.
+                if id == "graphics-api" && cfg!(target_vendor = "apple") {
                     continue;
                 }
                 assert!(

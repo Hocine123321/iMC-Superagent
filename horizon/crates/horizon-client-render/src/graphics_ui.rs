@@ -621,7 +621,7 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
     ];
     // Only Windows and Linux have more than one graphics API, translucent batching (Metal
     // draws flat) and GPU culling (Metal draws no count the GPU wrote).
-    if cfg!(target_os = "macos") {
+    if cfg!(target_vendor = "apple") {
         for (_, groups) in &mut pages {
             for (_, rows) in groups {
                 rows.retain(|r| {

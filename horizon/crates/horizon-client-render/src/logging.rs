@@ -39,7 +39,8 @@ pub fn data_dir() -> PathBuf {
         if let Some(d) = env("APPDATA") {
             return d;
         }
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(target_vendor = "apple") {
+        // macOS, and an iOS app's container (where `HOME` points).
         if let Some(h) = &home {
             return h.join("Library/Application Support");
         }

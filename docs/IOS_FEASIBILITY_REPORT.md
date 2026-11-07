@@ -15,7 +15,7 @@ Every claim carries one of three labels.
 - **INFERRED**: follows from verified facts but was not itself tested.
 - **UNRESOLVED**: needs a Mac, a physical iPhone, or a human/legal decision. Not guessed.
 
-**Limits of the method.** `cargo check` was run on Linux. It proves Rust type-checking and cfg resolution for the iOS target. It does **not** prove linking, C compilation (`ring`, `mimalloc`), Metal behaviour, runtime behaviour, signing, or performance. This sandbox has no clang and no Apple SDK, and cannot reach apt. All "compiles" statements below mean "type-checks".
+**Limits of the method.** Two evidence sources. (1) `cargo check` on Linux: Rust type-checking and cfg resolution only. (2) A macOS 15 / Xcode 16.4 / iPhoneOS 18.5 SDK GitHub Actions runner (`.github/workflows/ios-build.yml`, runs linked in section 3.5): real C compilation, linking and a few runtime tests on an Apple kernel. Neither proves app behaviour on a device: nothing here has run on an iPhone, and no Metal frame has been drawn. Where a statement rests on source (2) it says so.
 
 ---
 
@@ -97,7 +97,7 @@ These affect how any iOS work must be delivered.
 
 ### 3.3 Classification of failures
 
-**Environment failures (not code defects), UNRESOLVED until run on a Mac:** `libmimalloc-sys` and `ring`. Only these two crates in the whole iOS dependency graph compile C (checked with `cargo tree -e normal,build`; `objc-sys` is a link shim). Both are widely built for iOS elsewhere, but **this was not verified here**.
+**Environment failures (not code defects): RESOLVED on a Mac runner.** `libmimalloc-sys` and `ring` are the only crates in the iOS graph that compile C. Both compile with Xcode 16.4's clang for `aarch64-apple-ios`; `ring` was seen compiling on the first runner log and mimalloc linked in the final build. The one real problem was a link error (section 3.5).
 
 **Confirmed code blockers (four), each found by peeling the previous one:**
 
@@ -114,15 +114,41 @@ I confirmed the pass is real and not an artifact: `cargo tree --target aarch64-a
 
 **Caveat on that pass.** Type-checking passing does not mean the features work on iOS. For example `gilrs` on iOS may compile to a stub, and `arboard`'s iOS clipboard support is unverified.
 
-### 3.4 What is NOT yet known
+### 3.4 What is still NOT known
 
-- Whether it **links** (needs Apple's linker and SDK). UNRESOLVED.
-- Whether `ring`/`mimalloc` C code builds with Xcode clang for iOS. Very likely, UNRESOLVED.
-- Binary size and `-dead_strip` behaviour. UNRESOLVED.
-- Whether the **tests** build for iOS. Only `--bins` and libs were checked.
-- The build script `horizon_mod_api_gen::generate` runs on the host and parses all of `game/` with `syn` (Cargo.toml notes about 1.5 s optimised). It worked in the scratch check; cross-compile build-script behaviour under Xcode is UNRESOLVED.
+Answered by the macOS runner (section 3.5): whether it links, whether `ring` and mimalloc build, and the host-side `horizon_mod_api_gen` build script (it ran as part of the cross-build on the runner). Still open:
+
+- Binary size after `-dead_strip` and with the final feature set. The 71 MiB figure is a plain release link of a command-line executable; no stripping or size work was done.
+- Whether the **tests** build and run for iOS. Only libraries and the binary were built.
+- How the engine is entered as an app: winit on iOS, `UIApplicationMain`, and where Horizon's own `main` fits.
+- Whether the Metal backend initialises on an A14 and which of the renderer's optional features it enables. Nothing has run on a device or the simulator.
+- Which of the other 10 crates not checked matter for the app (`horizon-prepare` in particular).
 
 ---
+
+### 3.5 Verified on a macOS runner (the unmodified snapshot, then B1-B4)
+
+All results are from GitHub Actions runs on `macos-15` (Xcode 16.4, iPhoneOS 18.5 SDK, rustc 1.99.1) in this repository.
+
+| Step | Result |
+|---|---|
+| Unmodified snapshot, `horizon-world`, `horizon-protocol` for `aarch64-apple-ios` | Build and link: pass |
+| Unmodified snapshot, `horizon-client-lib` and `horizon-client` | Fail first at `wayland-backend` (B1): 5 errors, identical to the Linux finding. `ring` had already compiled |
+| After B1 and B3 | `horizon-client-lib` builds for `aarch64-apple-ios` and `aarch64-apple-ios-sim` |
+| After B2 and B4 | Same. `process_memory` tests pass on an Apple kernel: 256 MiB touched moves `phys_footprint`, and the value is plausible |
+| Full `horizon-client` binary, default deployment target | **Link failure**: `___chkstk_darwin`, referenced from mimalloc's C code, unresolved. Rust's default iOS deployment target is 10.0; the symbol is not in that libSystem |
+| Same, with `IPHONEOS_DEPLOYMENT_TARGET=16.0` | **Pass.** `target/aarch64-apple-ios/release/horizon-client`, a Mach-O of 74,439,272 bytes (about 71 MiB), release profile, build time 10 min 38 s on a cold cache |
+
+What this does and does not show. It shows the whole client, with its default features (audio via CoreAudio, controllers, windowing via winit, TLS via rustls and ring, the patched wgpu-hal with Metal), compiles and links for iOS once B1-B4 and a deployment target are set. It does **not** show that the binary starts: it is a command-line executable, not an app bundle, has no `UIApplicationMain`, is unsigned, and has never run. `winit` on iOS expects to own `UIApplicationMain`, so how `main` is entered is the first design question of milestone M1.
+
+**Deployment target.** 16.0 is a working value, chosen because it links and exceeds the 13.0 minimum of `os_proc_available_memory`. It is not a support decision. UNRESOLVED: the lowest iOS the project should support.
+
+### 3.6 SDK facts read from the iPhoneOS 18.5 headers (VERIFIED)
+
+- `task_vm_info`: `TASK_VM_INFO` = 22; the revision-1 prefix is 38 words (152 bytes); `phys_footprint` is at byte offset 144, `internal` at 48, `compressed` at 120, `resident_size` at 16; `limit_bytes_remaining` at 336 (a later revision). The full struct is 372 bytes.
+- `os_proc_available_memory()` is declared in `<os/proc.h>`, `API_AVAILABLE(ios(13.0))` and `API_UNAVAILABLE(macos)`.
+- `malloc_zone_pressure_relief()` is a public declaration in `<malloc/malloc.h>` (`__IPHONE_4_3`), so the allocator release path in `horizon-threads` has a documented API on iOS.
+- `libc` 0.2.190 exposes `task_info` for iOS, but `mach_task_self` and `mach_task_self_` only for macOS (deprecated). The fix declares `mach_task_self_` locally.
 
 ## 4. Rendering pipeline and Metal compatibility
 
@@ -415,7 +441,7 @@ Single pinned version 26.3 (`research-lock.json`), protocol 777. Horizon targets
 | 5 | Lifecycle: surface loss on background, early-return `resumed()` | Correctness | High if missed (crash or black screen) | Implement `suspended`/`resumed` with `recreate_surface`; test on device |
 | 6 | App Store acceptance | Policy | Unknown | Open questions D1-D16; plan a non-App-Store fallback |
 | 7 | Upstream churn: `game.rs` is a 17.8k-line monolith with fast-moving commits; a long-lived fork will conflict | Maintenance | Medium | Keep a minimal delta; upstream the platform fixes as small PRs |
-| 8 | C dependencies and link step untested (ring, mimalloc) | Technical | Low-medium | First task on a Mac |
+| 8 | C dependencies and link step | Technical | Closed for the library and binary | Verified on a Mac runner (section 3.5); an app bundle and signing remain untested |
 | 9 | Process-spawn sites fail at runtime | Technical | Low-medium | Audit and feature-gate |
 | 10 | Thermal and battery behaviour under sustained load | Technical | Unknown | Measure; adapt worker count and render distance to `ProcessInfo.thermalState` |
 
