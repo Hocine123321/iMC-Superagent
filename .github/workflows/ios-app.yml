@@ -1,0 +1,83 @@
+name: iOS app
+
+# Assembles the Xcode project, links the Rust static library into a real .app, and
+# reports what it is (size, linked frameworks, entitlements). Nothing here signs the app.
+on:
+  push:
+    branches: [main]
+    paths: ["horizon/**", "platform/**", ".github/workflows/ios-app.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Horizon.app (${{ matrix.sdk }})
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { sdk: iphoneos,        rust: aarch64-apple-ios,     dir: device, dest: "generic/platform=iOS" }
+          - { sdk: iphonesimulator, rust: aarch64-apple-ios-sim, dir: sim,    dest: "generic/platform=iOS Simulator" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.rust }}
+          brew install xcodegen
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: horizon
+      - name: Build the Rust static library
+        working-directory: horizon
+        run: |
+          cargo build --locked --release --target ${{ matrix.rust }} -p horizon-ios-bridge
+          mkdir -p ../platform/ios/build/rust/${{ matrix.dir }}
+          cp target/${{ matrix.rust }}/release/libhorizon_ios_bridge.a ../platform/ios/build/rust/${{ matrix.dir }}/
+      - name: Generate the Xcode project
+        working-directory: platform/ios
+        run: xcodegen generate
+      - name: Build the app (unsigned)
+        working-directory: platform/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration Release \
+            -sdk ${{ matrix.sdk }} -destination "${{ matrix.dest }}" \
+            -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee ../../xcodebuild.log | tail -60
+      - name: What was built
+        working-directory: platform/ios
+        run: |
+          APP=$(find build/dd -name Horizon.app -maxdepth 6 | head -1); echo "APP=$APP"
+          ls -la "$APP"; du -sh "$APP"
+          echo "--- executable:"; file "$APP/Horizon"; ls -la "$APP/Horizon"
+          echo "--- entry point present:"; nm -gU "$APP/Horizon" | grep -E "horizon_ios_main| _main$" || true
+          echo "--- linked libraries:"; otool -L "$APP/Horizon" | sed 's/(compatibility.*//' | head -40
+          echo "--- minimum OS / platform:"; otool -l "$APP/Horizon" | grep -E -A4 "LC_BUILD_VERSION" | head -8
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcodebuild-log-${{ matrix.sdk }}
+          path: xcodebuild.log
+          retention-days: 7
+      - name: Zip the unsigned app
+        if: matrix.sdk == 'iphoneos'
+        working-directory: platform/ios
+        run: |
+          APP=$(find build/dd -name Horizon.app -maxdepth 6 | head -1)
+          mkdir -p Payload && cp -R "$APP" Payload/ && zip -qry Horizon-unsigned.ipa Payload && ls -la Horizon-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        if: matrix.sdk == 'iphoneos'
+        with:
+          name: Horizon-unsigned-ipa
+          path: platform/ios/Horizon-unsigned.ipa
+          retention-days: 7

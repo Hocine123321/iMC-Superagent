@@ -1,0 +1,46 @@
+name: Horizon
+options:
+  bundleIdPrefix: dev.imc
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: dev.imc.horizon
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_BITCODE: "NO"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_VERSION: "5.0"
+targets:
+  Horizon:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: ["Info.plist"]
+    info:
+      path: App/Info.plist
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        # Where CI (or scripts/build-rust.sh) leaves the staticlib for the SDK being built.
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: "$(SRCROOT)/build/rust/device"
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(SRCROOT)/build/rust/sim"
+        OTHER_LDFLAGS: ["-lhorizon_ios_bridge", "-lc++"]
+    # Frameworks the Rust crates (winit, wgpu-hal/Metal, cpal/CoreAudio, gilrs/IOKit) call into.
+    dependencies:
+      - sdk: UIKit.framework
+      - sdk: Metal.framework
+      - sdk: QuartzCore.framework
+      - sdk: CoreGraphics.framework
+      - sdk: Foundation.framework
+      - sdk: AudioToolbox.framework
+      - sdk: CoreAudio.framework
+      - sdk: CoreFoundation.framework
+      - sdk: Security.framework
+      - sdk: CoreMotion.framework
+      - sdk: GameController.framework
+      - sdk: CoreHaptics.framework
+      - sdk: IOSurface.framework
