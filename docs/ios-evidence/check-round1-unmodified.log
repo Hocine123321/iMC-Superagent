@@ -1,0 +1,88 @@
+### horizon-core rc=0 2s
+### horizon-world rc=0 17s
+### horizon-protocol rc=0 13s
+### horizon-items rc=0 1s
+### horizon-command rc=0 2s
+### horizon-client-core rc=0 0s
+### horizon-assets rc=0 3s
+### horizon-theme rc=0 0s
+### horizon-optifine rc=0 2s
+### horizon-polytone rc=0 2s
+### horizon-shader-api rc=0 17s
+### horizon-shaders rc=0 6s
+### horizon-threads rc=101 1s
+error: failed to run custom build command for `libmimalloc-sys v0.1.49 (/app/conversations/6aefa5b60a16784c765b6dfb/horizon-ios/third_party/libmimalloc-sys)`
+
+Caused by:
+  process didn't exit successfully: `/tmp/ioscheck/target/debug/build/libmimalloc-sys-ec02a2d82d8d4067/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:INCLUDE_DIR=/app/conversations/6aefa5b60a16784c765b6dfb/horizon-ios/third_party/libmimalloc-sys/c_src/mimalloc/v3/include
+  cargo:rerun-if-env-changed=CC_aarch64-apple-ios
+### horizon-bench rc=0 7s
+### horizon-telemetry rc=101 5s
+error: failed to run custom build command for `ring v0.17.14`
+
+Caused by:
+  process didn't exit successfully: `/tmp/ioscheck/target/debug/build/ring-85bf7be9ad47e72f/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CARGO_MANIFEST_DIR
+  cargo:rerun-if-env-changed=CARGO_PKG_NAME
+### horizon-dualsense rc=0 0s
+### horizon-narrator rc=0 0s
+### horizon-hdr rc=101 9s
+error[E0432]: unresolved import `wgpu::hal::api::Vulkan`
+   --> crates/horizon-hdr/src/lib.rs:17:9
+    |
+ 17 |     use wgpu::hal::api::Vulkan;
+    |         ^^^^^^^^^^^^^^^^------
+    |                         |
+    |                         no `Vulkan` in `api`
+--
+error[E0432]: unresolved import `wgpu::hal::api::Vulkan`
+   --> crates/horizon-hdr/src/lib.rs:62:13
+    |
+ 62 |         use wgpu::hal::api::Vulkan;
+    |             ^^^^^^^^^^^^^^^^------
+    |                             |
+    |                             no `Vulkan` in `api`
+--
+error[E0433]: cannot find `vulkan` in `hal`
+   --> crates/horizon-hdr/src/lib.rs:38:39
+    |
+ 38 |                     |args: wgpu::hal::vulkan::CreateDeviceCallbackArgs| {
+    |                                       ^^^^^^ could not find `vulkan` in `hal`
+    |
+note: found an item that was configured out
+--
+error: could not compile `horizon-hdr` (lib) due to 3 previous errors
+### horizon-client-input rc=101 4s
+error[E0425]: cannot find value `poll_fd` in this scope
+  --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/server_impl/common_poll.rs:51:57
+   |
+51 |         Ok(Self { state: Arc::new(Mutex::new(State::new(poll_fd))) })
+   |                                                         ^^^^^^^ not found in this scope
+...
+62 |     pub fn poll_fd(&self) -> BorrowedFd<'_> {
+--
+error[E0425]: cannot find value `ret` in this scope
+   --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/server_impl/handle.rs:396:15
+    |
+396 |         match ret {
+    |               ^^^ not found in this scope
+
+    Checking block2 v0.5.1
+--
+error[E0599]: no associated function or constant named `NOSIGNAL` found for struct `SendFlags` in the current scope
+  --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/socket.rs:46:54
+   |
+46 |         let flags = SendFlags::DONTWAIT | SendFlags::NOSIGNAL;
+   |                                                      ^^^^^^^^ associated function or constant not found in `SendFlags`
+
+error[E0599]: no associated function or constant named `CMSG_CLOEXEC` found for struct `RecvFlags` in the current scope
+  --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/socket.rs:77:54
+   |
+77 |         let flags = RecvFlags::DONTWAIT | RecvFlags::CMSG_CLOEXEC;
+   |                                                      ^^^^^^^^^^^^ associated function or constant not found in `RecvFlags`
+
+    Checking cobs v0.3.0
+error[E0599]: no method named `dispatch_all_clients` found for struct `common_poll::InnerBackend<D>` in the current scope

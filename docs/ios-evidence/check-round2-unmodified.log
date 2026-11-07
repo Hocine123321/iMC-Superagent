@@ -1,0 +1,59 @@
+### horizon-mods rc=0 2s
+### horizon-cosmetics rc=101 1s
+error: failed to run custom build command for `ring v0.17.14`
+
+Caused by:
+  process didn't exit successfully: `/tmp/ioscheck/target/debug/build/ring-85bf7be9ad47e72f/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CARGO_MANIFEST_DIR
+### horizon-server-files rc=101 1s
+error: failed to run custom build command for `ring v0.17.14`
+
+Caused by:
+  process didn't exit successfully: `/tmp/ioscheck/target/debug/build/ring-85bf7be9ad47e72f/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CARGO_MANIFEST_DIR
+### horizon-anticheat rc=0 0s
+### horizon-chat-filter rc=0 1s
+### horizon-mcp rc=0 0s
+### horizon-friends rc=0 1s
+### horizon-relay rc=0 1s
+### horizon-client-render rc=101 9s
+error[E0425]: cannot find value `poll_fd` in this scope
+  --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/server_impl/common_poll.rs:51:57
+   |
+51 |         Ok(Self { state: Arc::new(Mutex::new(State::new(poll_fd))) })
+   |                                                         ^^^^^^^ not found in this scope
+...
+--
+error[E0425]: cannot find value `ret` in this scope
+   --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/server_impl/handle.rs:396:15
+    |
+396 |         match ret {
+    |               ^^^ not found in this scope
+
+error[E0599]: no associated function or constant named `NOSIGNAL` found for struct `SendFlags` in the current scope
+  --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/socket.rs:46:54
+   |
+46 |         let flags = SendFlags::DONTWAIT | SendFlags::NOSIGNAL;
+   |                                                      ^^^^^^^^ associated function or constant not found in `SendFlags`
+
+error[E0599]: no associated function or constant named `CMSG_CLOEXEC` found for struct `RecvFlags` in the current scope
+  --> /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wayland-backend-0.3.17/src/rs/socket.rs:77:54
+   |
+77 |         let flags = RecvFlags::DONTWAIT | RecvFlags::CMSG_CLOEXEC;
+   |                                                      ^^^^^^^^^^^^ associated function or constant not found in `RecvFlags`
+### horizon-client-lib rc=101 1s
+error: failed to run custom build command for `ring v0.17.14`
+
+Caused by:
+  process didn't exit successfully: `/tmp/ioscheck/target/debug/build/ring-85bf7be9ad47e72f/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CARGO_MANIFEST_DIR
+### horizon-client rc=101 3s
+error: failed to run custom build command for `ring v0.17.14`
+
+Caused by:
+  process didn't exit successfully: `/tmp/ioscheck/target/debug/build/ring-85bf7be9ad47e72f/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CARGO_MANIFEST_DIR
