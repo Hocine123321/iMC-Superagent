@@ -64,6 +64,9 @@ jobs:
           echo "--- executable:"; file "$APP/Horizon"; ls -la "$APP/Horizon"
           echo "--- entry point present:"; nm -gU "$APP/Horizon" | grep -E "horizon_ios_main| _main$" || true
           echo "--- linked libraries:"; otool -L "$APP/Horizon" | sed 's/(compatibility.*//' | head -40
+          echo "--- the built Info.plist (orientations, full screen, file sharing):"
+          /usr/libexec/PlistBuddy -c "Print" "$APP/Info.plist" | grep -E "UISupportedInterfaceOrientations|Landscape|Portrait|UIRequiresFullScreen|UIFileSharingEnabled|LSSupportsOpening|UIStatusBarHidden|MinimumOSVersion" || echo "keys missing"
+          wc -c "$APP/Info.plist"
           echo "--- minimum OS / platform:"; otool -l "$APP/Horizon" | grep -E -A4 "LC_BUILD_VERSION" | head -8
       - name: Launch on the iOS Simulator and record what happens
         if: matrix.sdk == 'iphonesimulator'

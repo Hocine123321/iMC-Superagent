@@ -20,8 +20,26 @@ targets:
     sources:
       - path: App
         excludes: ["Info.plist"]
+    # XcodeGen writes App/Info.plist from these properties at generation time, replacing whatever
+    # the file held (a bare `path:` produced a 743-byte plist without our keys).
     info:
       path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Horizon
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UIRequiredDeviceCapabilities: [arm64, metal]
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UILaunchScreen: {}
+        # The Files app shows Documents/Horizon, where the player puts the prepared game files.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         INFOPLIST_FILE: App/Info.plist
