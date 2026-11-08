@@ -1912,7 +1912,7 @@ impl wgpu::rwh::HasDisplayHandle for WindowDisplay {
 /// OpenGL. Each is tried when the one before has no surface, adapter or device. A native
 /// crash in the driver can't be
 /// caught in the game; the launcher switches the setting to DirectX 12 after one at
-/// the renderer's start (#746). macOS has Metal only.
+/// the renderer's start (#746). macOS and iOS have Metal only.
 fn backend_order(
     api: GraphicsApi,
     os: &str,
@@ -1920,7 +1920,9 @@ fn backend_order(
     wgpu_backend: bool,
 ) -> Vec<wgpu::Backends> {
     use wgpu::Backends;
-    if os == "macos" || wgpu_backend {
+    // `os` is a run-time string, so iOS needs naming here: left to the arms below it would be asked
+    // for Vulkan and OpenGL, neither of which is built for it, and no backend would be tried.
+    if os == "macos" || os == "ios" || wgpu_backend {
         return vec![Backends::default()];
     }
     let windows = os == "windows";
@@ -12955,6 +12957,7 @@ mod tests {
                 [Backends::default()]
             );
             assert_eq!(order(api, "macos", "aarch64"), [Backends::default()]);
+            assert_eq!(order(api, "ios", "aarch64"), [Backends::default()]);
         }
     }
     #[test]
@@ -12984,9 +12987,9 @@ mod tests {
             search(GraphicsApi::OpenGl, "linux", "x86_64"),
             [(vec![g], false), (vec![v], false), (vec![g], true)]
         );
-        // WGPU_BACKEND and macOS: one set of backends, nothing else to try.
+        // WGPU_BACKEND, macOS and iOS: one set of backends, nothing else to try.
         let all = Backends::default();
-        for (os, env) in [("windows", true), ("macos", false)] {
+        for (os, env) in [("windows", true), ("macos", false), ("ios", false)] {
             assert_eq!(
                 device_search(GraphicsApi::Vulkan, os, "x86_64", env),
                 [(vec![all], false), (vec![all], true)]
