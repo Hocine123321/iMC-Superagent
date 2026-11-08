@@ -14,7 +14,8 @@
 static int gFd = -1;                         // crash.txt, opened at install time
 static char gRunningPath[1024];              // the marker file
 static char gBreadcrumb[160];                // last step reached (written by any thread)
-static char gMemory[160];                    // last memory figures (refreshed by the main thread)
+static char gMemory[160];
+static char gStack[200];                     // main thread stack bounds, set at install                    // last memory figures (refreshed by the main thread)
 static struct sigaction gOld[32];
 static const int kSignals[] = { SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGTRAP, SIGFPE, SIGSYS };
 
@@ -59,6 +60,7 @@ static void OnSignal(int sig, siginfo_t *si, void *ctx) {
     char name[64] = "?"; pthread_getname_np(pthread_self(), name, sizeof name);
     Out("\nthread: "); Out(name); Out(pthread_main_np() ? " (main)" : "");
     Out("\nbreadcrumb: "); Out(gBreadcrumb);
+    Out("\nmain thread stack: "); Out(gStack);
     Out("\nmemory (last seen): "); Out(gMemory);
     Out("\nbacktrace (address, image, offset):\n");
     void *frames[64]; int n = backtrace(frames, 64);
@@ -117,6 +119,19 @@ void HorizonInstallCrashReporter(NSString *root) {
     NSString *head = [NSString stringWithFormat:@"%@launch: %@\ndevice: iOS %@\n",
                       banner, [NSDate date], UIDevice.currentDevice.systemVersion];
     if (gFd >= 0) (void)!write(gFd, head.UTF8String, strlen(head.UTF8String));
+
+    {
+        // The main thread's stack: the base (highest address), its size and the current depth, so
+        // the report can say whether a fault address is just past the end of it.
+        pthread_t t = pthread_self();
+        void *base = pthread_get_stackaddr_np(t);
+        size_t size = pthread_get_stacksize_np(t);
+        char here; 
+        snprintf(gStack, sizeof gStack, "base %p size %zu KB, low end %p, in use at start %ld KB, main=%d",
+                 base, size / 1024, (char *)base - size, (long)(((char *)base - &here) / 1024), pthread_main_np());
+        NSString *line = [NSString stringWithFormat:@"main thread stack: %s\n", gStack];
+        if (gFd >= 0) (void)!write(gFd, line.UTF8String, strlen(line.UTF8String));
+    }
 
     strlcpy(gRunningPath, marker.fileSystemRepresentation, sizeof gRunningPath);
     [@"" writeToFile:marker atomically:YES encoding:NSUTF8StringEncoding error:nil];
