@@ -34,9 +34,13 @@ jobs:
           rustup default stable
           rustup target add ${{ matrix.rust }}
           brew install xcodegen
+      # One cache per target. The device and simulator jobs used to share a key, so one blocked
+      # the other's save and neither restored: every run recompiled the engine (23-25 minutes).
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: horizon
+          shared-key: app-${{ matrix.rust }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build the Rust static library
         working-directory: horizon
         run: |
