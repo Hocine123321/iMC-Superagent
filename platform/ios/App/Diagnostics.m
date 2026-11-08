@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -115,11 +116,22 @@ static NSString *Exists(NSString *path) {
     return e ? (dir ? @"folder present" : @"file present") : @"not found";
 }
 
+// Appends one line and forces it to disk before returning, so a kernel kill on the next
+// instruction cannot lose it. The log is never rewritten: each launch adds a section.
+static void DurableAppend(NSString *path, NSString *text) {
+    int fd = open(path.fileSystemRepresentation, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) return;
+    NSData *d = [text dataUsingEncoding:NSUTF8StringEncoding];
+    write(fd, d.bytes, d.length);
+    fcntl(fd, F_FULLFSYNC);
+    close(fd);
+}
+
 NSString *HorizonWriteDiagnostics(NSString *root) {
     NSMutableString *r = [NSMutableString string];
     NSString *file = [root stringByAppendingPathComponent:@"diagnostics.txt"];
-    void (^flush)(void) = ^{ [r writeToFile:file atomically:NO encoding:NSUTF8StringEncoding error:nil]; };
-    void (^line)(NSString *) = ^(NSString *s) { [r appendFormat:@"%@\n", s]; flush(); };
+    NSString *stateFile = [root stringByAppendingPathComponent:@"probe-state.txt"];
+    void (^line)(NSString *) = ^(NSString *s) { [r appendFormat:@"%@\n", s]; DurableAppend(file, [s stringByAppendingString:@"\n"]); };
 
     UIDevice *d = UIDevice.currentDevice;
     NSString *m = DeviceModel();
@@ -156,18 +168,34 @@ NSString *HorizonWriteDiagnostics(NSString *root) {
     line([NSString stringWithFormat:@"jre25/lib/libjli.dylib: %@", Exists([jre stringByAppendingPathComponent:@"lib/libjli.dylib"])]);
     line([NSString stringWithFormat:@"jre25/release: %@", Exists([jre stringByAppendingPathComponent:@"release"])]);
 
-    // Last, because a refusal by the kernel kills the process; the lines above are already on disk.
-    if (cs & CS_DEBUGGED) {
-        line(@"");
-        line(@"-- JIT page test (runs only when CS_DEBUGGED is set) --");
-        line(@"four ways to get executable memory, each tried alone (a line is written before each):");
-        line(@"trying A: mmap(MAP_JIT, RWX) ..."); line(ProbeA());
-        line(@"trying B: mmap(RWX) without MAP_JIT ..."); line(ProbeB());
-        line(@"trying C: mmap(RW), write, mprotect(RX) ..."); line(ProbeC());
-        line(@"trying D: mmap(MAP_JIT, RW), write, mprotect(RX) ..."); line(ProbeD());
+    // One probe per launch. A kernel kill cannot be caught, so the state file says which probe
+    // is about to run (synced to disk first). If the next launch finds a probe marked started but
+    // not finished, that probe killed the app: it is recorded as KILLED and the next one is tried.
+    line(@"");
+    line(@"-- executable-memory probes (one per launch, results kept across kills) --");
+    NSArray<NSString *> *names = @[@"A mmap(MAP_JIT, RWX)", @"B mmap(RWX) no MAP_JIT",
+                                   @"C mmap(RW) write mprotect(RX)", @"D mmap(MAP_JIT, RW) write mprotect(RX)"];
+    NSString *(*fns[4])(void) = { ProbeA, ProbeB, ProbeC, ProbeD };
+    NSString *state = [NSString stringWithContentsOfFile:stateFile encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    // state lines: "start N" then "done N" ; the highest N with start but no done was killed.
+    int next = 0;
+    for (int i = 0; i < 4; i++) {
+        BOOL started = [state containsString:[NSString stringWithFormat:@"start %d\n", i]];
+        BOOL done = [state containsString:[NSString stringWithFormat:@"done %d\n", i]];
+        if (started && !done) { line([NSString stringWithFormat:@"probe %@: KILLED the app (started, never finished)", names[i]]);
+            DurableAppend(stateFile, [NSString stringWithFormat:@"done %d\n", i]); }
+        if (started || done) next = i + 1;
+    }
+    if (!(cs & CS_DEBUGGED)) {
+        line(@"CS_DEBUGGED is not set: probes skipped (they would be killed). Enable JIT in StikDebug and relaunch.");
+    } else if (next >= 4) {
+        line(@"all four probes have been tried; delete probe-state.txt in this folder to run them again.");
     } else {
-        line(@"");
-        line(@"-- JIT page test skipped: it would be killed without a debugger attached --");
+        line([NSString stringWithFormat:@"running probe %@ now (launch the app again afterwards for the next one)", names[next]]);
+        DurableAppend(stateFile, [NSString stringWithFormat:@"start %d\n", next]);
+        NSString *res = fns[next]();
+        line([NSString stringWithFormat:@"probe result: %@", res]);
+        DurableAppend(stateFile, [NSString stringWithFormat:@"done %d\n", next]);
     }
     line(@"");
     line(@"end of report");

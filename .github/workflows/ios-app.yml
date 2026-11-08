@@ -8,6 +8,11 @@ on:
     paths: ["horizon/crates/**", "horizon/platform/**", "horizon/Cargo.*", "platform/**", ".github/workflows/ios-app.yml"]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      simulator:
+        description: "Also build and launch on the iOS Simulator"
+        type: boolean
+        default: false
 
 concurrency:
   group: ios-app-${{ github.ref }}
@@ -23,9 +28,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { sdk: iphoneos,        rust: aarch64-apple-ios,     dir: device, dest: "generic/platform=iOS" }
-          - { sdk: iphonesimulator, rust: aarch64-apple-ios-sim, dir: sim,    dest: "generic/platform=iOS Simulator" }
+        # Device always. The simulator leg only checks that the engine starts and costs a second
+        # full compile plus a 5 minute launch, so it runs only when asked (Run workflow > simulator).
+        include: ${{ fromJSON(inputs.simulator && '[{"sdk":"iphoneos","rust":"aarch64-apple-ios","dir":"device","dest":"generic/platform=iOS"},{"sdk":"iphonesimulator","rust":"aarch64-apple-ios-sim","dir":"sim","dest":"generic/platform=iOS Simulator"}]' || '[{"sdk":"iphoneos","rust":"aarch64-apple-ios","dir":"device","dest":"generic/platform=iOS"}]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Tools
