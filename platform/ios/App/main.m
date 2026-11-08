@@ -7,6 +7,7 @@
 // are worked out here, from the sandbox, and passed as arguments.
 #import <Foundation/Foundation.h>
 #import "Diagnostics.h"
+#import "CrashReporter.h"
 #include <crt_externs.h>   // _NSGetArgc / _NSGetArgv (iOS 13 SDK and later)
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,10 @@ int main(int argc, char *argv[]) {
         NSString *home = [root stringByAppendingPathComponent:@"home"];
         [fm createDirectoryAtPath:resources withIntermediateDirectories:YES attributes:nil error:nil];
         [fm createDirectoryAtPath:home withIntermediateDirectories:YES attributes:nil error:nil];
+
+        // Before anything else can fail: a native crash writes Documents/Horizon/crash.txt.
+        HorizonInstallCrashReporter(root);
+        horizon_ios_breadcrumb("main: crash reporter installed");
 
         // Writes Documents/Horizon/diagnostics.txt: device, entitlements, JIT state, runtime present.
         // Read-only checks, run before the engine; see Diagnostics.m.
@@ -55,6 +60,7 @@ int main(int argc, char *argv[]) {
         *_NSGetArgc() = n;
         *_NSGetArgv() = args;
 
+        horizon_ios_breadcrumb("main: handing over to the engine");
         horizon_ios_main();
     }
     return 0;
