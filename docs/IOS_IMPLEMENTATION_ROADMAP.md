@@ -398,3 +398,28 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 - If M3's startup peak exceeds what iOS tolerates before the title screen, memory work (M7) moves ahead of touch (M5).
 - If the maintainer declines #1750, M8 becomes "user-side preparation only", which probably limits the product to technical users.
 - If Mojang declines the app ID, sign-in is limited to offline/LAN and the project is a hobby build outside a store.
+
+## M8b design notes: running `horizon-prepare` without child processes (read from source 2026-11-08)
+
+**What the source does (read, not run).** `horizon-prepare` starts Java as a child process in two places only:
+
+1. `java.rs`: `command()` builds a `std::process::Command` for the JVM; `run()` spawns it with stdout and stderr to a log file, polls `try_wait`, and kills it after an hour. `tool_major()` also spawns `java -version` (and `javac -version`) to read the version, and `find_tools()` consults `JAVA_HOME`, `PATH`, `/usr/libexec/java_home` on macOS, and the launcher's Java homes.
+2. `worker.rs`: starts **one long-lived** `dev.horizonlab.parity.PrepareWorker` JVM with `-Xmx2G` plus the batch options, with piped stdin and stdout. Each task is one JSON line in and one JSON line out; a reply of `""` means success. About 7,995 lines of Rust in the crate; spawns appear in `artifacts.rs` (one `uname -r`), `java.rs` and `worker.rs`.
+
+**Why this is a problem on iOS.** An iOS app cannot start child processes, so neither the one-shot runs nor the worker can work as written. The upstream rule (do not edit `horizon/`) means the change cannot be made in `horizon-prepare`.
+
+**Constraints this gives the design.**
+
+- `JNI_CreateJavaVM` can be called once per process, which matches the decision to run one JVM (`HORIZON_PREPARE_JOBS=1`).
+- The worker protocol (line in, line out, over a pipe) is already shaped like a request channel, so an in-process replacement only has to reproduce that exchange, not the preparer.
+- A `java` shim executable does **not** help: the preparer would still have to spawn it, and spawning is what iOS forbids.
+
+**Options (none built; none chosen).**
+
+| Option | What it means | Cost and risk |
+|---|---|---|
+| A. Replace the spawn calls in a patched copy of `horizon-prepare` that lives outside `horizon/` | A fork of 2 files (`java.rs`, `worker.rs`) that calls the in-process JVM through JNI | Must track upstream releases; the owner's rule forbids editing `horizon/`, so this is a copy kept in `platform/` |
+| B. Do not run the preparer on the phone | Prepare the files on a computer and copy the folder across (M3) | Not on-device; needs a computer once per game version; no JVM work at all |
+| C. A small Java launcher that calls `PrepareWorker` directly and the Rust side talks to it through JNI instead of pipes | Replaces the pipe, leaves the exporters untouched | JNI glue in Rust; threading with the single JVM |
+
+**Recommendation for now.** Keep **B (M3)** as the path that gets the real game running, and keep **A or C** as the later on-device goal. Neither needs a decision until the device test shows the runtime loads at all.
