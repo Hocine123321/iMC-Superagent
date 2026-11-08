@@ -71,9 +71,10 @@ jobs:
           for p in ../patches/jre_25/ios/1_jdk25u_ios.diff ../patches/jre_25/ios/2_mirror_mapping.diff; do
             git apply --check "$p" 2>&1 | head -5 || true
             git apply --reject --whitespace=fix "$p"
-            echo "applied $(basename $p); reject files: $(find . -name '*.rej' | wc -l)"
+            echo "applied $(basename $p); reject files: $(find . -name '*.rej' | wc -l | tr -d ' ')"
           done
-          test "$(find . -name '*.rej' | wc -l)" = 0
+          # macOS wc pads its number with spaces, so compare as a number, not as a string
+          test "$(find . -name '*.rej' | wc -l | tr -d ' ')" -eq 0
           git checkout -q -f . && git clean -qfd   # the recipe's own script applies them again
 
       - name: Build (freetype, cups, JDK 25 for iphoneos)
