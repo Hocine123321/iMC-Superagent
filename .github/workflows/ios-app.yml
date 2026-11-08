@@ -39,19 +39,40 @@ jobs:
           rustup default stable
           rustup target add ${{ matrix.rust }}
           brew install xcodegen
-      # One cache per target. The device and simulator jobs used to share a key, so one blocked
-      # the other's save and neither restored: every run recompiled the engine (23-25 minutes).
+      # The engine crate (horizon-client-lib) alone takes ~21 minutes and cargo's own cache never
+      # holds workspace crates, so any push recompiled it, even an Objective-C-only one. The finished
+      # static library is cached as a file, keyed on the hash of everything that can change it.
+      # An app-shell-only change (platform/ios) now skips Rust entirely.
+      - name: Key for the Rust library
+        id: rustkey
+        run: |
+          # Every file under horizon/ except build output and things that never enter the Rust
+          # build. The engine embeds json, png, ttf, svg, glsl and more with include_bytes!, so
+          # hashing by file type would miss changes; excluding by directory cannot.
+          H=$(find horizon -type f -not -path 'horizon/target/*' -not -path 'horizon/.git/*' -not -path 'horizon/docs/*' -not -path 'horizon/tools/*' -not -name '*.md' -print0 | sort -z | xargs -0 shasum | shasum | cut -c1-16)
+          echo "hash=$H" >> "$GITHUB_OUTPUT"
+          echo "rust sources hash: $H"
+      - name: Restore the finished Rust library
+        id: lib
+        uses: actions/cache@v4
+        with:
+          path: platform/ios/build/rust/${{ matrix.dir }}
+          key: horizon-lib-${{ matrix.rust }}-${{ steps.rustkey.outputs.hash }}
       - uses: Swatinem/rust-cache@v2
+        if: steps.lib.outputs.cache-hit != 'true'
         with:
           workspaces: horizon
           shared-key: app-${{ matrix.rust }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build the Rust static library
+        if: steps.lib.outputs.cache-hit != 'true'
         working-directory: horizon
         run: |
           cargo build --locked --release --target ${{ matrix.rust }} -p horizon-ios-bridge
           mkdir -p ../platform/ios/build/rust/${{ matrix.dir }}
           cp target/${{ matrix.rust }}/release/libhorizon_ios_bridge.a ../platform/ios/build/rust/${{ matrix.dir }}/
+      - name: Check the library is present
+        run: ls -la platform/ios/build/rust/${{ matrix.dir }}/libhorizon_ios_bridge.a
       - name: Generate the Xcode project
         working-directory: platform/ios
         run: xcodegen generate
