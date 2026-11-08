@@ -35,12 +35,13 @@
 | M5 | Touch input, minimal mobile controls, playable singleplayer | Device | no | large |
 | M6 | Baseline benchmark suite on device | Device | no | small |
 | M7 | Memory and thermal tuning from M6 data | Device | no | medium |
-| M8 | Java-free preparation (#1750) | Device | maintainer + legal | medium |
+| M8a | **Spike: can an embedded Java 25 iOS runtime run `horizon-prepare`?** (decision 2026-11-08) | Device with JIT | no | small, but gates M8b |
+| M8b | On-device download and preparation (owner's account, own copy, embedded JVM) | Device with JIT | Mojang app-ID for sign-in; runtime licence | large |
 | M9 | Microsoft sign-in and ownership gate | Device | Mojang app-ID | medium |
 | M10 | Multiplayer, audio polish, mobile UI | Device | no | large |
 | M11 | Distribution as a downloadable IPA | Device | no | small |
 
-The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9 can start after M2 in parallel but only ship after M5. M10 and M11 follow.
+The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a can start now and gates M8b; M8b and M9 ship after M5. M10 and M11 follow.
 
 ---
 
@@ -148,7 +149,7 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 So on iOS the app is its own launcher and M3 must supply the first-run experience itself: where the files are, how to pick them, progress, and errors. The engine's screen is built for a different situation (the launcher always prepared files first) and should not be patched into this role.
 
-**Objective.** Get real prepared resources onto the phone **without** a Java runtime and without any hosting, and reach Horizon's title screen.
+**Objective.** Get real prepared resources onto the phone **by the cheapest route, which is a folder prepared elsewhere**, and reach Horizon's title screen. This is deliberately independent of M8: it lets us test real game rendering, memory and input on a device without waiting for the embedded JVM, which is unproven. It is also the fallback if M8a fails.
 
 **Existing components.** `horizon-prepare` (runs on the PC), the engine flag `--resources PATH`, `docs/native-client.md` preparation steps, `horizon-assets`.
 
@@ -271,24 +272,48 @@ So on iOS the app is its own launcher and M3 must supply the first-run experienc
 
 ---
 
-## M8. Java-free preparation (upstream #1750)
+## M8a. Spike: run Java 25 on iOS (decision 2026-11-08)
 
-**Objective.** Remove the PC bootstrap. The phone assembles resources from the user's own Mojang download plus published computed tables, with no JVM.
+**Why this exists.** The owner chose to prepare on the phone with an embedded JVM and JIT, as Amethyst does (feasibility report 6.6). That is plausible but unproven for this workload, so it is tested cheaply before anything is built around it.
 
-**Existing components.** `horizon-prepare` (`artifacts.rs`, `inventory.rs`, `exporters.rs`), upstream issue #1750 (proposes `pack-facts` and `assemble`), `research-lock.json` hashes.
+**Objective.** Answer four questions with measurements: does a Java 25 iOS runtime load and print its version; can it run one real exporter; how long and how much memory does a full preparation take; and how does `horizon-prepare` start a JVM when iOS forbids `fork`/`exec`.
+
+**Existing components.** Amethyst-iOS (reference only; licences unchecked) which builds `java-25-openjdk` from `jre25-ios-aarch64.zip`; `horizon-prepare` (`java.rs` spawns the JVM with `Command::new`, `lib.rs` runs up to 3 to 4 JVMs in parallel via `pool::jobs`).
+
+**Work, in order. Stop at the first failure and record why.**
+1. Fetch the Java 25 iOS runtime in CI (not from my sandbox, where its host does not resolve). Record size, `release` file, licence text and provenance. If it cannot be fetched or its licence forbids redistribution, stop: use the fallback.
+2. Put it in the app bundle (a test build, not committed to git). Launch `libjvm` in-process through JNI from the Swift or Obj-C shell with the flags Amethyst found necessary (e.g. `-XX:-UseCompressedClassPointers`). Print `java.version`. Run it on the **simulator first** (no JIT needed to learn whether it loads), then on the owner's device.
+3. Run **one** oracle from `horizon/` (not all 335) against a test client jar the owner supplies on the device. Confirm output matches the desktop output byte for byte.
+4. Make `horizon-prepare` callable as a library: replace `Command::new("java")` in `java.rs` with an in-process call, set `pool::jobs` to 1 so one JVM runs at a time, and time a full `--prepare`. Record peak `phys_footprint`, wall time, and whether iOS kills it (jetsam).
+
+**Risks.** The runtime does not exist at a fetchable address, or is licensed so that it cannot go in our IPA. JIT is required and the owner's install cannot enable it. A full preparation does not fit in memory with one JVM. The wall time is hours. Any of these sends us to the fallback.
+
+**Success test.** A full `horizon-prepare --prepare --complete` runs to completion on the owner's device, its output passes `horizon-prepare --check`, and the resulting folder is file-for-file hash-identical to one prepared on a desktop from the same inputs. Time and peak memory are written into the feasibility report.
+
+**Fallback if it fails.** M3's path becomes the product: the owner prepares on a machine they control, from their own copy, and copies the folder over. Upstream #1750 (`pack-facts`/`assemble`) is not in this checkout and is not relied on.
+
+**Depends on.** M2 (a shell that can host a JVM). Needs the owner's device model, iOS version and JIT method (not yet stated).
+
+---
+
+## M8b. On-device download and preparation
+
+**Objective.** From a clean install, with the owner's Microsoft account and no computer: sign in, download the owner's own Minecraft 26.3, prepare the Horizon resources, reach the title screen. Nothing of Mojang's is committed, hosted or distributed by this project.
+
+**Existing components.** `docs/api/launch-guide.md` (the contract for a third-party launcher, followed here), `horizon-prepare --prepare/--check/--progress json`, `research-lock.json` pins, M8a's embedded JVM.
 
 **Work.**
-- Do **not** start by building a hosting service. First get a **maintainer decision** on #1750's open legal question (the upstream agent said the maintainer decides). Engage there before writing code.
-- If accepted: implement `assemble` as a library in `horizon-prepare` with the iOS-safe dependencies it already uses (`zip`, `sha1`, `sha2`; its `libc` dependency is gated to Linux and macOS in its Cargo.toml, but `horizon-prepare` itself was not type-checked for iOS in this audit, so that is UNVERIFIED).
-- Downloader in the shell or Rust: Mojang's version manifest, client jar, asset index and objects, each verified against sizes and sha1 (the same checks `launcher/src/mojang.rs` does), resumable, backgrounded with `URLSession` background config if allowed.
-- Tables: where they come from and who publishes them is the open question. Options in order of preference: (1) upstream publishes them; (2) the user's own PC produces them (M3 path); (3) you publish them, only after review.
-- Alternative **rejected**: reimplementing the Java exporters in Rust. They call vanilla code on purpose.
+- **Downloader** (Swift `URLSession` or Rust): Mojang's version manifest (`piston-meta.mojang.com`), then the pinned version JSON, client jar, libraries (Maven layout), asset index and asset objects, and the **server jar** named by `downloads.server`. Verify size and SHA-1 for each, resumable, with progress. Write to `Documents/Horizon/minecraft/` in the layout `--minecraft-dir` expects. The sign-in gates this step; the endpoints themselves are public.
+- **Prepare**: call `horizon-prepare --prepare --server-jar ... --minecraft-dir ... --output Documents/Horizon/resources --complete --progress json` through M8a's in-process path; show the JSON `fraction` and `message` lines as a progress screen. Run `--check` before every start.
+- **Disk**: the downloaded copy plus the prepared folder is large (sounds alone about 380 MB; Android reports about 500 MiB prepared). Delete or keep the downloaded copy after success; Android's fork deletes the client jar. Measure what the engine reads before choosing.
+- **JIT**: detect that JIT is unavailable and say so plainly instead of hanging. The game itself needs none.
+- **Updates**: preparation reruns when the Minecraft version, the Horizon build or `OUTPUT_VERSION` changes; each rerun needs JIT again.
 
-**Risks.** Legal and policy (feasibility report section 11, items 8-9). The tables must provably contain nothing of Mojang's. Maintainer may decline. Any hosting makes the project a distributor of derived data, which differs from your stated "we host nothing" position.
+**Risks.** Everything listed under M8a. Mojang's CDN terms for third-party apps are unverified (feasibility report 11.3, item 6). Interrupted preparation: `horizon-prepare` publishes only after verifying, so a half-finished folder must not be mistaken for a prepared one.
 
-**Success test.** On a clean device, with the user's own account, no PC involved: download, verify, assemble, reach the title screen. The assembled folder is byte-identical (or hash-identical per file) to the one `horizon-prepare` produces on the PC for the same inputs. Corruption, interruption, resume and hash-mismatch cases tested.
+**Success test.** Clean device, airplane mode off, owner's account: download, verify, prepare, reach the title screen. Interrupt the download and the preparation at random points and resume. Corrupt a file and confirm the hash check refuses it. Compare the final folder with a desktop-prepared one.
 
-**Depends on.** M3 for the layout and M5 for a worthwhile product. Can be investigated earlier, shipped later.
+**Depends on.** M8a, M9 for the real ownership gate (the downloader can be built and tested first with a developer override).
 
 ---
 

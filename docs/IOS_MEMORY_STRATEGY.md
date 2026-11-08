@@ -280,13 +280,34 @@ Ranking is a hypothesis to be re-ordered by M6. Nothing here should be implement
 | `game.rs` merge conflicts with upstream | Put mobile profile in data/config and `horizon-client-render` constants, not in gameplay code |
 | Upstream measurement claims are desktop-only | Treat as hypotheses, re-measure |
 
+## 7a. A second memory regime: on-device preparation (added 2026-11-08)
+
+Everything above is about the running game. The owner's decision (feasibility report 6.6, roadmap M8a/M8b) adds a different regime that never overlaps with play: **preparing the resources on the phone in an embedded Java 25 runtime**. It is a one-off per version (incremental afterwards), and it must be budgeted separately, because the game's worker threads, arena and meshing queues are not running while it happens.
+
+**What is verified from the code.**
+- `horizon-prepare` runs up to three JVMs at once, four from `SPLIT_BLOCKS_JOBS` = 6 processors (`lib.rs:767-777`, with the in-code note that the extra server JVM "pays a second Bootstrap and ~400 MB").
+- The job count comes from `pool::jobs()`: `HORIZON_PREPARE_JOBS` if set, else the processor count capped at 8. **Setting `HORIZON_PREPARE_JOBS=1` needs no code change** and is how to keep preparation to one JVM. **VERIFIED in `pool.rs:65-81`:** with `jobs()` of 1 the lanes run one after another instead of on threads, and the extra block-behaviour JVM only exists from 6 jobs (`lib.rs:831`), so at most one lane's JVM is alive at a time. A lane stops its exporter JVM once it no longer needs it (`lib.rs:466`). That bounds the number of simultaneous JVMs, not the size of the one that runs.
+- Sounds are copied afterwards (about 380 MB, `horizon-prepare sounds`) and that copy needs no Java.
+
+**What is not known (all UNMEASURED).**
+- A JVM's resident size while running the exporters and the data generator, with one JVM and with the heap flags we would pass (`-Xmx`, class-pointer flags). The earlier "1.25 GB of JVMs on a 4 GB device" in the feasibility report (6.2) is the three-JVM figure, not a measurement on iOS.
+- Whether iOS grants the app enough memory for one JVM plus the downloaded copy being read, and what `os_proc_available_memory` reports at that moment.
+- Disk: the downloaded Minecraft copy, the extracted client jar placeholders and the prepared output coexist until the copy is trimmed. Peak disk, not just the final size, must be measured.
+
+**Rules for this regime.**
+1. Run it in the foreground with the screen kept awake, and one JVM at a time, so iOS has no reason to suspend it. A suspended preparation must resume safely: `horizon-prepare` publishes only after verifying, so the app must treat a half-finished folder as unprepared and call `--check`.
+2. Record `phys_footprint` and available memory at each stage the progress stream reports (`{"fraction": F}`), the same telemetry as in section 3.2, so the peak is attributed to a stage.
+3. The JVM heap is capped explicitly; the cap is a measured value from the M8a spike, not a guess made here.
+4. This regime has no bearing on the in-game budgets in section 4. Do not let a number measured here set a gameplay target, or the reverse.
+
 ## 8. Deliverables of the memory track
 
 1. M2: `phys_footprint` and `os_proc_available_memory` telemetry; extended `gpu_census`.
 2. M4: memory-warning trim, with a test that footprint falls.
 3. M6: baseline report set in the repository root `benchmarks/ios/`.
 4. M7: mobile profile table with before/after evidence per change; updated ADR-4.
-5. Ongoing: this document revised with measured values replacing "UNRESOLVED".
+5. M8a: peak footprint, wall time and disk for a full on-device preparation with one JVM (section 7a).
+6. Ongoing: this document revised with measured values replacing "UNRESOLVED".
 
 ## 9. What I did not verify (explicit)
 

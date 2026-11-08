@@ -32,7 +32,7 @@ Better than assumed:
 - A downstream Android fork already runs this exact engine on phones, which shows the engine does not need desktop-only assumptions at runtime. (VERIFIED by reading its public docs; not independently run.)
 
 Worse than assumed:
-- **Resource preparation runs Mojang's own server code and a vanilla data generator inside a JDK 25.** iOS cannot run that. This is the single largest structural blocker. (VERIFIED, `crates/horizon-prepare/src/java.rs`, `exporters.rs`.)
+- **Resource preparation runs Mojang's own server code and a vanilla data generator inside a JDK 25.** A normally signed iOS app cannot run that. This is the single largest structural blocker. (VERIFIED, `crates/horizon-prepare/src/java.rs`, `exporters.rs`.) **Decision (2026-11-08): run the preparation on the phone in an embedded iOS JVM with JIT enabled, as Amethyst does. A Java 25 iOS runtime exists (section 6.6), but running this workload on it is UNPROVEN and is the next experiment.**
 - **There is no touch input at all.** No `WindowEvent::Touch` handling exists in the game. (VERIFIED by grep.)
 - **There is no app-lifecycle handling.** No `suspended()` and `resumed()` returns early if a window exists. (VERIFIED, `window_handler.rs:201-253`.)
 - **Horizon's "native mods" are compiled from source with cargo.** That cannot exist on iOS. (VERIFIED, `docs/native-mods.md`.)
@@ -265,7 +265,7 @@ Multiplayer protocol is 777 and handled in `horizon-protocol`. It does not depen
 
 ### 6.2 Why this cannot run on iOS (VERIFIED + well-established platform fact)
 
-- iOS apps cannot `fork`/`exec` a JDK, and a JVM needs a JIT (writable+executable memory). A normally signed app does not get that capability. Some sideloading routes can enable JIT, but this project does not depend on that: the plan is ahead-of-time Rust only, so it works the same under any install method.
+- iOS apps cannot `fork`/`exec` a JDK, and a JVM needs a JIT (writable+executable memory). A normally signed app does not get that capability. Some sideloading routes can enable JIT. **The game itself does not need it (it is ahead-of-time Rust). Under the decision in section 6.6, the one-time preparation does**, so preparation is only available to installs that can enable JIT.
 - The memory is also prohibitive: 1.25 GB of JVMs on a 4 GB device.
 
 ### 6.3 The known way around it (VERIFIED as a proposal; implemented downstream)
@@ -290,6 +290,41 @@ This is the **critical path and the main legal/maintainer risk**.
 ### 6.5 Size and storage (VERIFIED from docs, Android precedent)
 
 Sounds about 380 MB. The Android fork documents about 500 MiB total first install. The iOS app should keep the prepared cache excluded from iCloud backup (`isExcludedFromBackup`). Whether iOS may purge it is relevant: `Application Support` is not purged, `Caches` can be. Choose accordingly. UNRESOLVED.
+
+### 6.6 Decision: prepare on the phone with an embedded JVM and JIT (2026-11-08)
+
+**The owner's model**, which matches Horizon's own launch guide (`docs/api/launch-guide.md`, section 0: "Horizon never downloads Mojang's files; when your launcher downloads them, it does so only for that owner, as it would for vanilla"):
+
+1. The app signs the player in with their Microsoft account and checks they own Java Edition.
+2. The app downloads the player's own copy (version JSON, client jar, libraries, assets, and the server jar named by the version JSON's `downloads.server`) from Mojang's endpoints, to the device.
+3. The app prepares the Horizon resources from that copy, on the device.
+4. Nothing of Mojang's is committed to git, hosted, or distributed by this project.
+
+**What the launch guide requires of a launcher (VERIFIED).** Preparing reads: version JSON, client jar, libraries (Maven layout), assets (`indexes/`, `objects/`), the server jar (first time only), and **a Java of `java_major` (25)**, passed with `--java-home`. Every file is checked against `research-lock.json`. The command is `horizon-prepare --prepare --server-jar ... --minecraft-dir ... --output ... --complete --progress json`; `--check` verifies a folder with no Java.
+
+**Evidence that a Java 25 iOS runtime exists (VERIFIED from Amethyst's public repository, not run by me).**
+- Amethyst-iOS's `Makefile` defines `AME_JRE25_DIR` and fetches `jre25-ios-aarch64.zip` from `assets.angelauramc.dev/openjdk/ios-arm64/` (also jre8, 17, 21), and bundles it as `java-25-openjdk`.
+- Its CI history shows "[Makefile] Switch URLs, update JREs, and add Java 25" (Jul 12, 2026) and "Java 25 in staging, fix download links" (Oct 17, 2026, commit `c1f3aea`), both green.
+- A commit "fix(JVM): append `-XX:-UseCompressedClassPointers` for all cases" (Aug 10, 2026) shows that modern Java on iOS needs JVM flag workarounds.
+- I could not fetch the runtime itself: `assets.angelauramc.dev` does not resolve from my sandbox (DNS), so I cannot tell a block from a dead host, and I have not seen its size, licence text or build provenance.
+
+**What is NOT established. These are the risks of this decision.**
+
+| Question | Why it matters | State |
+|---|---|---|
+| Does Java 25 for iOS run `horizon-prepare`'s exporters and data generator at all? | They call Mojang's server and client code (335 oracle sources, about 44,000 lines) | UNPROVEN |
+| How slow is it without a fast JIT, and how long does a full preparation take on a phone? | Amethyst's README says JIT needs a debugger or a special install | UNMEASURED |
+| Peak memory. | Today up to three JVMs run at once (`lib.rs:767`), plus a fourth at 6 or more cores (about 400 MB). iOS limits an app's memory | UNMEASURED. Preparation would have to run one JVM at a time (`pool::jobs` = 1) |
+| What installs can enable JIT, on which iOS versions? | Amethyst lists AltStore, SideStore, StikDebug, TrollStore, Jitterbug and jailbreak, and its JIT26 work targets iOS 26 | Depends on the owner's device and iOS version, not yet stated |
+| Entitlements and signing. | Amethyst ships `entitlements.sideload.xml`, `.trollstore.xml`, `.codesign.xml`; it also uses a "DyldDeNeuralyzer" to bypass library validation | Our unsigned IPA has none of these |
+| Licence of the runtime. | Amethyst's list names Azul Zulu JDK (GPLv2 with the Classpath exception, to be confirmed) and Caciocavallo (GPLv2) | UNRESOLVED, see section 11 |
+| Does `horizon-prepare` (a Rust CLI) run in-process on iOS? | iOS has no `fork`/`exec` for a child process | It would be built as a library and call into a JVM embedded in-process (JNI), not spawn `java`. `java.rs` spawns child processes with `Command::new`, so **this needs code changes** in `horizon-prepare` (UNRESOLVED how large) |
+
+**Consequence for the "once only" expectation.** Preparation is incremental ("later preparations skip what is already current"), but it runs again when the Minecraft version, the Horizon build, or the preparer's `OUTPUT_VERSION` changes. So it is once per version, not once ever, and every re-run needs JIT again.
+
+**Fallback if the experiment fails.** Prepare once on a machine the owner controls (a PC, Mac, or the owner's own CI) from the owner's own copy, and copy the finished folder to the phone through the Files app. This hosts nothing and distributes nothing. Upstream's `pack-facts`/`assemble` (issue #1750) is **not in this checkout**: I checked `crates/horizon-prepare/src/main.rs` and it has no such command. It is an open proposal labelled "Later", and its maintainers say whether the published tables count as "nothing of Mojang's" is undecided. This project does not depend on it.
+
+**Mojang's app approval still applies to sign-in.** `docs/microsoft-account.md`: a new Azure app is refused by `login_with_xbox` until Mojang approves it (days to weeks), and Horizon's own client ID must not be reused. The downloads themselves use Mojang's public endpoints, so the downloader can be built and tested before sign-in is approved; sign-in only proves ownership.
 
 ---
 
@@ -433,13 +468,15 @@ Single pinned version 26.3 (`research-lock.json`), protocol 777. Horizon targets
 
 **D. Distribution as an IPA (replaces the App Store questions; Apple review does not apply)**
 10. **Install method and its limits.** Which route will users take: a personal developer certificate, AltStore or SideStore, Sideloadly, TrollStore, or an enterprise or ad-hoc profile? Each decides how often the app must be re-signed (a free Apple account's certificates last 7 days and limit active app IDs; a paid account's last a year), whether a device must be registered, and whether anything beyond plain signing is available. Needs a decision from you; I will not guess it.
-11. **Entitlements.** The app needs none beyond the basics (no JIT, no extended virtual addressing, no increased memory limit is assumed). Whether the `com.apple.developer.kernel.increased-memory-limit` entitlement is obtainable and honoured under the chosen install method is UNRESOLVED and matters for a 4 GB phone. Some sideload tools rewrite entitlements; some cannot add ones that need a provisioning profile.
+11. **Entitlements.** **Changed by the decision in 6.6:** preparation needs JIT, which on iOS means the debugger-attached route or an install method that grants `get-task-allow` (Amethyst ships sideload and TrollStore entitlement files). The game itself needs none of this. No extended virtual addressing or increased memory limit is assumed. Whether the `com.apple.developer.kernel.increased-memory-limit` entitlement is obtainable and honoured under the chosen install method is UNRESOLVED and matters for a 4 GB phone. Some sideload tools rewrite entitlements; some cannot add ones that need a provisioning profile.
 12. **Third-party notices.** The IPA is a binary distribution, so the notices Horizon already maintains (`THIRD_PARTY_NOTICES.md`) and the licences of the iOS-specific dependencies must travel with it (see E).
 13. **Where the IPA is hosted** and under what name, given the trademark question in A2. The Android fork's precedent is GitHub releases.
 14. **Privacy.** Horizon has opt-in telemetry and a "heartbeat" ping. Not a store-disclosure matter now, but a build that phones home should say so; the simplest answer is to leave them out.
 15. **Auto-update.** Without a store there is no update channel. Decide whether the app checks a release page, relies on the sideload tool's refresh, or neither. A self-updater that downloads code would be a design problem; one that only points at a new IPA is not.
 
 **E. Licensing of dependencies**
+16a. **The embedded Java runtime.** Amethyst lists Azul Zulu JDK as GNU GPLv2 and Caciocavallo as GNU GPLv2; OpenJDK is normally GPLv2 with the Classpath exception, which would need confirming for the exact build. Open: who built `jre25-ios-aarch64.zip`, from what source, under what terms, and may a different project redistribute it inside its own IPA. I could not retrieve the file or its licence (the host does not resolve from my sandbox).
+16b. **Reuse of Amethyst's iOS JVM glue** (launching a JVM in-process, the dyld validation bypass, JIT detection). It is a fork of PojavLauncher; check each component's licence before copying anything, and prefer reading it as a reference.
 17. `THIRD_PARTY_NOTICES.md` (18 KB) lists notices; a distributed binary must reproduce them. A license audit of the iOS-specific dependency set (`objc2-*`, `coreaudio-rs`, `cpal`, `ring` OpenSSL/ISC-style terms) was not done.
 18. Reuse of code from the Android forks: check their licences before copying anything.
 
@@ -449,7 +486,8 @@ Single pinned version 26.3 (`research-lock.json`), protocol 777. Horizon targets
 
 | Rank | Risk | Type | Severity | Mitigation |
 |---|---|---|---|---|
-| 1 | Resource preparation needs a JVM; the Java-free path (#1750) is unmerged and legally undecided | Structural + legal | Blocks everything user-facing | Bootstrap via user's own PC; upstream the `assemble` work; get a maintainer decision before hosting anything |
+| 1 | Resource preparation needs a JVM. **Chosen route (6.6): an embedded Java 25 iOS runtime with JIT, on the phone.** Unproven: no one has shown `horizon-prepare`'s exporters running on it, and preparation spawns child JVMs, which iOS forbids | Structural + technical | Blocks everything user-facing | Spike first (roadmap M8a): `java -version`, then one oracle, on the simulator and on the owner's device with timing and peak memory. Fallback: prepare on a machine the owner controls and copy the folder over. #1750 is not relied on |
+| 1b | JIT is needed for preparation, so it only works on installs that can enable it (StikDebug, TrollStore, AltStore/SideStore, jailbreak) | Distribution | High | Say so in the app; the game itself needs no JIT. Owner's device and iOS version are not yet stated |
 | 2 | Mojang app-ID approval for a new client is outside your control | External | Blocks sign-in | Apply early; use a clearly labelled dev path with `--session-file` for internal testing |
 | 3 | 4 GB device memory ceiling with a desktop-tuned engine (256 MiB arena pages, desktop render distances, mimalloc) | Technical | High; unmeasured | Telemetry first (footprint), then tune with data (see memory strategy) |
 | 4 | Touch input and mobile UI do not exist | Scope | High effort, low technical risk | Reuse the controller-registration path; Android design as a reference |
