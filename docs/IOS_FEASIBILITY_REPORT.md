@@ -156,6 +156,11 @@ The Horizon engine runs inside an iOS app. Each row is a CI run in this reposito
 | 2 | Narrator: "Unsupported platform ios" logged as an error | Expected; the narrator has no iOS implementation (section 9.3). Harmless |
 | 2 | `fatal runtime error: failed to initiate panic, error 3` after the wgpu panic | A Rust panic that unwinds through a UIKit (Objective-C) frame cannot unwind and aborts. The engine already treats wgpu errors as fatal, so the outcome is the same. Not a defect to fix |
 
+| 3 | Metal, first frame presented, loading screen reached, process alive after 40 s, no crash report, saves and logs written under `Documents/Horizon/home` | The indirect-draw gate and the working-directory change worked. Pipelines report "multi-draw off, occlusion culling off, GPU culling unavailable": the fallback paths |
+| 4 | Surface `2250x1143` (was `3120x2040` and `3840x2100`), black share of the screenshot fell from 30.6% to 1.2%, built `Info.plist` has `UIRequiresFullScreen`, landscape-only orientations, `UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace` (1,162 bytes, was 743) | winit on iOS uses `inner_size` as the UIWindow frame (`winit-0.30.13/src/platform_impl/ios/window.rs:511-516`), so the desktop sizes overflowed the phone; `window::creation_size` skips the request on iOS. XcodeGen had rewritten the plist from a bare `path:`; the keys now live in `project.yml` |
+
+Still **not established** about orientation: `simctl io screenshot` returns the device framebuffer in portrait (1206x2622), and the simulator was not rotated, so these runs cannot say whether the app is displayed landscape. The surface is landscape-shaped and the plist is landscape-only, which is consistent but not proof.
+
 What these runs do **not** show: any frame of the game drawn, behaviour on a real GPU, memory, or input. The stub resource manifest (`{}`, no game data) was used only to get past the first screen and see what the loader needs; it is not a prepared folder. The simulator is not evidence for performance or for Metal correctness on the phone (roadmap principle 5).
 
 ### 3.6 SDK facts read from the iPhoneOS 18.5 headers (VERIFIED)
