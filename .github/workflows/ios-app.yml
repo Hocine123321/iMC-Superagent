@@ -5,7 +5,8 @@ name: iOS app
 on:
   push:
     branches: [main]
-    paths: ["horizon/**", "platform/**", ".github/workflows/ios-app.yml"]
+    paths: ["horizon/crates/**", "horizon/platform/**", "horizon/Cargo.*", "platform/**", ".github/workflows/ios-app.yml"]
+    tags: ["v*"]
   workflow_dispatch:
 
 concurrency:

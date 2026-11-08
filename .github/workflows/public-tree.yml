@@ -1,0 +1,11 @@
+name: Public tree check
+# This repository is public: no Mojang files, credentials or signed binaries may be committed.
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./tools/check_public_tree.sh
