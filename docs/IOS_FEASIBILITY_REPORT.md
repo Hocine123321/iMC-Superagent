@@ -143,6 +143,21 @@ What this does and does not show. It shows the whole client, with its default fe
 
 **Deployment target.** 16.0 is a working value, chosen because it links and exceeds the 13.0 minimum of `os_proc_available_memory`. It is not a support decision. UNRESOLVED: the lowest iOS the project should support.
 
+### 3.5a First runs on the iOS Simulator (VERIFIED; iPhone 16 Pro simulator, iOS 18.5, Apple-silicon runner)
+
+The Horizon engine runs inside an iOS app. Each row is a CI run in this repository; each fix was found from the previous run's log, not predicted.
+
+| Run | What happened | Cause and fix |
+|---|---|---|
+| 1 | Process alive, engine printed its version and the "prepared game files are missing" message, then `Failed to create surface for any enabled backend: {}`. Screen black apart from the status bar | `gfx.rs backend_order` compared the run-time string `"macos"` only, so iOS was asked for Vulkan and OpenGL (neither built). Added `"ios"` |
+| 1 | The resource path printed as `/.local/horizon-client/26.3` | The default is `<executable folder>/resources` or a path relative to the working directory, which is `/` on iOS. `main.m` now passes `--resources` under Documents (std reads `_NSGetArgv` on demand on Apple platforms, checked against the Rust source) |
+| 2 | Metal chosen (`Apple iOS simulator GPU (Metal)`), device and surface created, HDR output scRGB selected, then a validation error at pipeline creation: `Downlevel flags INDIRECT_EXECUTION are required but not supported` for the buffer `Flat section draw calls, phase 2` | `gfx/flat.rs supported()` did not require `INDIRECT_EXECUTION` although its buffers use `BufferUsages::INDIRECT`. Added it, with a test. **Whether an A14 reports the flag is not known**: the simulator's Metal device is not representative of the phone |
+| 2 | `servers.dat` and `options.txt` could not be saved: read-only file system | The game folder is the process's working directory (`options.rs game_dir`); an iOS app starts in `/`. `main.m` now changes to `Documents/Horizon/home` |
+| 2 | Narrator: "Unsupported platform ios" logged as an error | Expected; the narrator has no iOS implementation (section 9.3). Harmless |
+| 2 | `fatal runtime error: failed to initiate panic, error 3` after the wgpu panic | A Rust panic that unwinds through a UIKit (Objective-C) frame cannot unwind and aborts. The engine already treats wgpu errors as fatal, so the outcome is the same. Not a defect to fix |
+
+What these runs do **not** show: any frame of the game drawn, behaviour on a real GPU, memory, or input. The stub resource manifest (`{}`, no game data) was used only to get past the first screen and see what the loader needs; it is not a prepared folder. The simulator is not evidence for performance or for Metal correctness on the phone (roadmap principle 5).
+
 ### 3.6 SDK facts read from the iPhoneOS 18.5 headers (VERIFIED)
 
 - `task_vm_info`: `TASK_VM_INFO` = 22; the revision-1 prefix is 38 words (152 bytes); `phys_footprint` is at byte offset 144, `internal` at 48, `compressed` at 120, `resident_size` at 16; `limit_bytes_remaining` at 336 (a later revision). The full struct is 372 bytes.

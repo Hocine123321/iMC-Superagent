@@ -140,11 +140,11 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 ## M3. Resource bootstrap and title screen
 
-**What a first launch does today (VERIFIED by reading `game.rs:17151-17160`, `game/no_resources.rs`, `game/packs.rs:42`; the simulator run in CI is the check on it).**
+**What a first launch does today (VERIFIED on the iOS Simulator in CI, run 2; see feasibility report 3.5a).**
 
-1. `missing_resources()` finds no prepared files and returns an error.
-2. The game then calls `no_resources::show`, a "get the launcher" window. That screen first runs `HudAtlas::build(looked_in)?` on the same empty resource folder, so it returns an error before any window exists. **A fresh install is expected to start and quit with only a log line.**
-3. Even if it drew, its only action opens a download page through `packs::open_uri`, which on non-Windows systems calls `open_folder` (the `open` or `xdg-open` programs). iOS has neither.
+1. `missing_resources()` finds no `horizon-resources.json` and the engine prints the "prepared game files are missing" text. I had predicted the app would then exit because `no_resources::show` builds a `HudAtlas` from the empty folder first. **The run did not show that:** the first launch reached the renderer (Metal device, surface, pipelines) before the Flat-draw abort, so that screen does start. Whether it draws text is not yet seen, because the same abort happens first.
+2. Its only action opens a download page through `packs::open_uri`, which on non-Windows systems calls `open_folder` (the `open` or `xdg-open` programs). iOS has neither (read from source, `packs.rs:42`; not exercised).
+3. The text tells the player to use "its launcher" and to run `horizon-prepare`, which is wrong on a phone.
 
 So on iOS the app is its own launcher and M3 must supply the first-run experience itself: where the files are, how to pick them, progress, and errors. The engine's screen is built for a different situation (the launcher always prepared files first) and should not be patched into this role.
 
