@@ -64,6 +64,39 @@ jobs:
           echo "--- entry point present:"; nm -gU "$APP/Horizon" | grep -E "horizon_ios_main| _main$" || true
           echo "--- linked libraries:"; otool -L "$APP/Horizon" | sed 's/(compatibility.*//' | head -40
           echo "--- minimum OS / platform:"; otool -l "$APP/Horizon" | grep -E -A4 "LC_BUILD_VERSION" | head -8
+      - name: Launch on the iOS Simulator and record what happens
+        if: matrix.sdk == 'iphonesimulator'
+        working-directory: platform/ios
+        run: |
+          APP=$(find build/dd -name Horizon.app -maxdepth 6 | head -1)
+          xcrun simctl list devices available | grep -E "iPhone" | head -5
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone 1[5-6]( Pro)? \(" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "UDID=$UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          (xcrun simctl spawn "$UDID" log stream --style compact --predicate 'process == "Horizon"' > ../../sim-app.log 2>&1 &) 
+          sleep 2
+          xcrun simctl launch --console-pty "$UDID" dev.imc.horizon > ../../sim-launch.log 2>&1 &
+          LPID=$!
+          sleep 45
+          xcrun simctl io "$UDID" screenshot ../../sim-screen.png || true
+          echo "--- is the process still alive after 45 s?"
+          xcrun simctl spawn "$UDID" launchctl list | grep -i horizon || echo "no Horizon process in launchctl"
+          echo "--- launch console:"; head -60 ../../sim-launch.log || true
+          echo "--- crash reports:"; ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i horizon || echo "none"
+          kill $LPID 2>/dev/null || true
+          xcrun simctl shutdown "$UDID" || true
+      - uses: actions/upload-artifact@v4
+        if: matrix.sdk == 'iphonesimulator'
+        with:
+          name: simulator-launch
+          path: |
+            sim-launch.log
+            sim-app.log
+            sim-screen.png
+          if-no-files-found: warn
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:
