@@ -52,6 +52,7 @@ jobs:
           xcodebuild -project Horizon.xcodeproj -scheme Horizon -configuration Release \
             -sdk ${{ matrix.sdk }} -destination "${{ matrix.dest }}" \
             -derivedDataPath build/dd \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS= \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee ../../xcodebuild.log | tail -60
       - name: What was built
