@@ -422,4 +422,6 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 | B. Do not run the preparer on the phone | Prepare the files on a computer and copy the folder across (M3) | Not on-device; needs a computer once per game version; no JVM work at all |
 | C. A small Java launcher that calls `PrepareWorker` directly and the Rust side talks to it through JNI instead of pipes | Replaces the pipe, leaves the exporters untouched | JNI glue in Rust; threading with the single JVM |
 
-**Recommendation for now.** Keep **B (M3)** as the path that gets the real game running, and keep **A or C** as the later on-device goal. Neither needs a decision until the device test shows the runtime loads at all.
+**Owner's decision (2026-11-08): prepare on the phone.** Option B is not the path. The work is A or C, and it starts only after the device test shows the Java runtime loads at all (M8a). Option B stays as a fallback only if that test fails.
+
+**Recommendation before that decision.** Keep **B (M3)** as the path that gets the real game running, and keep **A or C** as the later on-device goal. Neither needs a decision until the device test shows the runtime loads at all.
