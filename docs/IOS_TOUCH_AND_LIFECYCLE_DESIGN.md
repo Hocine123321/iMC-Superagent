@@ -51,9 +51,20 @@ if let WindowEvent::Touch(touch) = &event {
 }
 ```
 
-plus `mod touch;` in `game.rs`, a `touch: touch::Touch` field in `Game`, and one per-frame call
-next to `poll_pads` (`self.touch_frame()`) to flush the virtual pad. That is three small edits.
-GUESS on the exact line numbers until the code is open for editing.
+Exact hook sites (read 2026-11-08, line numbers will drift):
+
+1. `game.rs:14556` `handle_window_event_inner`: the `WindowEvent::Touch` early return above.
+2. `game/window_handler.rs:160`, next to `self.poll_pads(event_loop)`: `self.touch_frame(event_loop)`.
+   It reads the clock, runs `Touch::tick`, writes the stick into `pad.injected.left` and applies the
+   returned actions. Must run **before** `poll_pads` so the same frame sees the stick.
+3. `game.rs:~7609`, in the frame builder right after `self.draw_pad_cursor(&mut batch)`:
+   `self.draw_touch_controls(&mut batch)`. The HUD is in **GUI pixels** (`HudBatch.scale`,
+   `hud.rs:1567`), touch is in **physical pixels**, so the glue divides by `batch.scale`.
+4. `mod touch;` and a `touch: touch::Touch` field in `Game`.
+
+Pure logic is already written and tested: `horizon-client-input/src/touch.rs` (20 tests, clippy
+clean, mutation-checked). What remains is the glue file `game/touch.rs`, which cannot be tested
+without the 25 minute engine build.
 
 ### Layer A: menus and the title screen (pointer emulation)
 
@@ -142,8 +153,8 @@ Minimum useful M4, in priority order:
 
 ## 4. Order of work
 
-1. (Offline, now) `horizon-client-input/src/touch.rs`: the pure logic with unit tests.
-2. (Offline, now) Read `hud.rs` to decide how to draw the controls.
+1. DONE: `horizon-client-input/src/touch.rs`, the pure logic, 20 unit tests.
+2. DONE: HUD read. Draw with `HudBatch::fill(&self.gui.atlas, x, y, w, h, argb)` and `text`.
 3. One batched engine build containing: touch glue, `suspended`, `memory_warning`.
 4. Device test with the real resources folder.
 
