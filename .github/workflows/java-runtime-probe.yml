@@ -1,0 +1,69 @@
+name: Java 25 iOS runtime probe
+
+# M8a step 1 (docs/IOS_IMPLEMENTATION_ROADMAP.md): can the Java 25 iOS runtime that Amethyst-iOS
+# uses be fetched, how big is it, what is it, and under what licence. Nothing here is committed or
+# redistributed: the archive is downloaded inside this job and only a report is kept.
+# Manual only, on Linux, so it costs no macOS minutes.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Fetch the runtimes Amethyst lists, record what is there
+        shell: bash
+        run: |
+          set -u
+          BASE=https://assets.angelauramc.dev/openjdk/ios-arm64
+          mkdir -p probe report
+          cd probe
+          for v in 8 17 21 25; do
+            f=jre$v-ios-aarch64.zip
+            echo "=== $f"
+            code=$(curl -sS -L -m 600 -o "$f" -w '%{http_code} %{size_download} bytes, %{time_total}s' "$BASE/$f" 2>&1) || true
+            echo "http: $code"
+            curl -sSI -L -m 30 "$BASE/$f" 2>&1 | tr -d '\r' | grep -iE '^(HTTP|content-length|content-type|last-modified|etag|server)' || true
+            if [ -s "$f" ]; then
+              sha256sum "$f"
+              if file "$f" | grep -qi zip; then unzip -q -o "$f" -d "x$v" && ls -la "x$v" | head -20; else echo "not a zip:"; file "$f"; head -c 300 "$f"; echo; fi
+            fi
+          done 2>&1 | tee ../report/fetch.txt
+
+      - name: Look inside the Java 25 archive
+        shell: bash
+        run: |
+          set -u
+          cd probe
+          {
+            echo "# Java 25 archive contents"
+            if [ ! -d x25 ]; then echo "jre25 was not fetched, nothing to inspect"; exit 0; fi
+            # The zip holds a tar.xz (Amethyst's Makefile untars jre25-*.tar.xz into java-25-openjdk)
+            find x25 -maxdepth 2 -type f | head -20
+            for t in x25/*.tar.xz; do
+              [ -f "$t" ] || continue
+              echo "--- $t"; ls -la "$t"; sha256sum "$t"
+              mkdir -p jdk25 && tar -xf "$t" -C jdk25
+            done
+            [ -d jdk25 ] || { echo "no tar.xz found; listing whole tree"; find x25 | head -60; exit 0; }
+            echo "--- top level"; ls -la jdk25
+            echo "--- release file"; cat jdk25/release 2>/dev/null || find jdk25 -maxdepth 2 -name release -exec cat {} \;
+            echo "--- sizes"; du -sh jdk25; du -sh jdk25/* 2>/dev/null | sort -h | tail -12
+            echo "--- licence and notice files"; find jdk25 -iname 'LICENSE*' -o -iname 'ASSEMBLY_EXCEPTION*' -o -iname 'THIRD_PARTY*' -o -iname 'NOTICE*' | head -20
+            echo "--- libjvm and architecture"; find jdk25 -name 'libjvm*' | head; for f in $(find jdk25 -name 'libjvm*' | head -2); do file "$f"; ls -la "$f"; done
+            echo "--- java launcher/libjli"; find jdk25 -name 'libjli*' -o -name 'java' -type f | head; 
+            echo "--- modules (jmods or lib/modules)"; ls -la jdk25/lib 2>/dev/null | head -40
+            echo "--- strings that identify the build vendor"; for f in $(find jdk25 -name 'libjvm*' | head -1); do strings "$f" | grep -iE 'openjdk|zulu|azul|temurin|vendor|25\.[0-9]|build' | sort -u | head -15; done
+          } 2>&1 | tee ../report/inspect.txt
+
+      - name: Keep the report (not the runtime)
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-runtime-probe-report
+          path: report/
+          retention-days: 14
