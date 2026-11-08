@@ -6,6 +6,7 @@
 // or `.local/horizon-client/26.3` relative to the working directory (here `/`). So the paths
 // are worked out here, from the sandbox, and passed as arguments.
 #import <Foundation/Foundation.h>
+#import "Diagnostics.h"
 #include <crt_externs.h>   // _NSGetArgc / _NSGetArgv (iOS 13 SDK and later)
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,10 @@ int main(int argc, char *argv[]) {
         NSString *home = [root stringByAppendingPathComponent:@"home"];
         [fm createDirectoryAtPath:resources withIntermediateDirectories:YES attributes:nil error:nil];
         [fm createDirectoryAtPath:home withIntermediateDirectories:YES attributes:nil error:nil];
+
+        // Writes Documents/Horizon/diagnostics.txt: device, entitlements, JIT state, runtime present.
+        // Read-only checks, run before the engine; see Diagnostics.m.
+        HorizonWriteDiagnostics(root);
 
         // The engine's game folder (saves, servers.dat, packs, mods) is its working directory,
         // which the desktop launcher sets. An iOS app starts in "/", which is read-only.
