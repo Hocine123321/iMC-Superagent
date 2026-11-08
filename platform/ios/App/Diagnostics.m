@@ -62,9 +62,9 @@ static NSString *JitExecTest(void) {
     if (p == MAP_FAILED) return [NSString stringWithFormat:@"mmap(MAP_JIT, RWX) refused: errno %d (%s)", errno, strerror(errno)];
     // arm64:  mov w0, #42 ; ret
     uint32_t code[2] = { 0x52800540, 0xD65F03C0 };
-    if (__builtin_available(iOS 14.0, *)) pthread_jit_write_protect_np(0);
+    // pthread_jit_write_protect_np is marked unavailable on iOS (macOS Apple Silicon only), so
+    // there is no per-thread toggle to call: the RWX MAP_JIT page is written directly.
     memcpy(p, code, sizeof code);
-    if (__builtin_available(iOS 14.0, *)) pthread_jit_write_protect_np(1);
     sys_icache_invalidate(p, sizeof code);
     int r = ((int (*)(void))p)();
     munmap(p, len);
