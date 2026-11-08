@@ -1,0 +1,112 @@
+name: Java 25 for iOS (build from source)
+
+# M8a step 1b (docs/IOS_IMPLEMENTATION_ROADMAP.md). The prebuilt jre25-ios-aarch64.zip that
+# Amethyst-iOS's Makefile names is not downloadable (its host has no DNS record), so this builds the
+# same runtime from the public recipe: AngelAuraMC/angelauramc-openjdk-build, branch
+# duy/buildjre17-21-25-ios (commit 3f41bca), applied to upstream openjdk/jdk25u.
+#
+# Why a pinned tag: the recipe clones jdk25u HEAD, and its two patch sets (1_jdk25u_ios.diff then
+# 2_mirror_mapping.diff, in that order) apply with zero rejects only on jdk-25.0.4-ga through
+# jdk-25.0.5.0.3-ga. They do not apply to HEAD (25.0.6 development). Checked on Linux, 2026-11-08.
+#
+# Nothing here is committed or redistributed. The runtime is a build artifact kept 7 days for the
+# owner's own testing; a decision on shipping it waits for the licence review (report 11.3, 16a).
+# Manual only: a JDK build is long and uses macOS minutes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      jdk_tag:
+        description: "openjdk/jdk25u tag (the patches fit jdk-25.0.4-ga to jdk-25.0.5.0.3-ga)"
+        default: "jdk-25.0.5.0.3-ga"
+      recipe_commit:
+        description: "angelauramc-openjdk-build commit"
+        default: "3f41bca"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 300
+    env:
+      BUILD_IOS: "1"
+      TARGET_VERSION: "25"
+      J316SAP: "1"
+    steps:
+      - name: Tools
+        run: |
+          set -x
+          brew install autoconf automake ldid wget gnu-sed coreutils 2>&1 | tail -3 || true
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          sysctl -n hw.ncpu; sysctl -n hw.memsize | awk '{printf "%.1f GB RAM\n", $1/1073741824}'; df -h . | tail -1
+
+      - name: Boot JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Get the recipe at a pinned commit
+        run: |
+          git clone https://github.com/AngelAuraMC/angelauramc-openjdk-build.git recipe
+          cd recipe
+          git checkout ${{ inputs.recipe_commit }}
+          git log -1 --format='recipe %h %ad %s' --date=short
+          ls patches/jre_25/ios
+
+      - name: Pin jdk25u to a tag the patches fit (instead of HEAD)
+        working-directory: recipe
+        run: |
+          git clone --depth 1 --branch "${{ inputs.jdk_tag }}" https://github.com/openjdk/jdk25u openjdk-25
+          cd openjdk-25 && git log -1 --format='jdk25u %h %ad' --date=short
+          # the recipe's 5_clonejdk.sh would clone HEAD; the directory now exists, make it a no-op
+          cd .. && printf '#!/bin/bash\necho "jdk25u already cloned at pinned tag"\n' > 5_clonejdk.sh && chmod +x 5_clonejdk.sh
+
+      - name: Check both patches apply, in order, before the long build
+        working-directory: recipe/openjdk-25
+        run: |
+          for p in ../patches/jre_25/ios/1_jdk25u_ios.diff ../patches/jre_25/ios/2_mirror_mapping.diff; do
+            git apply --check "$p" 2>&1 | head -5 || true
+            git apply --reject --whitespace=fix "$p"
+            echo "applied $(basename $p); reject files: $(find . -name '*.rej' | wc -l)"
+          done
+          test "$(find . -name '*.rej' | wc -l)" = 0
+          git checkout -q -f . && git clean -qfd   # the recipe's own script applies them again
+
+      - name: Build (freetype, cups, JDK 25 for iphoneos)
+        working-directory: recipe
+        run: |
+          export JAVA_HOME=$(/usr/libexec/java_home -v 25)
+          export PATH=/opt/homebrew/bin:$PATH
+          bash 1_ci_build_arch_aarch64.sh 2>&1 | tee ../build.log | tail -400
+          exit ${PIPESTATUS[0]}
+
+      - name: What came out
+        if: always()
+        working-directory: recipe
+        run: |
+          ls -la *.tar.xz 2>/dev/null || echo "no tar.xz produced"
+          for f in jre25-ios*.tar.xz; do
+            [ -f "$f" ] || continue
+            shasum -a 256 "$f"
+            mkdir -p ../out && tar -xf "$f" -C ../out
+          done
+          cd ../out 2>/dev/null || exit 0
+          echo "--- release file"; cat release 2>/dev/null || find . -maxdepth 2 -name release -exec cat {} \;
+          echo "--- size"; du -sh .; du -sh * | sort -h | tail -8
+          echo "--- libjvm"; find . -name 'libjvm*' -exec file {} \; -exec ls -la {} \;
+          echo "--- licence / notice files"; find . -iname 'LICENSE*' -o -iname 'ASSEMBLY_EXCEPTION*' -o -iname 'THIRD_PARTY*' | head
+          echo "--- minos / platform of libjvm"; for f in $(find . -name 'libjvm*' | head -1); do otool -l "$f" | grep -A4 LC_BUILD_VERSION; done
+
+      - name: Keep the build log and the runtime (7 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java25-ios-build
+          path: |
+            build.log
+            recipe/jre25-ios*.tar.xz
+          retention-days: 7
