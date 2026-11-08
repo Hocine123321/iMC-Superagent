@@ -63,9 +63,17 @@ jobs:
         run: |
           A=target/${{ matrix.target }}/release/libhorizon_ios_bridge.a
           ls -la "$A"
-          echo "--- exported symbol:"; nm -gU "$A" 2>/dev/null | grep -E " T _horizon_ios_main$" || { echo "MISSING horizon_ios_main"; exit 1; }
+          echo "--- every symbol mentioning horizon_ios (nm, all symbols, with the object it is in):"
+          nm -A "$A" 2>/dev/null | grep -i "horizon_ios" | head -20 || true
+          echo "--- the entry point, exactly (defined external text symbol):"
+          if nm -A -g --defined-only "$A" 2>/dev/null | grep -E "[ ]T[ ]_horizon_ios_main$"; then
+            echo "FOUND _horizon_ios_main"
+          else
+            echo "NOT FOUND as a defined external symbol"; exit 1
+          fi
           echo "--- architecture:"; lipo -info "$A"
-          echo "--- minimum OS recorded in the objects (sample):"; otool -l "$A" 2>/dev/null | grep -E "minos|platform" | sort | uniq -c | head -6
+          echo "--- platform and minimum OS recorded in the objects:"
+          otool -l "$A" 2>/dev/null | grep -E "^\s+(platform|minos) " | sort | uniq -c | head -8
       - uses: actions/upload-artifact@v4
         with:
           name: libhorizon_ios_bridge-${{ matrix.target }}
