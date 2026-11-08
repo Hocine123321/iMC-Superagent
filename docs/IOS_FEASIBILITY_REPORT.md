@@ -551,3 +551,16 @@ Single pinned version 26.3 (`research-lock.json`), protocol 777. Horizon targets
 The port is **technically plausible** and the engine-side delta found so far is small. The difficulty is concentrated in three places that are not engine code: **the Java dependency in resource preparation**, **the missing touch and lifecycle layer**, and **external approvals** (Mojang app-ID, Apple review, and an undecided legal question about derived tables). Proceed, but sequence the work so the technical proofs (milestones M0-M2) come before any investment that depends on those approvals.
 
 Companion documents: `docs/IOS_IMPLEMENTATION_ROADMAP.md`, `docs/IOS_MEMORY_STRATEGY.md`. Evidence: `docs/ios-evidence/`.
+
+## First device result (2026-11-08, owner's iPhone 12, iOS 27.2, JIT on via StikDebug)
+
+Raw file: `docs/ios-evidence/diagnostics-2026-11-08-run1.txt`. Observed, not inferred:
+
+- The unsigned IPA, signed by the owner's own tool, installed and ran. The engine started and showed its own "no game files" screen, so the window and Metal surface work on a real A14.
+- `get-task-allow` is `1`, so signing kept the entitlement StikDebug needs.
+- `CS_DEBUGGED=1`: the kernel reports a debugger attached for this process.
+- `dynamic-codesigning`, `increased-memory-limit` and `extended-virtual-addressing` are absent (the owner's signing identity does not carry them).
+- **`mmap(MAP_JIT, PROT_READ|PROT_WRITE|PROT_EXEC)` was refused with errno 1 (EPERM).**
+- The Java runtime folder was not on the device yet, as expected.
+
+**What this does not show.** It tests one way of getting executable memory. Whether the other ways (plain RWX, or RW then `mprotect` to RX, with or without `MAP_JIT`) work is **UNKNOWN** until the next build reports each separately. Do not read run 1 as "JIT is unavailable".

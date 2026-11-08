@@ -1,0 +1,26 @@
+Horizon diagnostics (read-only checks; nothing is changed)
+date: 2026-11-08 17:37:25 +0000
+iOS: 27.2  model: iPhone13,2  A14 (iPhone 12 family): no TXM
+physical memory: 3.60 GB
+
+-- signing and entitlements of THIS app --
+get-task-allow: 1   (needed for StikDebug to list the app)
+dynamic-codesigning: absent
+com.apple.developer.kernel.increased-memory-limit: absent
+com.apple.developer.kernel.extended-virtual-addressing: absent
+
+-- code-signing status of this process (csops) --
+flags: 0x32003005   CS_VALID=1  CS_DEBUGGED=1  CS_RUNTIME=0
+CS_DEBUGGED is SET: a debugger has attached, JIT is allowed.
+
+-- Java runtime (nothing is loaded; only looked for) --
+Horizon/jre25: not found
+jre25/lib/server/libjvm.dylib: not found
+jre25/lib/libjli.dylib: not found
+jre25/release: not found
+
+-- JIT page test (runs only when CS_DEBUGGED is set) --
+about to write and execute a MAP_JIT page...
+mmap(MAP_JIT, RWX) refused: errno 1 (Operation not permitted)
+
+end of report
