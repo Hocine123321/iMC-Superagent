@@ -140,6 +140,14 @@ The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8 and M9
 
 ## M3. Resource bootstrap and title screen
 
+**What a first launch does today (VERIFIED by reading `game.rs:17151-17160`, `game/no_resources.rs`, `game/packs.rs:42`; the simulator run in CI is the check on it).**
+
+1. `missing_resources()` finds no prepared files and returns an error.
+2. The game then calls `no_resources::show`, a "get the launcher" window. That screen first runs `HudAtlas::build(looked_in)?` on the same empty resource folder, so it returns an error before any window exists. **A fresh install is expected to start and quit with only a log line.**
+3. Even if it drew, its only action opens a download page through `packs::open_uri`, which on non-Windows systems calls `open_folder` (the `open` or `xdg-open` programs). iOS has neither.
+
+So on iOS the app is its own launcher and M3 must supply the first-run experience itself: where the files are, how to pick them, progress, and errors. The engine's screen is built for a different situation (the launcher always prepared files first) and should not be patched into this role.
+
 **Objective.** Get real prepared resources onto the phone **without** a Java runtime and without any hosting, and reach Horizon's title screen.
 
 **Existing components.** `horizon-prepare` (runs on the PC), the engine flag `--resources PATH`, `docs/native-client.md` preparation steps, `horizon-assets`.
