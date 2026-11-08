@@ -402,6 +402,16 @@ impl ApplicationHandler for App {
             App::Ready(game) => game.resumed(event_loop),
         }
     }
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        if let App::Ready(game) = self {
+            game.suspended(event_loop);
+        }
+    }
+    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
+        if let App::Ready(game) = self {
+            game.memory_warning(event_loop);
+        }
+    }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         match self {
             App::Loading(loading) => loading.window_event(event_loop, id, event),

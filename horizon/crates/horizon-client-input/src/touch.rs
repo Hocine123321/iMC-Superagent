@@ -42,8 +42,10 @@ pub struct Feel {
     pub tap_secs: f64,
     /// A press held still this long is a long press.
     pub long_press_secs: f64,
-    /// Game view turn per pixel of drag, in the units `look_turn` takes (a mouse count).
-    pub look_per_px: f64,
+    /// View turn per pixel of drag, in degrees. The caller converts degrees to the engine's
+    /// mouse counts with `mouse::motion_for_turn`, so the player's sensitivity and invert
+    /// settings apply to touch as they do to a mouse.
+    pub look_degrees_per_px: f64,
     /// Two taps this close in time and place make a double tap.
     pub double_tap_secs: f64,
 }
@@ -53,9 +55,9 @@ impl Default for Feel {
             slop_px: 12.0,
             tap_secs: 0.25,
             long_press_secs: 0.40,
-            // GUESS: about what a desktop mouse at default sensitivity gives for a hand-sized
-            // drag. Must be tuned on the phone.
-            look_per_px: 0.6,
+            // GUESS, to be tuned on the phone: 0.1 degrees a pixel turns the view about 250
+            // degrees across a 2532 pixel wide screen.
+            look_degrees_per_px: 0.1,
             double_tap_secs: 0.30,
         }
     }
@@ -73,8 +75,8 @@ pub enum Mode {
 /// Something the game should do now.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Action {
-    /// Turn the view by this much (mouse counts, `dx` right, `dy` down).
-    Look { dx: f64, dy: f64 },
+    /// Turn the view by this many degrees (`yaw` right positive, `pitch` down positive).
+    Look { yaw: f64, pitch: f64 },
     /// The attack mapping goes down or up.
     Attack(bool),
     /// The use mapping goes down or up.
@@ -298,8 +300,8 @@ impl Touch {
                 // that shakes a little while mining does not move the aim.
                 if f.dragged {
                     self.out.push(Action::Look {
-                        dx: f64::from(dx) * self.feel.look_per_px,
-                        dy: f64::from(dy) * self.feel.look_per_px,
+                        yaw: f64::from(dx) * self.feel.look_degrees_per_px,
+                        pitch: f64::from(dy) * self.feel.look_degrees_per_px,
                     });
                 }
                 self.world_hold(id, &f, now);
@@ -538,8 +540,9 @@ mod tests {
         t.down(1, (1800.0, 600.0), 0.0, &[]);
         let out = t.moved(1, (1850.0, 600.0), 0.05);
         match out.as_slice() {
-            [Action::Look { dx, dy }] => {
-                assert!(*dx > 0.0 && dy.abs() < 1.0e-9);
+            [Action::Look { yaw, pitch }] => {
+                // 50 px at 0.1 degrees a pixel.
+                assert!((yaw - 5.0).abs() < 1.0e-6 && pitch.abs() < 1.0e-9);
             }
             other => panic!("expected one Look, got {other:?}"),
         }

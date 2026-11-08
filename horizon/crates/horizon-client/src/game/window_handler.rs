@@ -157,6 +157,7 @@ impl Game<'_> {
         if self.pending_save.is_some() {
             return;
         }
+        self.touch_frame(event_loop);
         horizon_client::spans::time("pads", || self.poll_pads(event_loop));
         self.pause_if_inactive();
         if self.options.frames.is_some() && self.started.elapsed() > self.options.timeout {
@@ -199,6 +200,14 @@ impl Game<'_> {
 }
 
 impl ApplicationHandler for Game<'_> {
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        self.app_suspended(event_loop);
+    }
+
+    fn memory_warning(&mut self, _event_loop: &ActiveEventLoop) {
+        self.app_memory_warning();
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;

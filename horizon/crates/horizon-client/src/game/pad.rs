@@ -209,6 +209,10 @@ impl Pads {
     pub(super) fn inject_button(&mut self, button: Button, down: bool) {
         self.injected.set(button, down);
     }
+    /// Touch's steering stick, on the virtual controller's left stick.
+    pub(super) fn set_injected_left(&mut self, stick: [f32; 2]) {
+        self.injected.left = stick;
+    }
     /// Splitscreen: this player's pad state, from `source`. Another pad, or
     /// none: the old one's A going away isn't a release.
     pub(super) fn feed_from(&mut self, source: Option<PadId>, state: PadState) {
@@ -396,7 +400,7 @@ impl Game<'_> {
     }
 
     /// End held actions and captures before another context receives input.
-    fn pad_cancel_inputs(&mut self, event_loop: &dyn EventLoopCtl) {
+    pub(super) fn pad_cancel_inputs(&mut self, event_loop: &dyn EventLoopCtl) {
         // Before the releases below: a cancelled press must not click.
         self.pad.menu.armed = None;
         let held_sticks = [

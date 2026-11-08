@@ -14,6 +14,10 @@ on:
         type: boolean
         default: false
 
+# Publishing a release needs write access to the repo's contents; the default token is read-only.
+permissions:
+  contents: write
+
 concurrency:
   group: ios-app-${{ github.ref }}
   cancel-in-progress: true
@@ -165,3 +169,26 @@ jobs:
           name: Horizon-unsigned-ipa
           path: platform/ios/Horizon-unsigned.ipa
           retention-days: 7
+      # Every successful device build on main is published under Releases, so the IPA is one tap
+      # away on the phone and does not expire like a workflow artifact (7 days). One release per
+      # build, tagged by run number and commit; the newest 15 are kept.
+      - name: Publish the IPA to Releases
+        if: matrix.sdk == 'iphoneos' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.run_number }}
+        working-directory: platform/ios
+        run: |
+          SHORT=$(git rev-parse --short HEAD)
+          TAG="build-${RUN}-${SHORT}"
+          SUBJECT=$(git log -1 --pretty=%s)
+          NOTES=$(printf 'Unsigned IPA for iPhone (sideload with AltStore, Sideloadly or similar).\n\nCommit %s: %s\n\nBuilt by workflow run %s.' "$SHORT" "$SUBJECT" "$RUN")
+          cp Horizon-unsigned.ipa "Horizon-${TAG}.ipa"
+          gh release create "$TAG" "Horizon-${TAG}.ipa" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Horizon ${TAG}" --notes "$NOTES" --prerelease
+          echo "published $TAG"
+          # Keep the newest 15 build releases.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[15:] | .[].tagName' \
+            | while read -r OLD; do echo "pruning $OLD"; gh release delete "$OLD" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; done

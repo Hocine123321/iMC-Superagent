@@ -426,9 +426,11 @@ mod test_instances;
 mod text_displays;
 mod tick_profile;
 mod tick_script;
+mod touch;
 mod titles;
 mod tnt;
 mod totem;
+mod lifecycle;
 mod trading;
 mod transient_blocks;
 mod trial_spawner;
@@ -2684,6 +2686,10 @@ struct Game<'a> {
     /// `MinecraftServer.ticksUntilAutosave`: the ticks left before the next
     /// autosave, counted down a tick at a time.
     ticks_until_autosave: i64,
+    /// Fingers on a touch screen (the phone): see `game/touch.rs`.
+    touch: touch::TouchState,
+    /// When the app last saved because it went inactive (`game/lifecycle.rs`).
+    last_suspend_save: Option<Instant>,
     applied_modifiers: Vec<(String, String)>,
     experience: Experience,
     orbs: horizon_client::join_seq::JoinList<ExperienceOrb>,
@@ -7608,6 +7614,7 @@ impl Game<'_> {
         self.frame_graph
             .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
         self.draw_pad_cursor(&mut batch);
+        self.draw_touch_controls(&mut batch);
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
@@ -14554,6 +14561,11 @@ impl Game<'_> {
     /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
     /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
     fn handle_window_event_inner(&mut self, event_loop: &dyn EventLoopCtl, mut event: WindowEvent) {
+        // A finger on a phone's screen: its own handler turns it into the inputs below.
+        if let WindowEvent::Touch(touch) = &event {
+            self.touch_event(event_loop, touch);
+            return;
+        }
         if let WindowEvent::Focused(false) = &event {
             self.physical_keys.clear();
             self.physical_buttons.clear();
@@ -16318,6 +16330,8 @@ impl<'a> Game<'a> {
             autosaving: false,
             // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
             ticks_until_autosave: 6000,
+            touch: Default::default(),
+            last_suspend_save: None,
             applied_modifiers: Vec::new(),
             experience: Experience::default(),
             orbs: Default::default(),
