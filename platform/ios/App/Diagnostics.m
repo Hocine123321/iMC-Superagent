@@ -51,24 +51,62 @@ static NSString *ChipNote(NSString *m) {
     return @"(chip not mapped here)";
 }
 
-// 1. Can a MAP_JIT page be made writable, filled with code, made executable and called?
-// On iOS 26+ without a debugger this crashes or fails; with JIT enabled it works. The test runs
-// on a secondary thread with a signal handler off, so a refusal is reported, not fatal where the
-// kernel returns an error. A kill by the kernel cannot be caught: the report is flushed first and
-// this step is last, so a crash here still leaves every earlier line in the file.
-static NSString *JitExecTest(void) {
-    size_t len = 16384;
-    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
-    if (p == MAP_FAILED) return [NSString stringWithFormat:@"mmap(MAP_JIT, RWX) refused: errno %d (%s)", errno, strerror(errno)];
-    // arm64:  mov w0, #42 ; ret
-    uint32_t code[2] = { 0x52800540, 0xD65F03C0 };
-    // pthread_jit_write_protect_np is marked unavailable on iOS (macOS Apple Silicon only), so
-    // there is no per-thread toggle to call: the RWX MAP_JIT page is written directly.
-    memcpy(p, code, sizeof code);
-    sys_icache_invalidate(p, sizeof code);
+// JIT probes. Four ways to get executable memory, each tried alone and reported alone. The
+// first run used only the first way and was refused (errno 1); that does not show the others are
+// refused, so each is tried. A kill by the kernel cannot be caught: the caller writes a line
+// naming the probe BEFORE it runs, so a crash still leaves the earlier lines in the file.
+static const uint32_t kCode[2] = { 0x52800540, 0xD65F03C0 };  // arm64: mov w0, #42 ; ret
+
+static NSString *RunPage(void *p, size_t len, const char *how) {
+    memcpy(p, kCode, sizeof kCode);
+    sys_icache_invalidate(p, sizeof kCode);
     int r = ((int (*)(void))p)();
     munmap(p, len);
-    return [NSString stringWithFormat:@"MAP_JIT page written and executed: returned %d (expected 42) -> %@", r, r == 42 ? @"JIT WORKS" : @"unexpected"];
+    return [NSString stringWithFormat:@"%s: executed, returned %d (expected 42) -> %@", how, r, r == 42 ? @"WORKS" : @"unexpected"];
+}
+
+// A. one call: MAP_JIT, read+write+exec.
+static NSString *ProbeA(void) {
+    size_t len = 16384;
+    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    if (p == MAP_FAILED) return [NSString stringWithFormat:@"A mmap(MAP_JIT, RWX): refused, errno %d (%s)", errno, strerror(errno)];
+    return RunPage(p, len, "A mmap(MAP_JIT, RWX)");
+}
+
+// B. plain RWX, no MAP_JIT.
+static NSString *ProbeB(void) {
+    size_t len = 16384;
+    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (p == MAP_FAILED) return [NSString stringWithFormat:@"B mmap(RWX, no MAP_JIT): refused, errno %d (%s)", errno, strerror(errno)];
+    return RunPage(p, len, "B mmap(RWX, no MAP_JIT)");
+}
+
+// C. map read+write, fill it, then mprotect to read+exec (the usual debugger-attached route).
+static NSString *ProbeC(void) {
+    size_t len = 16384;
+    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (p == MAP_FAILED) return [NSString stringWithFormat:@"C mmap(RW): refused, errno %d (%s)", errno, strerror(errno)];
+    memcpy(p, kCode, sizeof kCode);
+    if (mprotect(p, len, PROT_READ | PROT_EXEC) != 0)
+        return [NSString stringWithFormat:@"C mmap(RW) then mprotect(RX): mprotect refused, errno %d (%s)", errno, strerror(errno)];
+    sys_icache_invalidate(p, sizeof kCode);
+    int r = ((int (*)(void))p)();
+    munmap(p, len);
+    return [NSString stringWithFormat:@"C mmap(RW) then mprotect(RX): executed, returned %d (expected 42) -> %@", r, r == 42 ? @"WORKS" : @"unexpected"];
+}
+
+// D. MAP_JIT with read+write only, then mprotect to read+exec.
+static NSString *ProbeD(void) {
+    size_t len = 16384;
+    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    if (p == MAP_FAILED) return [NSString stringWithFormat:@"D mmap(MAP_JIT, RW): refused, errno %d (%s)", errno, strerror(errno)];
+    memcpy(p, kCode, sizeof kCode);
+    if (mprotect(p, len, PROT_READ | PROT_EXEC) != 0)
+        return [NSString stringWithFormat:@"D mmap(MAP_JIT, RW) then mprotect(RX): mprotect refused, errno %d (%s)", errno, strerror(errno)];
+    sys_icache_invalidate(p, sizeof kCode);
+    int r = ((int (*)(void))p)();
+    munmap(p, len);
+    return [NSString stringWithFormat:@"D mmap(MAP_JIT, RW) then mprotect(RX): executed, returned %d (expected 42) -> %@", r, r == 42 ? @"WORKS" : @"unexpected"];
 }
 
 static NSString *Exists(NSString *path) {
@@ -122,8 +160,11 @@ NSString *HorizonWriteDiagnostics(NSString *root) {
     if (cs & CS_DEBUGGED) {
         line(@"");
         line(@"-- JIT page test (runs only when CS_DEBUGGED is set) --");
-        line(@"about to write and execute a MAP_JIT page...");
-        line(JitExecTest());
+        line(@"four ways to get executable memory, each tried alone (a line is written before each):");
+        line(@"trying A: mmap(MAP_JIT, RWX) ..."); line(ProbeA());
+        line(@"trying B: mmap(RWX) without MAP_JIT ..."); line(ProbeB());
+        line(@"trying C: mmap(RW), write, mprotect(RX) ..."); line(ProbeC());
+        line(@"trying D: mmap(MAP_JIT, RW), write, mprotect(RX) ..."); line(ProbeD());
     } else {
         line(@"");
         line(@"-- JIT page test skipped: it would be killed without a debugger attached --");
