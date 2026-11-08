@@ -186,7 +186,13 @@ NSString *HorizonWriteDiagnostics(NSString *root) {
             DurableAppend(stateFile, [NSString stringWithFormat:@"done %d\n", i]); }
         if (started || done) next = i + 1;
     }
-    if (!(cs & CS_DEBUGGED)) {
+    // The executable-memory probes are finished (all four failed on the iPhone 12, iOS 27.2) and
+    // two of them kill the app, so they no longer run on their own. Create an empty file named
+    // run-probes.txt in this folder to run them again.
+    NSString *marker = [root stringByAppendingPathComponent:@"run-probes.txt"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:marker]) {
+        line(@"probes are switched off (create run-probes.txt in this folder to run them).");
+    } else if (!(cs & CS_DEBUGGED)) {
         line(@"CS_DEBUGGED is not set: probes skipped (they would be killed). Enable JIT in StikDebug and relaunch.");
     } else if (next >= 4) {
         line(@"all four probes have been tried; delete probe-state.txt in this folder to run them again.");

@@ -44,11 +44,12 @@ Do not copy a folder that is missing `horizon-resources.json`.
 The Horizon app creates a folder visible in the Files app. Open the app **once** first.
 
 1. Connect the phone, or use AirDrop alternatives (a USB cable, a cloud drive, or a local share).
-2. On the phone open **Files > On My iPhone > Horizon**.
-3. Put the folder there as `resources` so that this file exists:
+2. On the phone open **Files > On My iPhone > Horizon > Horizon** (the same folder where you found
+   `diagnostics.txt`). It already holds an empty `resources` folder and a `home` folder.
+3. Fill `resources` so that this file exists:
 
 ```
-On My iPhone/Horizon/resources/horizon-resources.json
+On My iPhone/Horizon/Horizon/resources/horizon-resources.json
 ```
 
 Copy the **contents** of `26.3/` into `resources/`, not the `26.3` folder itself.
