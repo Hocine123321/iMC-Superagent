@@ -210,11 +210,18 @@ pub fn is_broken_intel_vulkan(info: &wgpu::AdapterInfo) -> bool {
 }
 
 fn supported(adapter: &wgpu::Adapter, device: &wgpu::Device) -> bool {
-    let flags = adapter.get_downlevel_capabilities().flags;
     let limits = device.limits();
-    flags.contains(wgpu::DownlevelFlags::VERTEX_STORAGE | wgpu::DownlevelFlags::COMPUTE_SHADERS)
+    flags_allow(adapter.get_downlevel_capabilities().flags)
         && limits.max_storage_buffers_per_shader_stage >= 3
         && limits.max_storage_buffer_binding_size >= super::arena::PAGE_BYTES
+}
+
+/// The downlevel flags flat draws need. `INDIRECT_EXECUTION` is one: the draw-call buffers
+/// are `BufferUsages::INDIRECT`, and wgpu refuses to create one on a device without it (a
+/// validation error that ends the game), as the iOS Simulator's Metal device showed.
+fn flags_allow(flags: wgpu::DownlevelFlags) -> bool {
+    use wgpu::DownlevelFlags as D;
+    flags.contains(D::VERTEX_STORAGE | D::COMPUTE_SHADERS | D::INDIRECT_EXECUTION)
 }
 
 fn storage(binding: u32, stage: wgpu::ShaderStages, read_only: bool) -> wgpu::BindGroupLayoutEntry {
@@ -1028,6 +1035,18 @@ impl Flat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flat_draws_need_indirect_execution() {
+        use wgpu::DownlevelFlags as D;
+        let all = D::VERTEX_STORAGE | D::COMPUTE_SHADERS | D::INDIRECT_EXECUTION;
+        assert!(flags_allow(all));
+        // The indirect draw buffers cannot be created without it.
+        assert!(!flags_allow(D::VERTEX_STORAGE | D::COMPUTE_SHADERS));
+        assert!(!flags_allow(D::COMPUTE_SHADERS | D::INDIRECT_EXECUTION));
+        assert!(!flags_allow(D::VERTEX_STORAGE | D::INDIRECT_EXECUTION));
+        assert!(!flags_allow(D::empty()));
+    }
 
     /// Draws as `render` writes them: solid (page, quads at a base vertex)
     /// first, then translucent (page, sorted page, count, first sorted index,

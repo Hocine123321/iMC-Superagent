@@ -26,6 +26,10 @@ int main(int argc, char *argv[]) {
         [fm createDirectoryAtPath:resources withIntermediateDirectories:YES attributes:nil error:nil];
         [fm createDirectoryAtPath:home withIntermediateDirectories:YES attributes:nil error:nil];
 
+        // The engine's game folder (saves, servers.dat, packs, mods) is its working directory,
+        // which the desktop launcher sets. An iOS app starts in "/", which is read-only.
+        [fm changeCurrentDirectoryPath:home];
+
         // A new argv: the program name, then ours, then anything the system passed (a debugger's,
         // or a launch argument from a developer's scheme).
         const char *extra[] = { "--resources", resources.fileSystemRepresentation,
