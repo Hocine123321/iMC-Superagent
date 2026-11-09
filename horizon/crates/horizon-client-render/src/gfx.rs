@@ -63,6 +63,24 @@ pub use entity_batch::{
 };
 pub use view::{View, ViewSet};
 
+/// Names the step the game has reached, so a crash report from a phone says where it stopped.
+/// The iOS app's Objective-C shell keeps it (`platform/ios/App/CrashReporter.m`); elsewhere it does
+/// nothing.
+pub fn breadcrumb(step: &str) {
+    #[cfg(target_os = "ios")]
+    {
+        unsafe extern "C" {
+            fn horizon_ios_breadcrumb(step: *const std::ffi::c_char);
+        }
+        if let Ok(step) = std::ffi::CString::new(step) {
+            // SAFETY: the shell copies the text before it returns.
+            unsafe { horizon_ios_breadcrumb(step.as_ptr()) };
+        }
+    }
+    #[cfg(not(target_os = "ios"))]
+    let _ = step;
+}
+
 /// Window.getAppropriateLineWidth, in framebuffer pixels.
 pub fn outline_width(width: u32) -> f32 {
     2.5f32.max(width as f32 / 1920.0 * 2.5)

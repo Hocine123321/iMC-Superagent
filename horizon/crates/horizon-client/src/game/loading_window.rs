@@ -100,6 +100,8 @@ pub(super) fn build_renderer(
 /// The loading screen's renderer: one atlas (the boot screen's until the
 /// pack's GUI atlas is ready) over one opaque white block-sprite layer, an
 /// empty border texture and the title panorama once the menu bundle is ready.
+// Not inlined: `Renderer::new` runs inside it, and on iOS the main thread has 1 MB of stack.
+#[inline(never)]
 pub(super) fn loading_renderer(
     window: Arc<Window>,
     offscreen: bool,

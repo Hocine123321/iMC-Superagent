@@ -17225,6 +17225,21 @@ pub fn run_with() -> Result<()> {
     if !synchronous_startup(&options) {
         return run_loading(options, early_settings, vanilla_root, None, started);
     }
+    run_synchronous(options, early_settings, vanilla_root, started)
+}
+
+/// The rest of `run_with` for a start that does not show the loading window: a script, a benchmark,
+/// a harness or a server. Its own function and never inlined: its locals are hundreds of kilobytes,
+/// and `run_with` stays on the stack for the whole run. On iOS the main thread has 1 MB, and the
+/// loading window runs under `run_with`, so these must not count against it
+/// (docs/IOS_CRASH_STACK.md).
+#[inline(never)]
+fn run_synchronous(
+    mut options: Options,
+    early_settings: Settings,
+    vanilla_root: PathBuf,
+    started: Instant,
+) -> Result<()> {
     let mut pack_error = None;
     options.resources = packs::startup_root(&vanilla_root, &early_settings.resource_packs, &[])
         .unwrap_or_else(|e| {

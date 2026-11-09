@@ -199,11 +199,15 @@ impl Loading {
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
     /// and title panorama.
+    // Not inlined: on iOS the main thread has 1 MB of stack, and this builds the second renderer.
+    // Its callers' frames must not grow by what it holds (see docs/IOS_CRASH_STACK.md).
+    #[inline(never)]
     pub(super) fn set_ui(&mut self, gui: UiResources, root: PathBuf) {
         log::info!(
             "Horizon: loading the title artwork after {} ms",
             self.started.elapsed().as_millis()
         );
+        horizon_client::gfx::breadcrumb("set_ui: title artwork arrived");
         self.menu.set_root(root, &self.settings);
         self.gui = Some(gui);
         self.title_drawn = false;
@@ -217,6 +221,7 @@ impl Loading {
             renderer.release_surface();
         }
         let bundle = self.gui.as_ref().expect("the menu bundle was just set");
+        horizon_client::gfx::breadcrumb("set_ui: building the title renderer");
         let _step = startup::step("renderer.title_artwork");
         match loading_renderer(
             window,
@@ -227,6 +232,7 @@ impl Loading {
             self.settings.horizon.api,
         ) {
             Ok(r) => {
+                horizon_client::gfx::breadcrumb("set_ui: title renderer ready");
                 horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
                 self.renderer = Some(r);
             }
@@ -297,7 +303,11 @@ impl Loading {
             );
         }
     }
+    // Not inlined: its locals are about 600 KB, and the event loop's per-iteration handler
+    // (`about_to_wait`) would otherwise hold them while the title screen is built.
+    #[inline(never)]
     pub(super) fn finish(&mut self, loaded: Loaded) -> Result<Option<split::Split<'static>>> {
+        horizon_client::gfx::breadcrumb("finish: starting the game");
         let handoff_at = Instant::now();
         let mut options = self.options.take().ok_or("loading already finished")?;
         options.resources = loaded.root.clone();

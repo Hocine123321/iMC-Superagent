@@ -396,6 +396,8 @@ pub(super) fn spawn_loader(
 }
 
 impl Loading {
+    // Not inlined: it reaches `set_ui`, and the stack on iOS is 1 MB (docs/IOS_CRASH_STACK.md).
+    #[inline(never)]
     pub(super) fn poll_menu_resources(&mut self) -> Result<()> {
         // Once `Done` arrived the generation is over: the caller may have taken
         // its result, and the finished loader's channel is closed.
