@@ -421,6 +421,43 @@ fn dist(a: (f32, f32), b: (f32, f32)) -> f32 {
     ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
 }
 
+/// Where a finger is on the drawn surface, from where winit says it touched.
+///
+/// winit's iOS backend reports a touch relative to the whole window (`locationInView(nil)`).
+/// The surface is one of two sizes, and which one decides whether the touch must move:
+///
+/// - the **safe area** (`Window::inner_size`, which the first surface is made from): its corner
+///   is `Window::inner_position`, pushed in by the notch and the rounded corners, so the touch
+///   is moved back by that corner. Without this every touch lands that far right and down of the
+///   finger;
+/// - the **whole window** (what `Resized` reports after the first layout): the surface's corner
+///   is the window's corner, so the touch is already right and must not move.
+///
+/// `safe_origin` and `safe_size` are the safe area's corner and extent, `surface` the size the
+/// renderer actually draws at, all in physical pixels. The surface counts as the safe area when
+/// it is within a pixel of `safe_size` in both directions and `safe_size` is smaller than the
+/// window; otherwise the touch is left alone. A desktop window has `safe_origin == (0, 0)`, so
+/// nothing moves there either. The result is clamped to the surface so a finger on the notch edge
+/// still lands on the nearest pixel.
+pub fn to_surface(
+    at: (f32, f32),
+    safe_origin: (f32, f32),
+    safe_size: (f32, f32),
+    surface: (f32, f32),
+) -> (f32, f32) {
+    let is_safe_area = (surface.0 - safe_size.0).abs() <= 1.0
+        && (surface.1 - safe_size.1).abs() <= 1.0
+        && (safe_origin.0 > 0.0 || safe_origin.1 > 0.0);
+    let origin = if is_safe_area {
+        safe_origin
+    } else {
+        (0.0, 0.0)
+    };
+    let x = (at.0 - origin.0).clamp(0.0, (surface.0 - 1.0).max(0.0));
+    let y = (at.1 - origin.1).clamp(0.0, (surface.1 - 1.0).max(0.0));
+    (x, y)
+}
+
 /// A finger's offset from the stick's origin as a stick tilt: radial deadzone, full tilt at
 /// `radius` pixels, up positive (screen `y` grows downward, so it is flipped).
 pub fn stick_vector(offset: (f32, f32), radius: f32, deadzone: f32) -> [f32; 2] {
@@ -733,5 +770,45 @@ mod tests {
         assert_eq!(t.stick_origin(), None);
         t.down(2, (300.0, 2000.0), 0.0, &[]);
         assert_eq!(t.stick_origin(), Some((300.0, 2000.0)));
+    }
+
+    #[test]
+    fn a_touch_is_moved_when_the_surface_is_the_safe_area() {
+        // iPhone 12, landscape, 3x: the safe area starts 141 px in from the left.
+        let origin = (141.0, 0.0);
+        let safe = (2250.0, 1107.0);
+        // A finger on the surface's own top-left pixel reads (141, 0) in window pixels.
+        assert_eq!(to_surface((141.0, 0.0), origin, safe, safe), (0.0, 0.0));
+        let mid = to_surface((141.0 + 1125.0, 553.0), origin, safe, safe);
+        assert!(near(mid.0, 1125.0) && near(mid.1, 553.0), "{mid:?}");
+    }
+
+    #[test]
+    fn a_touch_is_not_moved_when_the_surface_is_the_whole_window() {
+        // After `Resized` the surface is the full 2532x1170 window: the touch is already right.
+        let at = (1266.0, 585.0);
+        let got = to_surface(at, (141.0, 0.0), (2250.0, 1107.0), (2532.0, 1170.0));
+        assert_eq!(got, at);
+    }
+
+    #[test]
+    fn a_touch_on_a_desktop_window_does_not_move() {
+        let at = (812.5, 300.25);
+        let size = (1280.0, 720.0);
+        assert_eq!(to_surface(at, (0.0, 0.0), size, size), at);
+    }
+
+    #[test]
+    fn a_touch_outside_the_surface_lands_on_its_edge() {
+        let origin = (141.0, 0.0);
+        let safe = (2250.0, 1107.0);
+        // On the notch, left of the surface.
+        assert_eq!(to_surface((20.0, 500.0), origin, safe, safe), (0.0, 500.0));
+        // Past the far edges.
+        let far = to_surface((9999.0, 9999.0), origin, safe, safe);
+        assert_eq!(far, (2249.0, 1106.0));
+        // A zero-sized surface does not panic.
+        let zero = (0.0, 0.0);
+        assert_eq!(to_surface((5.0, 5.0), zero, zero, zero), (0.0, 0.0));
     }
 }

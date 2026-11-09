@@ -5,7 +5,7 @@ summary: The choices the owner made along the way, and a plain picture of the fi
 
 # Horizon for iOS: decisions and the finished app
 
-Written 2026-11-08. This is the owner's reference. It says what was decided, what the app
+Written 2026-11-08, status corrected 2026-11-09. This is the owner's reference. It says what was decided, what the app
 will be when it is done, and how much of that is real today.
 
 **How to read the labels**
@@ -28,10 +28,10 @@ will be when it is done, and how much of that is real today.
 | 5 | **Distribute as an IPA you sign yourself.** No App Store, no TestFlight, no verification by Apple. | Removes App Store review and its rules from the plan. | DONE (decision); IPA builds |
 | 6 | **User-owned assets, processed locally.** Nothing from Mojang is committed, hosted or shared by this project. | The player's own copy is downloaded to their own phone from Mojang's servers. | PLANNED (M8b) |
 | 7 | **Prepare the game files on the phone**, not on a computer. | No Mac or PC is needed after install. | PLANNED, **UNKNOWN** (see section 4) |
-| 8 | **Use JIT to do that preparation, with a Java 25 runtime.** | The data generator is Java and needs JIT to run at a usable speed. | IN TEST |
+| 8 | **Use JIT to do that preparation, with a Java 25 runtime.** | The data generator is Java and needs JIT to run at a usable speed. | IN TEST, and **at risk**: the one device run so far could not make a JIT page (see 11) |
 | 9 | **One JVM only** (`HORIZON_PREPARE_JOBS=1`). | A phone has limited memory; one JVM is also all that can exist in-process. | PLANNED |
 | 10 | **Pin the Java build to tag `jdk-25.0.5.0.3-ga`.** | The iOS patches apply cleanly to that tag and fail on newer ones. | DONE |
-| 11 | **Test device: iPhone 12 (A14), iOS 27.2, JIT through StikDebug.** | The A14 has no TXM, so JIT only needs a debugger attached. | JIT works (owner-confirmed) |
+| 11 | **Test device: iPhone 12 (A14), iOS 27.2, JIT through StikDebug.** | The A14 has no TXM, so JIT only needs a debugger attached. | **Partly shown.** The 2026-11-08 diagnostics report `CS_DEBUGGED` set (a debugger is attached), but the `MAP_JIT` test page was refused: `errno 1 (Operation not permitted)`. So a JIT page could not be made by this app in that run. Earlier text here said "JIT works (owner-confirmed)"; the log does not show that. See `ios-evidence/diagnostics-2026-11-08-run1.txt`. |
 | 12 | **Repository: `Hocine123321/iMC-Superagent`**, upstream in `horizon/`, port in the root. | Keeps the port and the clone separate. | DONE |
 
 ---
@@ -78,18 +78,18 @@ on the phone from your own Minecraft account.
 | Milestone | What it is | State |
 |---|---|---|
 | M1 | Fix the code so the engine compiles for iOS | **DONE** |
-| M2 | App shell, Metal surface, memory reporting | **Mostly done.** The app starts, reaches the loading screen on the simulator. Touch and clipboard untested. |
+| M2 | App shell, Metal surface, memory reporting | **Done in CI.** On the owner's phone the app reached the title artwork, then hit a stack overflow that is now fixed (`IOS_CRASH_STACK.md`); the fixed build has not been confirmed on a phone. |
 | M8a step 1 | Build a Java 25 runtime for iOS in CI | **DONE** (24 MB compressed, 134 MB unpacked, device-only) |
 | M8a step 2 | Show that the phone can run it | **IN TEST.** A diagnostics screen is in the IPA you are installing now. |
-| M3 | Load the game files and reach the title screen | PLANNED |
-| M4 | Pause, resume and memory warnings | PLANNED |
-| M5 | Touch controls, playable singleplayer | PLANNED (large) |
+| M3 / M3b | Load the game files, reach the title screen, and the native launcher (home, import/check/delete, diagnostics, Play) | **Built and published** (v2 to v4); launcher layout and the folder picker untested on a phone |
+| M4 | Pause, resume and memory warnings | **Built**, untested on a phone |
+| M5 | Touch controls, playable singleplayer | **Built; first phone test found the touch offset** (right and a little down), fix and **iMC Settings** page written 2026-11-09 and waiting for a CI build (`IMC_SETTINGS.md`) |
 | M6 / M7 | Measure on the phone, then tune memory and heat | PLANNED |
 | M8b | Download and prepare on the phone | PLANNED, depends on M8a |
 | M9 | Microsoft sign-in and ownership check | PLANNED, needs Mojang's approval of an app registration |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
 
-**The honest summary:** the engine runs on iOS. What is not yet shown is a game you can play.
+**The honest summary:** the engine runs on iOS and the app has a launcher, touch controls and a settings page. What is not yet shown is a game you can play: no run has got past the title screen on the phone, and whether Java can run on the phone at all is open.
 
 ---
 
@@ -118,12 +118,17 @@ finished folder to the phone. You chose not to rely on this, so it stays a backu
 
 ## 5. The next three steps
 
-1. **Your device test** (now). Install the IPA, read `diagnostics.txt` before and after enabling
-   JIT in StikDebug, and send it back. This answers whether JIT works for this app and whether the
-   runtime folder can be found.
-2. **Load the JVM.** If the diagnostics are good, add the smallest possible step: put the Java
-   runtime on the phone and load its library, then print `java -version`.
-3. **Run one exporter.** Then the one-JVM preparation, then the downloader.
+1. **Phone-test the next build** (the one with the touch fix and iMC Settings). Check that a finger
+   lands under itself in menus and in the world, that the buttons react where they are drawn, and
+   that **Options > Horizon Settings > iMC Settings...** opens and each choice does something. Send
+   `latest.log` and `crash.txt` if anything is off.
+2. **Settle JIT.** The 2026-11-08 run showed `CS_DEBUGGED` set but the `MAP_JIT` page refused
+   (`errno 1`). Repeat the M8a test (`IOS_DEVICE_TEST_M8A.md`) with JIT enabled in StikDebug before
+   launch, and keep both `diagnostics.txt` files. If the page is refused again, the Java plan stops
+   there and the fallback (prepare on a computer, copy the folder over) becomes the product.
+3. **Only if JIT works:** put the Java runtime on the phone, load its library and print
+   `java -version`, then run one exporter, then the one-JVM preparation, then the downloader.
 
 See `IOS_DEVICE_TEST_M8A.md` for the exact test, `IOS_IMPLEMENTATION_ROADMAP.md` for every
-milestone, and `IOS_FEASIBILITY_REPORT.md` for the evidence behind each claim.
+milestone, `IMC_SETTINGS.md` for the settings page and the touch fix, and
+`IOS_FEASIBILITY_REPORT.md` for the evidence behind each claim.

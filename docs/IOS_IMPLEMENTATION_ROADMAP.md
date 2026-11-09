@@ -2,7 +2,7 @@
 
 > **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
 
-**Status:** proposal. No implementation has started. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
+**Status (2026-11-09):** M1 to M5 and M3b are built and published as *iMC Horizon* releases (v4 is the latest); none has been confirmed end to end on a phone. M8a is open: the one device run showed `CS_DEBUGGED` but a refused `MAP_JIT` page. See the table in `IOS_DECISIONS_AND_APP_VISION.md` for the current state of every milestone, and `IMC_SETTINGS.md` for the touch offset fix and the iMC Settings page. The sections below are the original plan and still read as proposals. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
 **Base:** `horizon-rust/horizon` `77af961`, Minecraft 26.3, protocol 777.
 
 ## Ordering principles
@@ -272,6 +272,8 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 - Five testers each complete a scripted run (move, mine a tree, craft a table, place blocks, open and close inventory, eat, sleep) without a controller.
 - Input-to-photon latency measured with a 240 fps phone camera or Instruments; record it, set no target in advance.
 - Existing desktop input tests (`cargo test -p horizon-client-input`) unchanged and green.
+
+**Update 2026-11-09.** Built: the pure finger logic (`horizon-client-input/src/touch.rs`), the glue (`horizon-client/src/game/touch.rs`), on-screen buttons inside a safe area, and a Run button. The first phone test found every touch landing a little right and down; the cause (the surface is the safe area but winit reports window coordinates) and the fix (`to_surface`) are in `IMC_SETTINGS.md`. Also added: an in-game **iMC Settings** page (look speed, hold time, stick size, steering area, double tap to jump, on-screen buttons on or off, screen margin, reset), stored in `horizon-imc.txt`. Still open from the list above: the "Mobile" preset, the on-screen keyboard bridge, controllers on iOS, and the five-tester success test.
 
 **Depends on.** M3, M4.
 

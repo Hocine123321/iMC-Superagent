@@ -38,8 +38,9 @@ If the flag is set but the files fail the check, the launcher opens instead of t
 
 ## Not built yet
 
-- Settings (graphics API, render distance preset, controls layout). Needs the engine to read a
-  launcher-written file at start.
+- Launcher settings (graphics API, render distance preset). Needs the engine to read a
+  launcher-written file at start. The touch controls' settings already exist, inside the game:
+  **Options > Horizon Settings > iMC Settings...** (see `IMC_SETTINGS.md`).
 - Account and ownership (M9) and download and preparation on the phone (M8b).
 - Going back to the launcher from inside the game (a pause menu entry). Until then, closing the app
   returns to it.

@@ -8,6 +8,7 @@ pub mod clipboard;
 pub mod gamepad;
 pub mod gameplay_guide;
 pub mod held;
+pub mod imc_settings;
 pub mod input;
 pub mod interaction_input;
 pub mod key_names;

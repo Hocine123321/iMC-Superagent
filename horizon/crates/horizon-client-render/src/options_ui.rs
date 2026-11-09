@@ -1329,6 +1329,8 @@ pub enum Page {
     /// Horizon Settings: every page Horizon adds, as a mod's settings
     /// screen hangs off vanilla's Options.
     Horizon,
+    /// iMC Settings: the iOS app's own (`imc_settings`), under Horizon Settings.
+    Imc,
     /// Replay Studio: saved recordings browser and 3D video editor launcher.
     Studio,
     /// AI Agent: agent control on or off, whether an agent is connected, the connection details.
@@ -1352,6 +1354,10 @@ enum Act {
     Done,
     Cycle(Opt),
     Extra(crate::extras::Item),
+    /// An iMC Settings button (`imc_settings::Item`).
+    Imc(horizon_client_input::imc_settings::Item),
+    /// iMC Settings' Reset button.
+    ImcReset,
     Key(&'static str),
     ResetKey(&'static str),
     ResetKeys,
@@ -1831,6 +1837,7 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
         Page::Controller => "horizon.pages.controller.tooltip",
         Page::Extras => "horizon.pages.extras.tooltip",
         Page::Pvp => "horizon.pages.pvp.tooltip",
+        Page::Imc => "horizon.pages.imc.tooltip",
         Page::Agent => "horizon.pages.agent.tooltip",
         Page::SplitProfiles => "horizon.pages.split_profiles.tooltip",
         Page::ShaderPacks => "horizon.pages.shader_packs.tooltip",
@@ -1864,6 +1871,10 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
     let mut tip = None;
     if let Act::Extra(item) = act {
         tip = Some(Text::literal(item.description_text()));
+    }
+    if let Act::Imc(item) = act {
+        let key = item.description_key();
+        tip = Some(Text::literal(lang::get_or(&key, item.description())));
     }
     if let Act::Push(page) = act
         && let Some(text) = horizon_page_tooltip(*page)
@@ -2386,6 +2397,7 @@ impl OptionsUi {
             Page::Controller | Page::PadBinds => "horizon.pages.controller",
             Page::Extras => "horizon.pages.extras",
             Page::Pvp => "horizon.pages.pvp",
+            Page::Imc => "horizon.pages.imc",
             Page::Credits => "credits_and_attribution.screen.title",
             Page::Horizon => "horizon.pages.settings",
             Page::Studio => "horizon.pages.studio",
@@ -2717,6 +2729,7 @@ impl OptionsUi {
                         ),
                         Some(open("horizon.pages.open.studio", Page::Studio)),
                     ),
+                    Row::Buttons(open("horizon.pages.open.imc", Page::Imc), None),
                     // No AI hides the AI Agent page and everything AI.
                     Row::Buttons(
                         self.extra_button(s, crate::extras::Item::DiscordPresence),
@@ -2734,6 +2747,38 @@ impl OptionsUi {
                     }),
                 )
                 .collect()
+            }
+            Page::Imc => {
+                use horizon_client_input::imc_settings::Item;
+                let imc = |item: Item| {
+                    let value = Text::option_name_value(
+                        Text::literal(lang::get_or(&item.caption_key(), item.caption())),
+                        Text::literal(lang::get_or(s.imc.value(item), s.imc.value(item))),
+                    )
+                    .plain();
+                    button(0.0, 0.0, 150.0, Text::literal(value), Act::Imc(item))
+                };
+                let mut rows = vec![Row::Header("horizon.imc.header.controls")];
+                // Two to a row, as the other Horizon pages lay out their switches.
+                for pair in [
+                    [Item::Controls, Item::DoubleTapJump],
+                    [Item::LookSpeed, Item::HoldTime],
+                    [Item::StickSize, Item::MoveZone],
+                ] {
+                    rows.push(Row::Buttons(imc(pair[0]), Some(imc(pair[1]))));
+                }
+                rows.push(Row::Header("horizon.imc.header.screen"));
+                rows.push(Row::Buttons(
+                    imc(Item::SafeMargin),
+                    Some(button(
+                        0.0,
+                        0.0,
+                        150.0,
+                        tr("horizon.imc.reset"),
+                        Act::ImcReset,
+                    )),
+                ));
+                rows
             }
             Page::Agent => {
                 let mut rows = vec![Row::Buttons(
@@ -4226,6 +4271,14 @@ impl OptionsUi {
                                 events.push(Event::Changed);
                             }
                         }
+                        Act::Imc(item) => {
+                            s.imc.cycle(item, self.shift);
+                            events.push(Event::Changed);
+                        }
+                        Act::ImcReset => {
+                            s.imc.reset();
+                            events.push(Event::Changed);
+                        }
                         Act::PlayMusicTrack(event, track) => {
                             events.push(Event::PlayMusicTrack(event, track));
                         }
@@ -5161,6 +5214,14 @@ impl OptionsUi {
                                 item.cycle(&mut s.extras, shift);
                                 events.push(Event::Changed);
                             }
+                        }
+                        Act::Imc(item) => {
+                            s.imc.cycle(item, shift);
+                            events.push(Event::Changed);
+                        }
+                        Act::ImcReset => {
+                            s.imc.reset();
+                            events.push(Event::Changed);
                         }
                         Act::PlayMusicTrack(event, track) => {
                             events.push(Event::PlayMusicTrack(event, track));
@@ -7640,6 +7701,7 @@ mod tests {
                 Page::Pvp,
                 Page::SplitSetup,
                 Page::Studio,
+                Page::Imc,
                 Page::Agent,
             ]
         );
@@ -7669,6 +7731,32 @@ mod tests {
         assert!(acts.contains(&&Act::CopyAgentDetails));
         ui.stack = vec![Page::Main, Page::Controls];
         assert!(pushes(&mut ui).contains(&Page::Controller));
+    }
+
+    #[test]
+    fn imc_settings_page_lists_every_item_and_a_click_changes_and_saves_it() {
+        use horizon_client_input::imc_settings::Item;
+        let mut s = Settings::default();
+        let mut ui = OptionsUi::default();
+        ui.show(Page::Imc);
+        let (widgets, _, _, _) = ui.layout(&s, 427.0, 240.0);
+        let acts: Vec<&Act> = widgets
+            .iter()
+            .filter_map(|w| match &w.kind {
+                WKind::Button { act, .. } => Some(act),
+                _ => None,
+            })
+            .collect();
+        for item in Item::ALL {
+            assert!(acts.contains(&&Act::Imc(item)), "{item:?} has no button");
+        }
+        assert!(acts.contains(&&Act::ImcReset));
+        // A click cycles the setting and asks for it to be saved.
+        let before = s.imc.clone();
+        s.imc.cycle(Item::LookSpeed, false);
+        assert_ne!(s.imc, before);
+        s.imc.reset();
+        assert_eq!(s.imc, before);
     }
 
     #[test]

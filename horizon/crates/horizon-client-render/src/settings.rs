@@ -207,6 +207,8 @@ pub struct Settings {
     pub controller: crate::gamepad::PadSettings,
     /// Horizon's optional extras (`horizon-extras.txt`), all off by default.
     pub extras: crate::extras::Extras,
+    /// iMC Settings, the iOS app's own (`horizon-imc.txt`, not options.txt).
+    pub imc: horizon_client_input::imc_settings::ImcSettings,
     /// The Horizon mods turned on (`horizon-mods.txt`), all off by default.
     pub mods: crate::mod_list::ModList,
     /// The packs in `shaderpacks/`, listed when the Shader Packs page opens; the pick is
@@ -295,6 +297,7 @@ impl Default for Settings {
             video_modes: Vec::new(),
             controller: Default::default(),
             extras: Default::default(),
+            imc: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
             shader_options: None,
@@ -362,6 +365,13 @@ impl Settings {
             .and_then(|dir| fs::read_to_string(dir.join(crate::extras::FILE)).ok())
             .unwrap_or_default();
         let mut extras = crate::extras::Extras::parse(&extras_text);
+        let imc = path
+            .parent()
+            .and_then(|dir| {
+                fs::read_to_string(dir.join(horizon_client_input::imc_settings::FILE)).ok()
+            })
+            .map(|text| horizon_client_input::imc_settings::ImcSettings::parse(&text))
+            .unwrap_or_default();
         // The enabled mods are the game folder's, shared by its players (`--player-dir`).
         let mods = path
             .parent()
@@ -375,6 +385,7 @@ impl Settings {
                     horizon,
                     controller,
                     extras,
+                    imc,
                     mods,
                     ..Self::parse(&text)
                 }
@@ -383,6 +394,7 @@ impl Settings {
                 horizon,
                 controller,
                 extras,
+                imc,
                 mods,
                 ..Self::default()
             },
@@ -498,6 +510,7 @@ impl Settings {
             video_modes: Vec::new(),
             controller: Default::default(),
             extras: Default::default(),
+            imc: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
             shader_options: None,
@@ -663,6 +676,7 @@ impl Settings {
             horizon: self.horizon.clone(),
             controller: self.controller.clone(),
             extras: self.extras.clone(),
+            imc: self.imc.clone(),
             mods: self.mods.clone(),
             video_modes: self.video_modes.clone(),
             ..Self::from_file(file)
@@ -686,6 +700,11 @@ impl Settings {
             let mut extras = self.extras.clone();
             extras.emote_key = self.keys.get("key.emote").to_owned();
             extras.save(dir);
+            // Like the extras file: nothing is written until the player changes something.
+            let imc_path = dir.join(horizon_client_input::imc_settings::FILE);
+            if self.imc != Default::default() || imc_path.exists() {
+                let _ = fs::write(imc_path, self.imc.serialize());
+            }
             self.mods.save(&crate::logging::shared_dir(dir));
         }
     }

@@ -17,7 +17,7 @@ use super::event_loop::EventLoopCtl;
 use super::{Game, Screen, input_trace};
 use horizon_client::gamepad::Button;
 use horizon_client::hud::HudBatch;
-use horizon_client_input::touch::{Action as TouchAction, FingerId, Mode, Rect, Touch};
+use horizon_client_input::touch::{Action as TouchAction, FingerId, Mode, Rect, Touch, to_surface};
 use std::time::Instant;
 use winit::{
     dpi::PhysicalPosition,
@@ -55,11 +55,13 @@ enum Anchor {
 }
 
 impl Pad {
-    /// The button as a rectangle in pixels on a screen of `size`.
-    fn rect(&self, size: (f32, f32)) -> Rect {
+    /// The button as a rectangle in pixels on a screen of `size`. `margin` scales the safe
+    /// edges (iMC Settings' Screen margin): 1.0 is the layout's own.
+    fn rect(&self, size: (f32, f32), margin: f32) -> Rect {
         let (w, h) = size;
-        let (left, right) = (w * SAFE_SIDE, w * (1.0 - SAFE_SIDE));
-        let (top, bottom) = (h * SAFE_TOP, h * (1.0 - SAFE_BOTTOM));
+        let (side, top, bottom) = (SAFE_SIDE * margin, SAFE_TOP * margin, SAFE_BOTTOM * margin);
+        let (left, right) = (w * side, w * (1.0 - side));
+        let (top, bottom) = (h * top, h * (1.0 - bottom));
         let (x, y, bw, bh) = match self.at {
             Anchor::TopLeft(dx, dy, bw, bh) => (left + dx * w, top + dy * h, bw * w, bh * h),
             Anchor::TopRight(dx, dy, bw, bh) => {
@@ -166,9 +168,19 @@ impl Game<'_> {
         self.touch.seen = true;
         self.last_input = Instant::now();
         self.touch.logic.resize(size);
+        // iMC Settings may have changed since the last finger.
+        self.settings.imc.apply(&mut self.touch.logic);
         self.touch_follow_mode(event_loop);
         let now = self.touch.started.elapsed().as_secs_f64();
-        let at = (touch.location.x as f32, touch.location.y as f32);
+        // winit reports the touch from the window's corner; whether the surface starts there
+        // too depends on its size: see `to_surface`.
+        let (safe_origin, safe_size) = self.touch_safe_area();
+        let at = to_surface(
+            (touch.location.x as f32, touch.location.y as f32),
+            safe_origin,
+            safe_size,
+            size,
+        );
         let id = touch.id;
         let rects = self.touch_rects(size);
         let actions = match touch.phase {
@@ -193,12 +205,26 @@ impl Game<'_> {
         self.touch_apply(event_loop, actions);
     }
 
+    /// The window's safe area, in physical pixels: its corner and its size. `(0, 0)` and the
+    /// window's size on a desktop, the notch and corner insets on a phone.
+    fn touch_safe_area(&self) -> ((f32, f32), (f32, f32)) {
+        let Some(window) = self.window.as_ref() else {
+            return ((0.0, 0.0), (0.0, 0.0));
+        };
+        let size = window.inner_size();
+        let origin = window
+            .inner_position()
+            .map_or((0.0, 0.0), |p| (p.x as f32, p.y as f32));
+        (origin, (size.width as f32, size.height as f32))
+    }
+
     /// Each frame, before the controllers are read: time passing (a held finger starts mining),
     /// and the steering stick written into the virtual controller.
     pub(super) fn touch_frame(&mut self, event_loop: &dyn EventLoopCtl) {
         if !self.touch.seen {
             return;
         }
+        self.settings.imc.apply(&mut self.touch.logic);
         self.touch_follow_mode(event_loop);
         let now = self.touch.started.elapsed().as_secs_f64();
         let actions = self.touch.logic.tick(now);
@@ -249,12 +275,16 @@ impl Game<'_> {
         if self.touch.logic.mode() != Mode::Playing || !self.touch_controls_visible() {
             return Vec::new();
         }
-        PADS.iter().map(|p| p.rect(size)).collect()
+        let margin = self.settings.imc.safe_margin_scale();
+        PADS.iter().map(|p| p.rect(size, margin)).collect()
     }
 
     /// The on-screen buttons show while a world is being played.
     fn touch_controls_visible(&self) -> bool {
-        self.touch.seen && self.title.is_none() && self.screen == Screen::Playing
+        self.touch.seen
+            && self.settings.imc.controls
+            && self.title.is_none()
+            && self.screen == Screen::Playing
     }
 
     /// A controller button down or up on the virtual controller.
@@ -347,12 +377,7 @@ impl Game<'_> {
         let (w, h) = (batch.width, batch.height);
         for (i, p) in PADS.iter().enumerate() {
             // The same fractions as the hit test, on the GUI-unit size instead of pixels.
-            let Rect {
-                x,
-                y,
-                w: bw,
-                h: bh,
-            } = p.rect((w, h));
+            let Rect { x, y, w: bw, h: bh } = p.rect((w, h), self.settings.imc.safe_margin_scale());
             let down = self.touch.holding.iter().any(|(_, held)| *held == i);
             let fill = if down { 0x90FF_FFFF } else { 0x5000_0000 };
             batch.fill(atlas, x, y, bw, bh, fill);
