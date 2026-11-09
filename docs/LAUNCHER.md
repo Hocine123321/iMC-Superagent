@@ -66,10 +66,17 @@ If the flag is set but the files fail the check, the launcher opens instead of t
     `winit-core`, `winit-uikit` and others on Rust edition 2024. 107 files and about 270
     `winit::` uses across four crates change, and `Cargo.lock` with them. Needs the owner's
     approval and a machine that can build the render crate; **not started**.
-  - **Start the launcher inside winit's own run**, as a view over its window, with a gate in
-    `horizon-client/src/game.rs` that holds the engine's start until Play. A change in `horizon/`,
-    untested against a black-screen failure with no way back; **not started**. The skip switch
-    above is the safe part of this.
+  - **Start the launcher inside winit's own run**, as a window over winit's, with a hold in the
+    engine's `Loading::resumed` / `about_to_wait` (`horizon-client/src/game/loading_screen.rs`)
+    until Play. Read through on 2026-11-09 and **deliberately not built**: it needs a second
+    `UIWindow` raised above winit's and handed back (window level, scene and key-window rules
+    differ for a winit-made window), a flag shared between Objective-C and the engine, and the
+    launcher's navigation stack torn down without a leak. Each failure is a **black screen with
+    no log**, because the engine's logging has not started and the crash reporter sees a healthy
+    process, and each try costs a 25 minute build. It would also add a `horizon/` change to the
+    rebase list in `docs/HORIZON_CHANGES.md`. The skip switch above already removes the relaunch
+    from the normal path, which is most of the gain. If it is wanted anyway, do it behind an
+    off-by-default switch so a bad build cannot lock the owner out.
 
 ## Checked and not checked
 

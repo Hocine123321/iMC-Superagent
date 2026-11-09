@@ -11,4 +11,6 @@ fi
 if git grep -InE '(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' -- platform docs tools .github; then
   echo "secret-looking string tracked" >&2; exit 1
 fi
+# Every change under horizon/ is written down in docs/HORIZON_CHANGES.md (and the exact patch kept).
+bash tools/horizon_diff.sh --check
 echo "public tree OK"
