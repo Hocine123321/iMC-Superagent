@@ -1764,6 +1764,42 @@ fn button(x: f32, y: f32, w: f32, label: Text, act: Act) -> Widget {
         row: 0,
     }
 }
+/// Greys out a widget whose setting means nothing on an iPhone (`ios_unused`). A slider becomes
+/// the same inactive button `option_widget` makes for an unavailable option, which cannot be
+/// dragged; a tick box or page button just goes inactive.
+fn grey_unused(s: &Settings, w: &mut Widget) {
+    if unused_reason(s, w).is_none() {
+        return;
+    }
+    if let WKind::Slider { opt, .. } = &w.kind {
+        let opt = *opt;
+        w.kind = WKind::Button {
+            label: opt.label(s),
+            active: false,
+            act: Act::Cycle(opt),
+        };
+    } else if let WKind::Button { active, .. } = &mut w.kind {
+        *active = false;
+    }
+}
+/// The reason a widget is greyed out by iMC Settings, for its tooltip.
+fn unused_reason(s: &Settings, wd: &Widget) -> Option<&'static str> {
+    if !s.imc.grey_unused {
+        return None;
+    }
+    match &wd.kind {
+        WKind::Button { act, .. } => match act {
+            Act::Cycle(opt) => crate::ios_unused::opt(*opt),
+            Act::Extra(item) => crate::ios_unused::extra(*item),
+            Act::Push(page) => crate::ios_unused::page(*page),
+            // Every key of the Key Binds page, and its resets.
+            Act::Key(_) | Act::ResetKey(_) | Act::ResetKeys => Some(crate::ios_unused::KEYBOARD),
+            _ => None,
+        },
+        WKind::Slider { opt, .. } => crate::ios_unused::opt(*opt),
+        _ => None,
+    }
+}
 fn inactive(mut w: Widget) -> Widget {
     if let WKind::Button { active, .. } = &mut w.kind {
         *active = false;
@@ -1864,6 +1900,10 @@ enum Row {
 /// A widget's tooltip (`setTooltip`), unwrapped: drawn while hovered, and
 /// its narration's hint.
 fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
+    // A setting iMC Settings greyed out says why, in place of what it would have said.
+    if let Some(reason) = unused_reason(s, wd) {
+        return Some(Text::literal(reason.to_owned()));
+    }
     let WKind::Button { act, .. } = &wd.kind else {
         let WKind::Slider { opt, .. } = &wd.kind else {
             return None;
@@ -2796,6 +2836,8 @@ impl OptionsUi {
                     imc(Item::SafeMargin),
                     Some(imc(Item::AutoSprint)),
                 ));
+                // Which of the engine's settings an iPhone has no use for.
+                rows.push(Row::Buttons(imc(Item::GreyUnused), None));
                 // Where a finger lands. Only needed if the touch is off on this phone.
                 rows.push(Row::Buttons(imc(Item::ShiftX), Some(imc(Item::ShiftY))));
                 // Performance: the switch, how early it reacts, then what it may give up.
@@ -3608,6 +3650,10 @@ impl OptionsUi {
             } = &mut widget.kind
             {
                 *active = self.in_world && self.minecart_improvements;
+            }
+            // iMC Settings > Grey out unused settings: what an iPhone has no use for.
+            if s.imc.grey_unused {
+                grey_unused(s, widget);
             }
         }
         self.row_bands = rows

@@ -1095,6 +1095,16 @@ impl Item {
         if !self.available() {
             return Some("This feature is not yet available in Horizon.");
         }
+        // iMC Settings > Grey out unused settings: a setting an iPhone has no use for.
+        if s.imc.grey_unused
+            && let Some(reason) = match self {
+                Item::Vanilla(o) => crate::ios_unused::opt(o),
+                Item::Horizon(h) => crate::ios_unused::graphics(h),
+                Item::Extra(e) => crate::ios_unused::extra(e),
+            }
+        {
+            return Some(reason);
+        }
         match self {
             Item::Horizon(
                 H::Hdr

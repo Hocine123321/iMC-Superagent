@@ -30,6 +30,8 @@ pub enum Item {
     HoldTime,
     /// A double tap on the world jumps.
     DoubleTapJump,
+    /// Greys out every setting that means nothing on an iPhone.
+    GreyUnused,
     /// Sprint while the stick is pushed forward to its edge.
     AutoSprint,
     /// Moves every touch sideways by a few pixels, to cancel an offset on this phone.
@@ -53,13 +55,14 @@ pub enum Item {
 }
 
 impl Item {
-    pub const ALL: [Item; 16] = [
+    pub const ALL: [Item; 17] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
         Item::MoveZone,
         Item::HoldTime,
         Item::DoubleTapJump,
+        Item::GreyUnused,
         Item::AutoSprint,
         Item::ShiftX,
         Item::ShiftY,
@@ -81,6 +84,7 @@ impl Item {
             Item::MoveZone => "moveZone",
             Item::HoldTime => "holdTime",
             Item::DoubleTapJump => "doubleTapJump",
+            Item::GreyUnused => "greyUnused",
             Item::AutoSprint => "autoSprint",
             Item::ShiftX => "shiftX",
             Item::ShiftY => "shiftY",
@@ -103,6 +107,7 @@ impl Item {
             Item::MoveZone => "Steering area",
             Item::HoldTime => "Hold to mine",
             Item::DoubleTapJump => "Double tap to jump",
+            Item::GreyUnused => "Grey out unused settings",
             Item::AutoSprint => "Auto sprint",
             Item::ShiftX => "Touch shift X",
             Item::ShiftY => "Touch shift Y",
@@ -156,6 +161,9 @@ impl Item {
             Item::MoveZone => "How much of the left side of the screen steers.",
             Item::HoldTime => "How long you hold a finger still before it starts mining.",
             Item::DoubleTapJump => "Tap the world twice quickly to jump.",
+            Item::GreyUnused => {
+                "Greys out every setting that does nothing on an iPhone, such as keyboard binds, the mouse and the window, and says why when you point at it. What is left is what you can tune."
+            }
             Item::ShiftX => {
                 "Moves every touch sideways, in screen pixels. Positive moves it right. If your finger lands to the right of where it acts, use a negative value."
             }
@@ -237,6 +245,8 @@ pub struct ImcSettings {
     pub safe_margin: u8,
     /// Sprint while the stick is pushed forward to its edge.
     pub auto_sprint: bool,
+    /// Settings that mean nothing on an iPhone are greyed out (`unused_on_ios`).
+    pub grey_unused: bool,
     /// Index into [`SHIFTS`] for x and y.
     pub shift_x: u8,
     pub shift_y: u8,
@@ -256,6 +266,7 @@ impl Default for ImcSettings {
             double_tap_jump: false,
             safe_margin: 2,
             auto_sprint: false,
+            grey_unused: false,
             shift_x: NO_SHIFT,
             shift_y: NO_SHIFT,
             auto: AutoConfig::default(),
@@ -290,6 +301,11 @@ impl ImcSettings {
                 "moveZone" => s.move_zone = step(MOVE_ZONES.len()).unwrap_or(s.move_zone),
                 "holdTime" => s.hold_time = step(HOLD_TIMES.len()).unwrap_or(s.hold_time),
                 "safeMargin" => s.safe_margin = step(SAFE_MARGINS.len()).unwrap_or(s.safe_margin),
+                "greyUnused" => {
+                    if let Ok(v) = value.parse() {
+                        s.grey_unused = v;
+                    }
+                }
                 "shiftX" => s.shift_x = step(SHIFTS.len()).unwrap_or(s.shift_x),
                 "shiftY" => s.shift_y = step(SHIFTS.len()).unwrap_or(s.shift_y),
                 "autoSprint" => {
@@ -336,7 +352,7 @@ impl ImcSettings {
     /// The file's text.
     pub fn serialize(&self) -> String {
         format!(
-            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\nshiftX:{}\nshiftY:{}\n\
+            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nshiftX:{}\nshiftY:{}\n\
              autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\n",
             self.controls,
             self.look_speed,
@@ -346,6 +362,7 @@ impl ImcSettings {
             self.double_tap_jump,
             self.safe_margin,
             self.auto_sprint,
+            self.grey_unused,
             self.shift_x,
             self.shift_y,
             self.auto.enabled,
@@ -370,6 +387,7 @@ impl ImcSettings {
             Item::HoldTime => name(&HOLD_NAMES, self.hold_time),
             Item::SafeMargin => name(&MARGIN_NAMES, self.safe_margin),
             Item::AutoSprint => on_off(self.auto_sprint),
+            Item::GreyUnused => on_off(self.grey_unused),
             Item::ShiftX => shift_name(self.shift_x),
             Item::ShiftY => shift_name(self.shift_y),
             Item::AutoPerformance => on_off(self.auto.enabled),
@@ -417,6 +435,7 @@ impl ImcSettings {
             Item::HoldTime => turn(&mut self.hold_time, HOLD_TIMES.len()),
             Item::SafeMargin => turn(&mut self.safe_margin, SAFE_MARGINS.len()),
             Item::AutoSprint => self.auto_sprint = !self.auto_sprint,
+            Item::GreyUnused => self.grey_unused = !self.grey_unused,
             Item::ShiftX => turn(&mut self.shift_x, SHIFTS.len()),
             Item::ShiftY => turn(&mut self.shift_y, SHIFTS.len()),
             Item::AutoPerformance => self.auto.enabled = !self.auto.enabled,
@@ -846,5 +865,17 @@ mod tests {
             };
             assert_eq!(shown, n);
         }
+    }
+
+    #[test]
+    fn grey_unused_is_off_by_default_and_round_trips() {
+        let mut s = ImcSettings::default();
+        assert!(!s.grey_unused);
+        assert_eq!(s.value(Item::GreyUnused), "Off");
+        s.cycle(Item::GreyUnused, false);
+        assert!(s.grey_unused);
+        assert_eq!(ImcSettings::parse(&s.serialize()), s);
+        s.reset();
+        assert!(!s.grey_unused);
     }
 }

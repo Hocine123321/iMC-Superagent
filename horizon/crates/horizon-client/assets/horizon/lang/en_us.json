@@ -742,6 +742,8 @@
   "horizon.imc.safeMargin.tooltip": "Keeps the buttons away from the notch, the corners and the home bar.",
   "horizon.imc.autoSprint": "Auto sprint",
   "horizon.imc.autoSprint.tooltip": "Push the stick forward to its edge and you sprint, without holding Run. Ease off and you walk.",
+  "horizon.imc.greyUnused": "Grey out unused settings",
+  "horizon.imc.greyUnused.tooltip": "Greys out every setting that does nothing on an iPhone, such as keyboard binds, the mouse and the window, and says why when you point at it. What is left is what you can tune.",
   "horizon.imc.shiftX": "Touch shift X",
   "horizon.imc.shiftX.tooltip": "Moves every touch sideways, in screen pixels. Positive moves it right. If your finger lands to the right of where it acts, use a negative value.",
   "horizon.imc.shiftY": "Touch shift Y",

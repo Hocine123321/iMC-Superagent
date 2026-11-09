@@ -52,6 +52,7 @@ pub mod gfx;
 pub mod graphics;
 pub mod graphics_style;
 pub mod graphics_ui;
+pub mod ios_unused;
 pub mod hdr_calibration;
 pub mod hud;
 pub mod hud_layout;
