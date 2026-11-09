@@ -20,7 +20,8 @@ use horizon_client::hud::HudBatch;
 use horizon_client_input::touch::{
     Action as TouchAction, FingerId, Mode, Rect, Touch, hotbar_slots, to_surface,
 };
-use horizon_client_input::touch_layout::back;
+use horizon_client_input::touch_extras::Extra;
+use horizon_client_input::touch_layout::{EXTRA_FIRST, back};
 use std::time::Instant;
 use winit::{
     dpi::PhysicalPosition,
@@ -60,23 +61,77 @@ enum Anchor {
 /// `PADS`' index into the layout file's buttons (`touch_layout::NAMES`).
 const PAD_SLOT: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
-/// How many on-screen buttons there are, for the editor.
-pub(super) const PAD_COUNT: usize = PADS.len();
-/// Pad `i`'s place in the layout file.
-pub(super) fn pad_slot(i: usize) -> usize {
-    PAD_SLOT[i]
+/// What a pad index means: one of the nine that are always there, or an extra that is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PadKind {
+    /// An index into `PADS`.
+    Fixed(usize),
+    /// An extra button, and its number among the extras that are showing (for its default place).
+    Extra(Extra, usize),
 }
-/// Pad `i`'s name on its button.
-pub(super) fn pad_label(i: usize) -> &'static str {
-    PADS[i].label
+
+impl PadKind {
+    /// The button's place in the layout file.
+    pub(super) fn slot(self) -> usize {
+        match self {
+            PadKind::Fixed(i) => PAD_SLOT[i],
+            PadKind::Extra(e, _) => {
+                EXTRA_FIRST + Extra::ALL.iter().position(|x| *x == e).unwrap_or(0)
+            }
+        }
+    }
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            PadKind::Fixed(i) => PADS[i].label,
+            PadKind::Extra(e, _) => e.label(),
+        }
+    }
+
+    /// Where the button is before the player's arrangement, as `[x, y, w, h]`. The extras stand
+    /// in a column down the left edge under Pause, one under the other.
+    pub(super) fn base(self, size: (f32, f32), margin: f32) -> [f32; 4] {
+        match self {
+            PadKind::Fixed(i) => PADS[i].base(size, margin),
+            PadKind::Extra(_, n) => Pad {
+                at: Anchor::TopLeft(0.0, 0.15 + 0.115 * n as f32, 0.07, 0.10),
+                label: "",
+                button: Button::Start,
+            }
+            .base(size, margin),
+        }
+    }
 }
-/// Where the layout puts pad `i` before the player's arrangement, as `[x, y, w, h]`.
-pub(super) fn pad_base(i: usize, size: (f32, f32), margin: f32) -> [f32; 4] {
-    let r = PADS[i].rect(size, margin);
-    [r.x, r.y, r.w, r.h]
+
+/// The controller button pad `i` holds while a finger is on it. The extras press a key once and
+/// hold nothing, so they answer `None`.
+fn held_button(i: usize) -> Option<Button> {
+    PADS.get(i).map(|p| p.button)
+}
+
+impl Game<'_> {
+    /// The buttons now on offer, in index order: the nine, then the extras that are on and have
+    /// a key to press. The hotbar's slots follow, so every place that counts buttons asks here.
+    pub(super) fn pad_kinds(&self) -> Vec<PadKind> {
+        let mut kinds: Vec<PadKind> = (0..PADS.len()).map(PadKind::Fixed).collect();
+        kinds.extend(
+            self.settings
+                .touch_extras
+                .active()
+                .enumerate()
+                .map(|(n, e)| PadKind::Extra(e, n)),
+        );
+        kinds
+    }
 }
 
 impl Pad {
+    /// Where the layout puts this pad before the player's arrangement, as `[x, y, w, h]`.
+    fn base(&self, size: (f32, f32), margin: f32) -> [f32; 4] {
+        let r = self.rect(size, margin);
+        [r.x, r.y, r.w, r.h]
+    }
+
     /// The button as a rectangle in pixels on a screen of `size`. `margin` scales the safe
     /// edges (iMC Settings' Screen margin): 1.0 is the layout's own.
     fn rect(&self, size: (f32, f32), margin: f32) -> Rect {
@@ -271,10 +326,11 @@ impl Game<'_> {
             // In the world the buttons are hit by rectangle, not by the engine's pointer, so the
             // log says where the finger was against the nearest button: how far left or right,
             // above or below its centre. A test reads the offset straight off these lines.
+            let kinds = self.pad_kinds();
             let near = rects
                 .iter()
                 .enumerate()
-                .take(PADS.len())
+                .take(kinds.len())
                 .map(|(i, r)| (i, (at.0 - (r.x + r.w / 2.0), at.1 - (r.y + r.h / 2.0)), r))
                 .min_by(|a, b| {
                     let d = |v: (f32, f32)| v.0 * v.0 + v.1 * v.1;
@@ -286,7 +342,7 @@ impl Game<'_> {
                      rect {:.0}x{:.0} at ({:.0}, {:.0}) hit {}",
                     at.0,
                     at.1,
-                    PADS[i].label,
+                    kinds[i].label(),
                     r.w,
                     r.h,
                     r.x,
@@ -299,14 +355,18 @@ impl Game<'_> {
             TouchPhase::Started => {
                 let (hit, actions) = self.touch.logic.down(id, at, now, &rects);
                 if let Some(i) = hit {
-                    if i < PADS.len() {
+                    let kinds = self.pad_kinds();
+                    if let Some(PadKind::Extra(extra, _)) = kinds.get(i).copied() {
+                        // An extra presses its key once, as a tap on the keyboard would.
+                        self.touch_extra_key(event_loop, extra);
+                    } else if i < PADS.len() {
                         self.touch.holding.push((id, i));
                         self.touch_button(event_loop, PADS[i].button, true);
                     } else if !self.spectator() {
                         // A hotbar slot: the same as pressing its number key. Nothing is held,
                         // so there is nothing to let go of. A spectator's number keys open the
                         // teleport menu instead (`play_keys.rs`), which a tap does not.
-                        self.hotbar_presses.push(i - PADS.len());
+                        self.hotbar_presses.push(i - kinds.len());
                     }
                 }
                 actions
@@ -315,7 +375,9 @@ impl Game<'_> {
             TouchPhase::Ended | TouchPhase::Cancelled => {
                 if let Some(n) = self.touch.holding.iter().position(|(f, _)| *f == id) {
                     let (_, i) = self.touch.holding.remove(n);
-                    self.touch_button(event_loop, PADS[i].button, false);
+                    if let Some(button) = held_button(i) {
+                        self.touch_button(event_loop, button, false);
+                    }
                 }
                 self.touch.logic.up(id, now)
             }
@@ -368,7 +430,7 @@ impl Game<'_> {
             .touch
             .holding
             .iter()
-            .any(|(_, i)| PADS[*i].button == Button::LeftStick);
+            .any(|(_, i)| held_button(*i) == Some(Button::LeftStick));
         // Held by sprint only while no pad finger holds it; checked every frame, so lifting the
         // pad's finger with the thumb still forward hands the press back to sprint.
         let hold = want && !run_pad_held;
@@ -390,7 +452,9 @@ impl Game<'_> {
         }
         let held = std::mem::take(&mut self.touch.holding);
         for (_, i) in held {
-            self.touch_button(event_loop, PADS[i].button, false);
+            if let Some(button) = held_button(i) {
+                self.touch_button(event_loop, button, false);
+            }
         }
         let actions = self.touch.logic.cancel_all();
         self.touch_apply(event_loop, actions);
@@ -412,7 +476,9 @@ impl Game<'_> {
             // inventory opened does not stay down.
             let held = std::mem::take(&mut self.touch.holding);
             for (_, i) in held {
-                self.touch_button(event_loop, PADS[i].button, false);
+                if let Some(button) = held_button(i) {
+                    self.touch_button(event_loop, button, false);
+                }
             }
             let actions = self.touch.logic.set_mode(mode);
             self.touch_apply(event_loop, actions);
@@ -507,14 +573,29 @@ impl Game<'_> {
     /// Where pad `i` is on a screen of `size`: the layout's own place, then the player's
     /// arrangement. The hit test and the drawing both come here, so they cannot disagree.
     /// `None` for a button the player hid.
-    fn pad_rect(&self, i: usize, size: (f32, f32)) -> Option<Rect> {
-        let slot = self.settings.touch_layout.slot(PAD_SLOT[i]);
+    fn pad_rect(&self, kind: PadKind, size: (f32, f32)) -> Option<Rect> {
+        let slot = self.settings.touch_layout.slot(kind.slot());
         if !slot.shown {
             return None;
         }
-        let base = PADS[i].rect(size, self.settings.imc.safe_margin_scale());
-        let [x, y, w, h] = slot.place([base.x, base.y, base.w, base.h], size);
+        let base = kind.base(size, self.settings.imc.safe_margin_scale());
+        let [x, y, w, h] = slot.place(base, size);
         Some(Rect { x, y, w, h })
+    }
+
+    /// Presses the key an extra button stands for, once: the player's own binding for Chat, F3,
+    /// F2 and View, or the key they picked. It goes in as the control line `key <name> tap`, the
+    /// same path a script's key takes, so every screen and rebind treats it as the keyboard's.
+    fn touch_extra_key(&mut self, event_loop: &dyn EventLoopCtl, extra: Extra) {
+        let name = match extra.binding() {
+            Some(binding) => self.settings.keys.get(binding).to_owned(),
+            None => self.settings.touch_extras.key_of(extra).to_owned(),
+        };
+        if !horizon_client_input::touch_extras::valid_key_name(&name) {
+            log::info!("touch: {} has no key to press ({name})", extra.label());
+            return;
+        }
+        self.replay_line(&format!("key {name} tap"), event_loop);
     }
 
     fn touch_rects(&self, size: (f32, f32)) -> Vec<Rect> {
@@ -526,9 +607,11 @@ impl Game<'_> {
         let (bx, by) = self.settings.imc.button_shift();
         let _ = margin;
         // A hidden button keeps its index, with no area, so nothing else shifts.
-        let mut rects: Vec<Rect> = (0..PADS.len())
-            .map(|i| {
-                self.pad_rect(i, size).unwrap_or(Rect {
+        let kinds = self.pad_kinds();
+        let mut rects: Vec<Rect> = kinds
+            .iter()
+            .map(|&kind| {
+                self.pad_rect(kind, size).unwrap_or(Rect {
                     x: -1.0,
                     y: -1.0,
                     w: 0.0,
@@ -536,7 +619,7 @@ impl Game<'_> {
                 })
             })
             .collect();
-        // The nine hotbar slots follow the pads: an index of `PADS.len()` or more is a slot.
+        // The nine hotbar slots follow the pads: an index of the pads' count or more is a slot.
         if let Some(scale) = self.gui_scale().map(|b| b.scale) {
             rects.extend(hotbar_slots(size, scale, HOTBAR_LIFT));
         }
@@ -660,19 +743,20 @@ impl Game<'_> {
         }
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
-        for (i, p) in PADS.iter().enumerate() {
+        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
             // The same fractions as the hit test, on the GUI-unit size instead of pixels.
-            let Some(Rect { x, y, w: bw, h: bh }) = self.pad_rect(i, (w, h)) else {
+            let Some(Rect { x, y, w: bw, h: bh }) = self.pad_rect(kind, (w, h)) else {
                 continue;
             };
-            let opacity = self.settings.touch_layout.slot(PAD_SLOT[i]).opacity;
+            let opacity = self.settings.touch_layout.slot(kind.slot()).opacity;
             let down = self.touch.holding.iter().any(|(_, held)| *held == i);
             let fill = faded(if down { 0x90FF_FFFF } else { 0x5000_0000 }, opacity);
             batch.fill(atlas, x, y, bw, bh, fill);
-            let tw = HudBatch::text_width(atlas, p.label);
+            let label = kind.label();
+            let tw = HudBatch::text_width(atlas, label);
             batch.text(
                 atlas,
-                p.label,
+                label,
                 x + (bw - tw) / 2.0,
                 y + (bh - 8.0) / 2.0,
                 faded(0xFFFF_FFFF, opacity),
@@ -710,9 +794,44 @@ mod tests {
             assert!(*slot < COUNT, "{} has no slot", PADS[i].label);
             assert!(PAD_SLOT[i + 1..].iter().all(|o| o != slot));
         }
-        // Back is the one slot that is not a pad.
-        assert_eq!(COUNT, PADS.len() + 1);
-        assert_eq!(NAMES[COUNT - 1], "back");
+        // Back is the one slot of the first ten that is not a pad; the extras follow it.
+        assert_eq!(EXTRA_FIRST, PADS.len() + 1);
+        assert_eq!(NAMES[EXTRA_FIRST - 1], "back");
+        assert_eq!(COUNT, EXTRA_FIRST + Extra::ALL.len());
+    }
+
+    #[test]
+    fn the_extras_have_their_own_slots_and_stay_on_the_screen() {
+        for (n, e) in Extra::ALL.iter().enumerate() {
+            let kind = PadKind::Extra(*e, n);
+            assert!(kind.slot() >= EXTRA_FIRST && kind.slot() < COUNT);
+            assert_eq!(NAMES[kind.slot()], e.name());
+            let [x, y, w, h] = kind.base(PHONE, 1.0);
+            assert!(x >= 0.0 && y >= 0.0 && x + w <= PHONE.0 && y + h <= PHONE.1, "{e:?}");
+        }
+    }
+
+    #[test]
+    fn the_extras_do_not_sit_on_the_fixed_buttons() {
+        let fixed: Vec<Rect> = PADS.iter().map(|p| p.rect(PHONE, 1.0)).collect();
+        let overlap = |a: &Rect, b: &Rect| {
+            a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+        };
+        for n in 0..Extra::ALL.len() {
+            let [x, y, w, h] = PadKind::Extra(Extra::ALL[n], n).base(PHONE, 1.0);
+            let r = Rect { x, y, w, h };
+            assert!(!fixed.iter().any(|f| overlap(&r, f)), "extra {n} is on a fixed button");
+            for m in 0..n {
+                let [x, y, w, h] = PadKind::Extra(Extra::ALL[m], m).base(PHONE, 1.0);
+                assert!(!overlap(&r, &Rect { x, y, w, h }), "extras {m} and {n} overlap");
+            }
+        }
+    }
+
+    #[test]
+    fn an_extra_holds_no_controller_button() {
+        assert_eq!(held_button(PADS.len()), None);
+        assert_eq!(held_button(0), Some(Button::South));
     }
 
     #[test]

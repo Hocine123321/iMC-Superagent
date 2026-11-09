@@ -299,6 +299,13 @@ Touch shift. If the taps are too close together to tell, it says so and starts o
 written to the log (where the window said it was against where the cross is), so a stubborn offset
 can be diagnosed.
 
+**Extra buttons.** *Extra buttons* (iMC Settings) lists six more buttons for the screen while you
+play, all off until switched on: **Chat**, **F3**, **F2** and **View** press the keys you set in
+Controls for chat, the debug screen, screenshots and the camera, so a rebind carries over. **Key 1**
+and **Key 2** press a key picked on the right of each: a click steps through none, F1, F4 to F11 and
+some letters. They stand in a column down the left edge under Pause, and *Edit touch controls* moves,
+resizes, fades or hides them like the others. They are saved in `horizon-imc-buttons.txt`.
+
 **Back on the title menus.** Every title page but the first (Add Server, Direct Connection, Create
 World, a world's Edit, Realms) and Options opened from the title now have the Back button.
 

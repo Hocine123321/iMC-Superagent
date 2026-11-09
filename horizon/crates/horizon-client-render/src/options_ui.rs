@@ -1331,6 +1331,8 @@ pub enum Page {
     Horizon,
     /// iMC Settings: the iOS app's own (`imc_settings`), under Horizon Settings.
     Imc,
+    /// iMC Settings' extra on-screen buttons (`touch_extras`): Chat, F3, F2, View and two keys.
+    TouchButtons,
     /// Replay Studio: saved recordings browser and 3D video editor launcher.
     Studio,
     /// AI Agent: agent control on or off, whether an agent is connected, the connection details.
@@ -1372,6 +1374,10 @@ enum Act {
     TouchCalibrate,
     /// iMC Settings' Mobile preset button (`mobile_preset::apply`).
     MobilePreset,
+    /// The extra buttons page: switch one on or off.
+    TouchExtra(horizon_client_input::touch_extras::Extra),
+    /// The extra buttons page: step Key 1 or Key 2 to the next key.
+    TouchExtraKey(horizon_client_input::touch_extras::Extra),
     /// The installed native mod's settings page.
     ModSettings(usize),
     /// A native mod's key (mod, key) waits for a key; a button of its page.
@@ -1887,6 +1893,7 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
         Page::Extras => "horizon.pages.extras.tooltip",
         Page::Pvp => "horizon.pages.pvp.tooltip",
         Page::Imc => "horizon.pages.imc.tooltip",
+        Page::TouchButtons => "horizon.pages.touch_buttons.tooltip",
         Page::Agent => "horizon.pages.agent.tooltip",
         Page::SplitProfiles => "horizon.pages.split_profiles.tooltip",
         Page::ShaderPacks => "horizon.pages.shader_packs.tooltip",
@@ -1942,6 +1949,8 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
         Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
         Act::TouchCalibrate => Some("horizon.imc.calibrate.tooltip".into()),
+        Act::TouchExtra(e) => Some(format!("horizon.imc.extra.{}.tooltip", e.name()).into()),
+        Act::TouchExtraKey(_) => Some("horizon.imc.extra.key.tooltip".into()),
         Act::MobilePreset => Some("horizon.imc.mobile.tooltip".into()),
         _ => None,
     };
@@ -2454,6 +2463,7 @@ impl OptionsUi {
             Page::Extras => "horizon.pages.extras",
             Page::Pvp => "horizon.pages.pvp",
             Page::Imc => "horizon.pages.imc",
+            Page::TouchButtons => "horizon.pages.touch_buttons",
             Page::Credits => "credits_and_attribution.screen.title",
             Page::Horizon => "horizon.pages.settings",
             Page::Studio => "horizon.pages.studio",
@@ -2901,6 +2911,16 @@ impl OptionsUi {
                     Some(edit),
                 ));
                 rows.push(Row::Buttons(
+                    button(
+                        0.0,
+                        0.0,
+                        150.0,
+                        tr("horizon.imc.extra_buttons"),
+                        Act::Push(Page::TouchButtons),
+                    ),
+                    None,
+                ));
+                rows.push(Row::Buttons(
                     button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
                     Some(button(
                         0.0,
@@ -2911,6 +2931,41 @@ impl OptionsUi {
                     )),
                 ));
                 rows
+            }
+            Page::TouchButtons => {
+                use horizon_client_input::touch_extras::{Extra, key_caption};
+                let on_off = |on: bool| {
+                    if on {
+                        lang::get_or("options.on", "ON")
+                    } else {
+                        lang::get_or("options.off", "OFF")
+                    }
+                };
+                let toggle = |e: Extra| {
+                    let name = lang::get_or(&format!("horizon.imc.extra.{}", e.name()), e.label());
+                    let value = Text::option_name_value(
+                        Text::literal(name),
+                        Text::literal(on_off(s.touch_extras.is_on(e))),
+                    )
+                    .plain();
+                    button(0.0, 0.0, 150.0, Text::literal(value), Act::TouchExtra(e))
+                };
+                let key = |e: Extra| {
+                    let name = lang::get_or("horizon.imc.extra.key", "Key");
+                    let value = Text::option_name_value(
+                        Text::literal(name),
+                        Text::literal(key_caption(s.touch_extras.key_of(e))),
+                    )
+                    .plain();
+                    button(0.0, 0.0, 150.0, Text::literal(value), Act::TouchExtraKey(e))
+                };
+                vec![
+                    Row::Header("horizon.imc.header.extra_buttons"),
+                    Row::Buttons(toggle(Extra::Chat), Some(toggle(Extra::Debug))),
+                    Row::Buttons(toggle(Extra::Screenshot), Some(toggle(Extra::View))),
+                    Row::Buttons(toggle(Extra::Key1), Some(key(Extra::Key1))),
+                    Row::Buttons(toggle(Extra::Key2), Some(key(Extra::Key2))),
+                ]
             }
             Page::Agent => {
                 let mut rows = vec![Row::Buttons(
@@ -4415,6 +4470,14 @@ impl OptionsUi {
                             s.imc.reset();
                             events.push(Event::Changed);
                         }
+                        Act::TouchExtra(e) => {
+                            s.touch_extras.toggle(e);
+                            events.push(Event::Changed);
+                        }
+                        Act::TouchExtraKey(e) => {
+                            s.touch_extras.step_key(e);
+                            events.push(Event::Changed);
+                        }
                         Act::PlayMusicTrack(event, track) => {
                             events.push(Event::PlayMusicTrack(event, track));
                         }
@@ -5363,6 +5426,14 @@ impl OptionsUi {
                         }
                         Act::ImcReset => {
                             s.imc.reset();
+                            events.push(Event::Changed);
+                        }
+                        Act::TouchExtra(e) => {
+                            s.touch_extras.toggle(e);
+                            events.push(Event::Changed);
+                        }
+                        Act::TouchExtraKey(e) => {
+                            s.touch_extras.step_key(e);
                             events.push(Event::Changed);
                         }
                         Act::PlayMusicTrack(event, track) => {
@@ -7705,6 +7776,8 @@ mod tests {
                         Act::Extra(e) => format!("extra:{e:?}"),
                         Act::PvpPreset => "pvp-preset".to_owned(),
                         Act::MobilePreset => "mobile-preset".to_owned(),
+                        Act::TouchExtra(e) => format!("touch-extra:{}", e.name()),
+                        Act::TouchExtraKey(e) => format!("touch-extra-key:{}", e.name()),
                         Act::Push(to) => {
                             ways_in
                                 .entry(format!("{to:?}"))

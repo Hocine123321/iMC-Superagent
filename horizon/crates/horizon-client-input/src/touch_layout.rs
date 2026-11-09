@@ -11,12 +11,17 @@
 //! The file is `horizon-touch-layout.txt` beside `horizon-imc.txt`: one line per button,
 //! `name:dx,dy,scale,opacity,shown`, written only when something differs from the default.
 
-/// How many buttons can be arranged (the nine pads and Back).
-pub const COUNT: usize = 10;
+/// How many buttons can be arranged (the nine pads, Back, and the six extras).
+pub const COUNT: usize = 16;
 
-/// The buttons by their saved name, in the order they are listed and drawn.
+/// Where the extras start in [`NAMES`]; they follow `touch_extras::Extra::ALL` in order.
+pub const EXTRA_FIRST: usize = 10;
+
+/// The buttons by their saved name, in the order they are listed and drawn. New ones go on the
+/// end, so a file saved by an older version still reads the same.
 pub const NAMES: [&str; COUNT] = [
-    "jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back",
+    "jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back", "chat",
+    "debug", "shot", "view", "key1", "key2",
 ];
 
 /// Largest move from the default, as a fraction of the screen's width or height. Enough to put a
@@ -540,6 +545,22 @@ mod tests {
         for i in 0..COUNT {
             assert_eq!(layout.slot(i).place(BASE, SCREEN), BASE);
         }
+    }
+
+    #[test]
+    fn the_extras_have_their_places_in_the_order_they_are_listed() {
+        use crate::touch_extras::Extra;
+        for (i, e) in Extra::ALL.iter().enumerate() {
+            assert_eq!(NAMES[EXTRA_FIRST + i], e.name(), "{e:?}");
+        }
+        assert_eq!(EXTRA_FIRST + Extra::ALL.len(), COUNT);
+    }
+
+    #[test]
+    fn an_older_file_without_the_extras_still_reads() {
+        let layout = ControlLayout::parse("jump:0.0100,0.0200,1.500,0.800,true\n");
+        assert_eq!(layout.slots[0].scale, 1.5);
+        assert!(layout.slots[EXTRA_FIRST..].iter().all(Slot::is_default));
     }
 
     #[test]

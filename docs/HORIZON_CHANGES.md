@@ -269,6 +269,35 @@ Two fixes for the phone: a touch that lands off the button, and title pages with
 
 ---
 
+## K. Extra on-screen buttons (2026-11-09)
+
+Chat, F3, F2, View and two keys the player picks, as buttons on the screen. Each presses a key of the
+game by the name of the binding, so the player's own choice counts (Chat presses whatever `key.chat` is
+bound to). All off until switched on.
+
+### K1. New files (copy as they are)
+| File | Lines | What it is |
+|---|---|---|
+| `crates/horizon-client-input/src/touch_extras.rs` | 378 | Pure: which extras are on, the two picked keys, the list of keys a click steps through (`CHOICES`, each checked against the game's own key table), the file text (`horizon-imc-buttons.txt`). A key name is accepted only if it is `key.keyboard.` plus lower case letters, digits, dots and underscores, because it ends up in a control line. 11 tests. |
+
+### K2. Hooks into existing files
+| File | Change |
+|---|---|
+| `horizon-client-input/src/lib.rs` | `pub mod touch_extras;` |
+| `horizon-client-input/src/touch_layout.rs` | `COUNT` 10 to 16, `EXTRA_FIRST`, six names appended to `NAMES` (appended, so an older layout file reads the same). 2 tests. |
+| `horizon-client-render/src/settings.rs` | `touch_extras` on `Settings`: default in the constructors, cloned in `with_option`, loaded from the file beside `options.txt`, saved only when changed or the file exists. |
+| `horizon-client-render/src/options_ui.rs` | `Page::TouchButtons` (title, tooltip, rows), `Act::TouchExtra(Extra)` and `Act::TouchExtraKey(Extra)` with their two click handlers each, tooltips, the id used by the agent API, and the *Extra buttons* button on the iMC page. |
+| `horizon-client-render/src/ios_unused.rs` | `TouchButtons` in the "page is used" arm. |
+| `assets/horizon/lang/en_us.json` | 17 keys: `horizon.imc.extra_buttons`, `horizon.pages.touch_buttons(.tooltip)`, `horizon.imc.header.extra_buttons`, and a caption and tooltip for each button and the key setting. |
+| `game/touch.rs` | The pad list is now `pad_kinds()`: the nine fixed pads, then the extras that are on (`PadKind`). Hit test, drawing and the nearest-button log use it; the hotbar slots follow the pads' count. An extra presses its key once with `touch_extra_key` (the control line `key <name> tap`, through `replay_line`); `held_button` is `None` for an extra so nothing is left held. Extras stand in a column down the left edge under Pause. 4 tests. |
+| `game/touch_editor.rs` | Works on `PadKind` instead of a pad index, so the extras can be moved, resized and hidden like the others. |
+
+**Re-apply:** copy `touch_extras.rs`, grow the layout, add the `Page`/`Act` variants and let the
+compiler list each `match` (one in `ios_unused.rs`), then re-do the `touch.rs` and `touch_editor.rs`
+hunks: every place that counted `PADS` now asks `pad_kinds()`.
+
+---
+
 ## F. Index: all 51 files
 
 `A` = new file, `M` = modified. Section in brackets.
@@ -283,6 +312,7 @@ M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
 M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
 A horizon/crates/horizon-client-input/src/touch.rs                [C1]
 A horizon/crates/horizon-client-input/src/touch_calibration.rs    [J1]
+A horizon/crates/horizon-client-input/src/touch_extras.rs         [K1]
 A horizon/crates/horizon-client-input/src/touch_layout.rs         [I1]
 M horizon/crates/horizon-client-input/src/window.rs               [A4]
 M horizon/crates/horizon-client-render/src/gfx.rs                 [A1, B]

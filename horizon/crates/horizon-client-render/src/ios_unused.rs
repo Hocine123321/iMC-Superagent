@@ -238,7 +238,7 @@ pub fn page(p: crate::options_ui::Page) -> Option<Reason> {
         // (`IOS_FEASIBILITY_REPORT.md` section 12), so they are not greyed on a guess.
         Mods | ModBrowser | ModProject | ShaderPacks | ShaderOptions | Studio | Agent | Main
         | Video | Sound | Controls | Chat | Accessibility | Language | Font | Packs | Graphics
-        | GraphicsAdvanced | Controller | PadBinds | Extras | Pvp | Credits | Horizon | Imc
+        | GraphicsAdvanced | Controller | PadBinds | Extras | Pvp | Credits | Horizon | Imc | TouchButtons
         | Skin | Online | Music => None,
     }
 }

@@ -5,7 +5,7 @@
 //! file) are `horizon_client_input::touch_layout`. Nothing here reaches a server.
 //!
 //! Done keeps the arrangement. Cancel, and Back, put back the one the editor opened with.
-use super::touch::{PAD_COUNT, faded, pad_base, pad_label, pad_slot};
+use super::touch::{PadKind, faded};
 use super::{Game, Screen};
 use horizon_client::{
     hud::{HudBatch, rgba},
@@ -76,23 +76,27 @@ impl Game<'_> {
     /// shown faintly on the stage so it can be picked and shown again.
     fn editor_pad_at(&self) -> Option<usize> {
         let size = self.gui_size();
-        (0..PAD_COUNT).rev().find(|&i| {
-            let r = self.editor_pad_rect(i, size);
+        let kinds = self.pad_kinds();
+        (0..kinds.len()).rev().find(|&i| {
+            let r = self.editor_pad_rect(kinds[i], size);
             let (cx, cy) = self.cursor;
             cx >= r[0] && cx < r[0] + r[2] && cy >= r[1] && cy < r[1] + r[3]
         })
     }
 
     /// A pad's rectangle in GUI units, shown or not.
-    fn editor_pad_rect(&self, i: usize, size: (f32, f32)) -> [f32; 4] {
+    fn editor_pad_rect(&self, kind: PadKind, size: (f32, f32)) -> [f32; 4] {
         let slot = Slot {
             shown: true,
-            ..self.settings.touch_layout.slot(pad_slot(i))
+            ..self.settings.touch_layout.slot(kind.slot())
         };
-        slot.place(
-            pad_base(i, size, self.settings.imc.safe_margin_scale()),
-            size,
-        )
+        slot.place(kind.base(size, self.settings.imc.safe_margin_scale()), size)
+    }
+
+    /// The button the editor has picked, or the first if the list got shorter under it.
+    fn editor_kind(&self, picked: usize) -> PadKind {
+        let kinds = self.pad_kinds();
+        kinds.get(picked).or(kinds.first()).copied().unwrap_or(PadKind::Fixed(0))
     }
 
     pub(super) fn draw_touch_editor(&mut self, batch: &mut HudBatch) {
@@ -116,13 +120,13 @@ impl Game<'_> {
             colour(0xC000_0000),
         );
 
-        for i in 0..PAD_COUNT {
-            let slot = self.settings.touch_layout.slot(pad_slot(i));
-            let [x, y, w, h] = self.editor_pad_rect(i, size);
+        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
+            let slot = self.settings.touch_layout.slot(kind.slot());
+            let [x, y, w, h] = self.editor_pad_rect(kind, size);
             // A hidden button is drawn faintly, outlined, so it can still be found.
             let opacity = if slot.shown { slot.opacity } else { 0.25 };
             batch.fill(atlas, x, y, w, h, faded(0x5000_0000, opacity));
-            let label = pad_label(i);
+            let label = kind.label();
             let tw = HudBatch::text_width(atlas, label);
             batch.text(
                 atlas,
@@ -140,15 +144,16 @@ impl Game<'_> {
         }
 
         // The heading and the picked button's numbers, at the top of the panel.
-        let slot = self.settings.touch_layout.slot(pad_slot(picked));
-        let name = Text::literal(pad_label(picked));
+        let picked_kind = self.editor_kind(picked);
+        let slot = self.settings.touch_layout.slot(picked_kind.slot());
+        let name = Text::literal(picked_kind.label());
         let line = |t: &str| Text::literal(t);
         let head = line("Touch controls");
         let hx = stage + 8.0;
         batch.text_styled(atlas, &head, hx, 4.0, u32::MAX, true);
         let info = Text::literal(&format!(
             "{}  {}  {}{}",
-            pad_label(picked),
+            picked_kind.label(),
             editor::percent(slot.scale),
             editor::percent(slot.opacity),
             if slot.shown { "" } else { "  hidden" }
@@ -191,7 +196,7 @@ impl Game<'_> {
             return;
         }
         if let Some(i) = self.editor_pad_at() {
-            let r = self.editor_pad_rect(i, size);
+            let r = self.editor_pad_rect(self.editor_kind(i), size);
             let grab = (self.cursor.0 - r[0], self.cursor.1 - r[1]);
             if let Some(e) = &mut self.touch_editor {
                 e.picked = i;
@@ -204,7 +209,7 @@ impl Game<'_> {
         let Some(picked) = self.touch_editor.as_ref().map(|e| e.picked) else {
             return;
         };
-        let index = pad_slot(picked);
+        let index = self.editor_kind(picked).slot();
         match action {
             Action::Done => self.close_touch_editor(true),
             Action::Cancel => self.close_touch_editor(false),
@@ -227,9 +232,10 @@ impl Game<'_> {
             return;
         };
         let size = self.gui_size();
-        let index = pad_slot(picked);
+        let kind = self.editor_kind(picked);
+        let index = kind.slot();
         let slot = self.settings.touch_layout.slot(index);
-        let base = pad_base(picked, size, self.settings.imc.safe_margin_scale());
+        let base = kind.base(size, self.settings.imc.safe_margin_scale());
         // The size the button has now, held where the finger took it.
         let placed = Slot {
             dx: 0.0,

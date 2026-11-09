@@ -1572,7 +1572,7 @@ index 63274cb..a3d0cb4 100644
          Key::Dead(Some(c)) => learn(name, c.encode_utf8(&mut [0; 4])),
          _ => {}
 diff --git a/horizon/crates/horizon-client-input/src/lib.rs b/horizon/crates/horizon-client-input/src/lib.rs
-index 6d0df2c..545b7e2 100644
+index 6d0df2c..c3423fd 100644
 --- a/horizon/crates/horizon-client-input/src/lib.rs
 +++ b/horizon/crates/horizon-client-input/src/lib.rs
 @@ -4,10 +4,12 @@
@@ -1588,12 +1588,13 @@ index 6d0df2c..545b7e2 100644
  pub mod input;
  pub mod interaction_input;
  pub mod key_names;
-@@ -16,4 +18,7 @@ pub mod keymapping;
+@@ -16,4 +18,8 @@ pub mod keymapping;
  pub mod modifiers;
  pub mod mouse;
  pub mod snap;
 +pub mod touch;
 +pub mod touch_calibration;
++pub mod touch_extras;
 +pub mod touch_layout;
  pub mod window;
 diff --git a/horizon/crates/horizon-client-input/src/touch.rs b/horizon/crates/horizon-client-input/src/touch.rs
@@ -3032,12 +3033,396 @@ index 0000000..8a0fa97
 +        assert_eq!(Calibration::IDENTITY.apply((10.0, 20.0)), (10.0, 20.0));
 +    }
 +}
+diff --git a/horizon/crates/horizon-client-input/src/touch_extras.rs b/horizon/crates/horizon-client-input/src/touch_extras.rs
+new file mode 100644
+index 0000000..420641c
+--- /dev/null
++++ b/horizon/crates/horizon-client-input/src/touch_extras.rs
+@@ -0,0 +1,378 @@
++//! The extra on-screen buttons: Chat, F3, F2, View and two keys the player picks.
++//!
++//! Each one presses a key of the game, by the name of the binding, so the player's own choice
++//! counts: Chat presses whatever `key.chat` is bound to, not a hard-coded T. A button is drawn
++//! and answers a touch only once it is switched on; where it sits and how big it is comes from
++//! the layout (`touch_layout`), like the nine that are always there.
++//!
++//! Pure: the file's text, the names and the checks. The game presses the key
++//! (`horizon-client`). Kept in `horizon-imc-buttons.txt`, written only once something is changed.
++
++/// The file, beside `options.txt`.
++pub const FILE: &str = "horizon-imc-buttons.txt";
++
++/// One of the extra buttons.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Extra {
++    Chat,
++    Debug,
++    Screenshot,
++    View,
++    Key1,
++    Key2,
++}
++
++impl Extra {
++    pub const ALL: [Extra; 6] = [
++        Extra::Chat,
++        Extra::Debug,
++        Extra::Screenshot,
++        Extra::View,
++        Extra::Key1,
++        Extra::Key2,
++    ];
++
++    /// The name in the file, and the button's name in the layout file.
++    pub fn name(self) -> &'static str {
++        match self {
++            Extra::Chat => "chat",
++            Extra::Debug => "debug",
++            Extra::Screenshot => "shot",
++            Extra::View => "view",
++            Extra::Key1 => "key1",
++            Extra::Key2 => "key2",
++        }
++    }
++
++    /// What the button shows by default.
++    pub fn label(self) -> &'static str {
++        match self {
++            Extra::Chat => "Chat",
++            Extra::Debug => "F3",
++            Extra::Screenshot => "F2",
++            Extra::View => "View",
++            Extra::Key1 => "Key 1",
++            Extra::Key2 => "Key 2",
++        }
++    }
++
++    /// The game's binding this button presses, or `None` for the two the player picks.
++    pub fn binding(self) -> Option<&'static str> {
++        match self {
++            Extra::Chat => Some("key.chat"),
++            Extra::Debug => Some("key.debug.overlay"),
++            Extra::Screenshot => Some("key.screenshot"),
++            Extra::View => Some("key.togglePerspective"),
++            Extra::Key1 | Extra::Key2 => None,
++        }
++    }
++
++    fn index(self) -> usize {
++        Self::ALL.iter().position(|e| *e == self).unwrap_or(0)
++    }
++}
++
++/// Which extras are on, and the two keys.
++#[derive(Clone, Debug, PartialEq, Eq, Default)]
++pub struct Extras {
++    on: [bool; 6],
++    /// The game's key name (`key.keyboard.g`) the two picked buttons press, or empty.
++    keys: [String; 2],
++}
++
++impl Extras {
++    pub fn is_on(&self, e: Extra) -> bool {
++        self.on[e.index()]
++    }
++
++    pub fn set_on(&mut self, e: Extra, on: bool) {
++        self.on[e.index()] = on;
++    }
++
++    pub fn toggle(&mut self, e: Extra) {
++        let i = e.index();
++        self.on[i] = !self.on[i];
++    }
++
++    /// A picked button's key name, `""` while none is chosen.
++    pub fn key_of(&self, e: Extra) -> &str {
++        match e {
++            Extra::Key1 => &self.keys[0],
++            Extra::Key2 => &self.keys[1],
++            _ => "",
++        }
++    }
++
++    /// Chooses the key of Key 1 or Key 2. Anything that is not a plain key name is refused, and
++    /// the old choice stays.
++    pub fn set_key(&mut self, e: Extra, name: &str) -> bool {
++        let slot = match e {
++            Extra::Key1 => 0,
++            Extra::Key2 => 1,
++            _ => return false,
++        };
++        if !valid_key_name(name) {
++            return false;
++        }
++        self.keys[slot] = name.to_owned();
++        true
++    }
++
++    /// The buttons that are on and have something to press, in order.
++    pub fn active(&self) -> impl Iterator<Item = Extra> + '_ {
++        Extra::ALL.into_iter().filter(|e| {
++            self.is_on(*e) && (e.binding().is_some() || !self.key_of(*e).is_empty())
++        })
++    }
++
++    pub fn is_default(&self) -> bool {
++        *self == Extras::default()
++    }
++
++    /// The saved text. A button is a line `chat:on`; a picked key adds `key1.key:key.keyboard.g`.
++    pub fn serialize(&self) -> String {
++        let mut out = String::new();
++        for e in Extra::ALL {
++            if self.is_on(e) {
++                out.push_str(&format!("{}:on\n", e.name()));
++            }
++        }
++        for (i, e) in [Extra::Key1, Extra::Key2].into_iter().enumerate() {
++            if !self.keys[i].is_empty() {
++                out.push_str(&format!("{}.key:{}\n", e.name(), self.keys[i]));
++            }
++        }
++        out
++    }
++
++    /// Reads the text. Unknown lines and key names that are not plain are ignored.
++    pub fn parse(text: &str) -> Self {
++        let mut extras = Extras::default();
++        for line in text.lines() {
++            let Some((name, value)) = line.split_once(':') else {
++                continue;
++            };
++            let (name, value) = (name.trim(), value.trim());
++            if let Some(e) = Extra::ALL.into_iter().find(|e| e.name() == name) {
++                extras.set_on(e, value == "on");
++            } else if let Some(base) = name.strip_suffix(".key")
++                && let Some(e) = [Extra::Key1, Extra::Key2]
++                    .into_iter()
++                    .find(|e| e.name() == base)
++            {
++                extras.set_key(e, value);
++            }
++        }
++        extras
++    }
++}
++
++/// The keys Key 1 and Key 2 can be set to: the ones a player is likely to want on a button. A
++/// click on the setting steps to the next, so the page needs no "press a key" screen. Each is a
++/// name the game knows (`keybinds`), and each passes [`valid_key_name`].
++pub const CHOICES: [&str; 24] = [
++    "key.keyboard.f1",
++    "key.keyboard.f4",
++    "key.keyboard.f5",
++    "key.keyboard.f6",
++    "key.keyboard.f7",
++    "key.keyboard.f8",
++    "key.keyboard.f9",
++    "key.keyboard.f10",
++    "key.keyboard.f11",
++    "key.keyboard.g",
++    "key.keyboard.h",
++    "key.keyboard.j",
++    "key.keyboard.k",
++    "key.keyboard.l",
++    "key.keyboard.m",
++    "key.keyboard.n",
++    "key.keyboard.o",
++    "key.keyboard.p",
++    "key.keyboard.u",
++    "key.keyboard.v",
++    "key.keyboard.b",
++    "key.keyboard.x",
++    "key.keyboard.z",
++    "key.keyboard.slash",
++];
++
++/// A key as the page shows it: `key.keyboard.f6` is `F6`, `key.keyboard.g` is `G`, and no key
++/// is `None`.
++pub fn key_caption(name: &str) -> String {
++    match name.strip_prefix("key.keyboard.") {
++        Some(rest) if !rest.is_empty() => rest.replace('.', " ").to_ascii_uppercase(),
++        _ => "None".to_owned(),
++    }
++}
++
++impl Extras {
++    /// Steps Key 1 or Key 2 to the next choice (from none to the first, and after the last back
++    /// to none). A key the file holds that is not among the choices steps to the first.
++    pub fn step_key(&mut self, e: Extra) -> bool {
++        let current = self.key_of(e).to_owned();
++        let next = if current.is_empty() {
++            Some(CHOICES[0])
++        } else {
++            match CHOICES.iter().position(|c| *c == current) {
++                Some(i) => CHOICES.get(i + 1).copied(),
++                None => Some(CHOICES[0]),
++            }
++        };
++        match next {
++            Some(name) => self.set_key(e, name),
++            None => {
++                let slot = if e == Extra::Key1 { 0 } else { 1 };
++                if e != Extra::Key1 && e != Extra::Key2 {
++                    return false;
++                }
++                self.keys[slot].clear();
++                true
++            }
++        }
++    }
++}
++
++/// Whether `name` could be a key of the game: `key.keyboard.` and then lower case letters,
++/// digits, dots and underscores. The game still has the last word on whether it exists; this
++/// keeps a damaged file or a typo from carrying anything odd into a command line.
++pub fn valid_key_name(name: &str) -> bool {
++    name.len() <= 40
++        && name
++            .strip_prefix("key.keyboard.")
++            .is_some_and(|rest| {
++                !rest.is_empty()
++                    && rest
++                        .chars()
++                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
++            })
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn nothing_is_on_until_the_player_switches_it_on() {
++        let extras = Extras::default();
++        assert!(extras.is_default());
++        assert_eq!(extras.active().count(), 0);
++        assert_eq!(extras.serialize(), "");
++        assert_eq!(Extras::parse(""), extras);
++    }
++
++    #[test]
++    fn a_button_is_active_only_when_on_and_it_has_a_key() {
++        let mut extras = Extras::default();
++        extras.set_on(Extra::Chat, true);
++        extras.set_on(Extra::Key1, true);
++        // Key 1 is on but has no key yet: nothing to press, so no button.
++        assert_eq!(extras.active().collect::<Vec<_>>(), vec![Extra::Chat]);
++        assert!(extras.set_key(Extra::Key1, "key.keyboard.g"));
++        assert_eq!(
++            extras.active().collect::<Vec<_>>(),
++            vec![Extra::Chat, Extra::Key1]
++        );
++        extras.toggle(Extra::Chat);
++        assert_eq!(extras.active().collect::<Vec<_>>(), vec![Extra::Key1]);
++    }
++
++    #[test]
++    fn the_fixed_buttons_press_the_players_own_bindings() {
++        assert_eq!(Extra::Chat.binding(), Some("key.chat"));
++        assert_eq!(Extra::Debug.binding(), Some("key.debug.overlay"));
++        assert_eq!(Extra::Screenshot.binding(), Some("key.screenshot"));
++        assert_eq!(Extra::View.binding(), Some("key.togglePerspective"));
++        assert_eq!(Extra::Key1.binding(), None);
++    }
++
++    #[test]
++    fn it_survives_the_file() {
++        let mut extras = Extras::default();
++        extras.set_on(Extra::Debug, true);
++        extras.set_on(Extra::Key2, true);
++        extras.set_key(Extra::Key2, "key.keyboard.left.bracket");
++        extras.set_key(Extra::Key1, "key.keyboard.f6");
++        assert_eq!(Extras::parse(&extras.serialize()), extras);
++        assert!(!extras.is_default());
++    }
++
++    #[test]
++    fn only_plain_key_names_are_taken() {
++        let mut extras = Extras::default();
++        for bad in [
++            "",
++            "g",
++            "key.keyboard.",
++            "key.keyboard.G",
++            "key.keyboard.g tap\nquit",
++            "key.mouse.left",
++            "key.keyboard.a;b",
++            &format!("key.keyboard.{}", "x".repeat(40)),
++        ] {
++            assert!(!extras.set_key(Extra::Key1, bad), "{bad:?}");
++        }
++        assert_eq!(extras.key_of(Extra::Key1), "");
++        assert!(!extras.set_key(Extra::Chat, "key.keyboard.g"), "Chat's key is not picked");
++        // A bad line in the file is dropped and the rest is read.
++        let read = Extras::parse("chat:on\nkey1.key:key.keyboard.g\nkey2.key:quit\nnonsense\nfoo:on");
++        assert!(read.is_on(Extra::Chat));
++        assert_eq!(read.key_of(Extra::Key1), "key.keyboard.g");
++        assert_eq!(read.key_of(Extra::Key2), "");
++    }
++
++    #[test]
++    fn every_choice_is_a_valid_name_the_game_knows_and_none_twice() {
++        for (i, c) in CHOICES.iter().enumerate() {
++            assert!(valid_key_name(c), "{c}");
++            assert!(CHOICES[i + 1..].iter().all(|o| o != c), "{c} is listed twice");
++        }
++    }
++
++    #[test]
++    fn the_game_knows_every_choice() {
++        // An unknown name would press nothing, silently.
++        for c in CHOICES {
++            assert!(crate::keybinds::key_code(c).is_some(), "{c} is not a key of the game");
++        }
++    }
++
++    #[test]
++    fn stepping_goes_through_every_choice_and_back_to_none() {
++        let mut extras = Extras::default();
++        assert_eq!(extras.key_of(Extra::Key1), "");
++        for c in CHOICES {
++            assert!(extras.step_key(Extra::Key1));
++            assert_eq!(extras.key_of(Extra::Key1), c);
++        }
++        assert!(extras.step_key(Extra::Key1));
++        assert_eq!(extras.key_of(Extra::Key1), "");
++        // Key 2 is its own; the fixed buttons have no key to step.
++        assert_eq!(extras.key_of(Extra::Key2), "");
++        assert!(!extras.step_key(Extra::Chat));
++    }
++
++    #[test]
++    fn a_key_not_among_the_choices_steps_to_the_first() {
++        let mut extras = Extras::parse("key2.key:key.keyboard.left.bracket\n");
++        assert_eq!(extras.key_of(Extra::Key2), "key.keyboard.left.bracket");
++        assert!(extras.step_key(Extra::Key2));
++        assert_eq!(extras.key_of(Extra::Key2), CHOICES[0]);
++    }
++
++    #[test]
++    fn keys_are_shown_by_their_plain_name() {
++        assert_eq!(key_caption("key.keyboard.f6"), "F6");
++        assert_eq!(key_caption("key.keyboard.g"), "G");
++        assert_eq!(key_caption("key.keyboard.left.bracket"), "LEFT BRACKET");
++        assert_eq!(key_caption(""), "None");
++    }
++
++    #[test]
++    fn every_extra_has_its_own_name_and_a_label() {
++        for (i, a) in Extra::ALL.iter().enumerate() {
++            assert!(!a.label().is_empty() && !a.name().contains([':', ',', '.', '\n']));
++            assert!(Extra::ALL[i + 1..].iter().all(|b| a.name() != b.name()));
++        }
++    }
++}
 diff --git a/horizon/crates/horizon-client-input/src/touch_layout.rs b/horizon/crates/horizon-client-input/src/touch_layout.rs
 new file mode 100644
-index 0000000..0d24e11
+index 0000000..83dfc58
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/touch_layout.rs
-@@ -0,0 +1,707 @@
+@@ -0,0 +1,728 @@
 +//! The player's own arrangement of the on-screen buttons, as pure data: no winit, no game state.
 +//!
 +//! Each button keeps only what the player changed, as a nudge from where the layout puts it
@@ -3051,12 +3436,17 @@ index 0000000..0d24e11
 +//! The file is `horizon-touch-layout.txt` beside `horizon-imc.txt`: one line per button,
 +//! `name:dx,dy,scale,opacity,shown`, written only when something differs from the default.
 +
-+/// How many buttons can be arranged (the nine pads and Back).
-+pub const COUNT: usize = 10;
++/// How many buttons can be arranged (the nine pads, Back, and the six extras).
++pub const COUNT: usize = 16;
 +
-+/// The buttons by their saved name, in the order they are listed and drawn.
++/// Where the extras start in [`NAMES`]; they follow `touch_extras::Extra::ALL` in order.
++pub const EXTRA_FIRST: usize = 10;
++
++/// The buttons by their saved name, in the order they are listed and drawn. New ones go on the
++/// end, so a file saved by an older version still reads the same.
 +pub const NAMES: [&str; COUNT] = [
-+    "jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back",
++    "jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back", "chat",
++    "debug", "shot", "view", "key1", "key2",
 +];
 +
 +/// Largest move from the default, as a fraction of the screen's width or height. Enough to put a
@@ -3583,6 +3973,22 @@ index 0000000..0d24e11
 +    }
 +
 +    #[test]
++    fn the_extras_have_their_places_in_the_order_they_are_listed() {
++        use crate::touch_extras::Extra;
++        for (i, e) in Extra::ALL.iter().enumerate() {
++            assert_eq!(NAMES[EXTRA_FIRST + i], e.name(), "{e:?}");
++        }
++        assert_eq!(EXTRA_FIRST + Extra::ALL.len(), COUNT);
++    }
++
++    #[test]
++    fn an_older_file_without_the_extras_still_reads() {
++        let layout = ControlLayout::parse("jump:0.0100,0.0200,1.500,0.800,true\n");
++        assert_eq!(layout.slots[0].scale, 1.5);
++        assert!(layout.slots[EXTRA_FIRST..].iter().all(Slot::is_default));
++    }
++
++    #[test]
 +    fn there_is_a_name_for_every_button_and_no_name_twice() {
 +        assert_eq!(NAMES.len(), COUNT);
 +        for (i, a) in NAMES.iter().enumerate() {
@@ -3980,7 +4386,7 @@ index 8c1c1c5..53af63d 100644
                  H::Hdr
 diff --git a/horizon/crates/horizon-client-render/src/ios_unused.rs b/horizon/crates/horizon-client-render/src/ios_unused.rs
 new file mode 100644
-index 0000000..74fce05
+index 0000000..daa6a67
 --- /dev/null
 +++ b/horizon/crates/horizon-client-render/src/ios_unused.rs
 @@ -0,0 +1,266 @@
@@ -4224,7 +4630,7 @@ index 0000000..74fce05
 +        // (`IOS_FEASIBILITY_REPORT.md` section 12), so they are not greyed on a guess.
 +        Mods | ModBrowser | ModProject | ShaderPacks | ShaderOptions | Studio | Agent | Main
 +        | Video | Sound | Controls | Chat | Accessibility | Language | Font | Packs | Graphics
-+        | GraphicsAdvanced | Controller | PadBinds | Extras | Pvp | Credits | Horizon | Imc
++        | GraphicsAdvanced | Controller | PadBinds | Extras | Pvp | Credits | Horizon | Imc | TouchButtons
 +        | Skin | Online | Music => None,
 +    }
 +}
@@ -4415,19 +4821,21 @@ index 0000000..1008d06
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-render/src/options_ui.rs b/horizon/crates/horizon-client-render/src/options_ui.rs
-index 8ee09de..8590076 100644
+index 8ee09de..771cebf 100644
 --- a/horizon/crates/horizon-client-render/src/options_ui.rs
 +++ b/horizon/crates/horizon-client-render/src/options_ui.rs
-@@ -1329,6 +1329,8 @@ pub enum Page {
+@@ -1329,6 +1329,10 @@ pub enum Page {
      /// Horizon Settings: every page Horizon adds, as a mod's settings
      /// screen hangs off vanilla's Options.
      Horizon,
 +    /// iMC Settings: the iOS app's own (`imc_settings`), under Horizon Settings.
 +    Imc,
++    /// iMC Settings' extra on-screen buttons (`touch_extras`): Chat, F3, F2, View and two keys.
++    TouchButtons,
      /// Replay Studio: saved recordings browser and 3D video editor launcher.
      Studio,
      /// AI Agent: agent control on or off, whether an agent is connected, the connection details.
-@@ -1352,6 +1354,10 @@ enum Act {
+@@ -1352,6 +1356,10 @@ enum Act {
      Done,
      Cycle(Opt),
      Extra(crate::extras::Item),
@@ -4438,7 +4846,7 @@ index 8ee09de..8590076 100644
      Key(&'static str),
      ResetKey(&'static str),
      ResetKeys,
-@@ -1360,6 +1366,12 @@ enum Act {
+@@ -1360,6 +1368,16 @@ enum Act {
      PvpPreset,
      /// PvP & HUD's Edit HUD button.
      HudEditor,
@@ -4448,10 +4856,14 @@ index 8ee09de..8590076 100644
 +    TouchCalibrate,
 +    /// iMC Settings' Mobile preset button (`mobile_preset::apply`).
 +    MobilePreset,
++    /// The extra buttons page: switch one on or off.
++    TouchExtra(horizon_client_input::touch_extras::Extra),
++    /// The extra buttons page: step Key 1 or Key 2 to the next key.
++    TouchExtraKey(horizon_client_input::touch_extras::Extra),
      /// The installed native mod's settings page.
      ModSettings(usize),
      /// A native mod's key (mod, key) waits for a key; a button of its page.
-@@ -1519,6 +1531,10 @@ pub enum Event {
+@@ -1519,6 +1537,10 @@ pub enum Event {
      Credits,
      /// PvP & HUD's Edit HUD: open the HUD editor over the game.
      HudEditor,
@@ -4462,7 +4874,7 @@ index 8ee09de..8590076 100644
      /// Copy how an agent connects (the AI Agent page).
      CopyAgentDetails,
      /// The AI Agent page's recording button: start or stop.
-@@ -1651,6 +1667,8 @@ pub struct OptionsUi {
+@@ -1651,6 +1673,8 @@ pub struct OptionsUi {
      pub studio: crate::studio_ui::StudioUi,
      /// The AI Agent page's status lines (set by the game while it shows).
      pub agent_status: Vec<String>,
@@ -4471,7 +4883,7 @@ index 8ee09de..8590076 100644
      /// A repro recording is running: the AI Agent page's button says stop.
      pub agent_recording: bool,
      /// The Music page's groups (set by the game when it opens the page).
-@@ -1727,6 +1745,7 @@ impl Default for OptionsUi {
+@@ -1727,6 +1751,7 @@ impl Default for OptionsUi {
              split_setup: Default::default(),
              studio: Default::default(),
              agent_status: Vec::new(),
@@ -4479,7 +4891,7 @@ index 8ee09de..8590076 100644
              agent_recording: false,
              music_groups: Vec::new(),
              focus: None,
-@@ -1755,6 +1774,42 @@ fn button(x: f32, y: f32, w: f32, label: Text, act: Act) -> Widget {
+@@ -1755,6 +1780,42 @@ fn button(x: f32, y: f32, w: f32, label: Text, act: Act) -> Widget {
          row: 0,
      }
  }
@@ -4522,15 +4934,16 @@ index 8ee09de..8590076 100644
  fn inactive(mut w: Widget) -> Widget {
      if let WKind::Button { active, .. } = &mut w.kind {
          *active = false;
-@@ -1831,6 +1886,7 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
+@@ -1831,6 +1892,8 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
          Page::Controller => "horizon.pages.controller.tooltip",
          Page::Extras => "horizon.pages.extras.tooltip",
          Page::Pvp => "horizon.pages.pvp.tooltip",
 +        Page::Imc => "horizon.pages.imc.tooltip",
++        Page::TouchButtons => "horizon.pages.touch_buttons.tooltip",
          Page::Agent => "horizon.pages.agent.tooltip",
          Page::SplitProfiles => "horizon.pages.split_profiles.tooltip",
          Page::ShaderPacks => "horizon.pages.shader_packs.tooltip",
-@@ -1854,6 +1910,10 @@ enum Row {
+@@ -1854,6 +1917,10 @@ enum Row {
  /// A widget's tooltip (`setTooltip`), unwrapped: drawn while hovered, and
  /// its narration's hint.
  fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
@@ -4541,7 +4954,7 @@ index 8ee09de..8590076 100644
      let WKind::Button { act, .. } = &wd.kind else {
          let WKind::Slider { opt, .. } = &wd.kind else {
              return None;
-@@ -1865,6 +1925,10 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
+@@ -1865,6 +1932,10 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
      if let Act::Extra(item) = act {
          tip = Some(Text::literal(item.description_text()));
      }
@@ -4552,25 +4965,28 @@ index 8ee09de..8590076 100644
      if let Act::Push(page) = act
          && let Some(text) = horizon_page_tooltip(*page)
      {
-@@ -1876,6 +1940,9 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
+@@ -1876,6 +1947,11 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
          Act::Push(Page::Accessibility) => Some("options.accessibility.tooltip".into()),
          Act::PvpPreset => Some("horizon.pvp.preset.tooltip".into()),
          Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
 +        Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
 +        Act::TouchCalibrate => Some("horizon.imc.calibrate.tooltip".into()),
++        Act::TouchExtra(e) => Some(format!("horizon.imc.extra.{}.tooltip", e.name()).into()),
++        Act::TouchExtraKey(_) => Some("horizon.imc.extra.key.tooltip".into()),
 +        Act::MobilePreset => Some("horizon.imc.mobile.tooltip".into()),
          _ => None,
      };
      if let Some(key) = key.filter(|key| lang::has(key)) {
-@@ -2386,6 +2453,7 @@ impl OptionsUi {
+@@ -2386,6 +2462,8 @@ impl OptionsUi {
              Page::Controller | Page::PadBinds => "horizon.pages.controller",
              Page::Extras => "horizon.pages.extras",
              Page::Pvp => "horizon.pages.pvp",
 +            Page::Imc => "horizon.pages.imc",
++            Page::TouchButtons => "horizon.pages.touch_buttons",
              Page::Credits => "credits_and_attribution.screen.title",
              Page::Horizon => "horizon.pages.settings",
              Page::Studio => "horizon.pages.studio",
-@@ -2717,6 +2785,7 @@ impl OptionsUi {
+@@ -2717,6 +2795,7 @@ impl OptionsUi {
                          ),
                          Some(open("horizon.pages.open.studio", Page::Studio)),
                      ),
@@ -4578,7 +4994,7 @@ index 8ee09de..8590076 100644
                      // No AI hides the AI Agent page and everything AI.
                      Row::Buttons(
                          self.extra_button(s, crate::extras::Item::DiscordPresence),
-@@ -2735,6 +2804,114 @@ impl OptionsUi {
+@@ -2735,6 +2814,159 @@ impl OptionsUi {
                  )
                  .collect()
              }
@@ -4679,6 +5095,16 @@ index 8ee09de..8590076 100644
 +                    Some(edit),
 +                ));
 +                rows.push(Row::Buttons(
++                    button(
++                        0.0,
++                        0.0,
++                        150.0,
++                        tr("horizon.imc.extra_buttons"),
++                        Act::Push(Page::TouchButtons),
++                    ),
++                    None,
++                ));
++                rows.push(Row::Buttons(
 +                    button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
 +                    Some(button(
 +                        0.0,
@@ -4690,10 +5116,45 @@ index 8ee09de..8590076 100644
 +                ));
 +                rows
 +            }
++            Page::TouchButtons => {
++                use horizon_client_input::touch_extras::{Extra, key_caption};
++                let on_off = |on: bool| {
++                    if on {
++                        lang::get_or("options.on", "ON")
++                    } else {
++                        lang::get_or("options.off", "OFF")
++                    }
++                };
++                let toggle = |e: Extra| {
++                    let name = lang::get_or(&format!("horizon.imc.extra.{}", e.name()), e.label());
++                    let value = Text::option_name_value(
++                        Text::literal(name),
++                        Text::literal(on_off(s.touch_extras.is_on(e))),
++                    )
++                    .plain();
++                    button(0.0, 0.0, 150.0, Text::literal(value), Act::TouchExtra(e))
++                };
++                let key = |e: Extra| {
++                    let name = lang::get_or("horizon.imc.extra.key", "Key");
++                    let value = Text::option_name_value(
++                        Text::literal(name),
++                        Text::literal(key_caption(s.touch_extras.key_of(e))),
++                    )
++                    .plain();
++                    button(0.0, 0.0, 150.0, Text::literal(value), Act::TouchExtraKey(e))
++                };
++                vec![
++                    Row::Header("horizon.imc.header.extra_buttons"),
++                    Row::Buttons(toggle(Extra::Chat), Some(toggle(Extra::Debug))),
++                    Row::Buttons(toggle(Extra::Screenshot), Some(toggle(Extra::View))),
++                    Row::Buttons(toggle(Extra::Key1), Some(key(Extra::Key1))),
++                    Row::Buttons(toggle(Extra::Key2), Some(key(Extra::Key2))),
++                ]
++            }
              Page::Agent => {
                  let mut rows = vec![Row::Buttons(
                      self.extra_button(s, crate::extras::Item::AgentControl),
-@@ -3508,6 +3685,10 @@ impl OptionsUi {
+@@ -3508,6 +3740,10 @@ impl OptionsUi {
              {
                  *active = self.in_world && self.minecart_improvements;
              }
@@ -4704,7 +5165,7 @@ index 8ee09de..8590076 100644
          }
          self.row_bands = rows
              .bands
-@@ -4226,6 +4407,14 @@ impl OptionsUi {
+@@ -4226,6 +4462,22 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -4716,10 +5177,18 @@ index 8ee09de..8590076 100644
 +                            s.imc.reset();
 +                            events.push(Event::Changed);
 +                        }
++                        Act::TouchExtra(e) => {
++                            s.touch_extras.toggle(e);
++                            events.push(Event::Changed);
++                        }
++                        Act::TouchExtraKey(e) => {
++                            s.touch_extras.step_key(e);
++                            events.push(Event::Changed);
++                        }
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -4282,6 +4471,12 @@ impl OptionsUi {
+@@ -4282,6 +4534,12 @@ impl OptionsUi {
                              events.push(Event::Changed);
                          }
                          Act::HudEditor => events.push(Event::HudEditor),
@@ -4732,7 +5201,7 @@ index 8ee09de..8590076 100644
                          Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                          Act::Credits => events.push(Event::Credits),
                          Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
-@@ -5162,6 +5357,14 @@ impl OptionsUi {
+@@ -5162,6 +5420,22 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -4744,10 +5213,18 @@ index 8ee09de..8590076 100644
 +                            s.imc.reset();
 +                            events.push(Event::Changed);
 +                        }
++                        Act::TouchExtra(e) => {
++                            s.touch_extras.toggle(e);
++                            events.push(Event::Changed);
++                        }
++                        Act::TouchExtraKey(e) => {
++                            s.touch_extras.step_key(e);
++                            events.push(Event::Changed);
++                        }
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -5220,6 +5423,12 @@ impl OptionsUi {
+@@ -5220,6 +5494,12 @@ impl OptionsUi {
                              events.push(Event::Changed);
                          }
                          Act::HudEditor => events.push(Event::HudEditor),
@@ -4760,15 +5237,17 @@ index 8ee09de..8590076 100644
                          Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                          Act::Credits => events.push(Event::Credits),
                          Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
-@@ -7495,6 +7704,7 @@ mod tests {
+@@ -7495,6 +7775,9 @@ mod tests {
                          Act::Cycle(opt) => format!("{opt:?}"),
                          Act::Extra(e) => format!("extra:{e:?}"),
                          Act::PvpPreset => "pvp-preset".to_owned(),
 +                        Act::MobilePreset => "mobile-preset".to_owned(),
++                        Act::TouchExtra(e) => format!("touch-extra:{}", e.name()),
++                        Act::TouchExtraKey(e) => format!("touch-extra-key:{}", e.name()),
                          Act::Push(to) => {
                              ways_in
                                  .entry(format!("{to:?}"))
-@@ -7560,8 +7770,8 @@ mod tests {
+@@ -7560,8 +7843,8 @@ mod tests {
                      Opt::GraphicsBackend => "graphics-api".to_owned(),
                      o => format!("{o:?}"),
                  };
@@ -4779,7 +5258,7 @@ index 8ee09de..8590076 100644
                      continue;
                  }
                  assert!(
-@@ -7640,6 +7850,7 @@ mod tests {
+@@ -7640,6 +7923,7 @@ mod tests {
                  Page::Pvp,
                  Page::SplitSetup,
                  Page::Studio,
@@ -4787,7 +5266,7 @@ index 8ee09de..8590076 100644
                  Page::Agent,
              ]
          );
-@@ -7671,6 +7882,32 @@ mod tests {
+@@ -7671,6 +7955,32 @@ mod tests {
          assert!(pushes(&mut ui).contains(&Page::Controller));
      }
  
@@ -4821,10 +5300,10 @@ index 8ee09de..8590076 100644
      fn sound_device_button_in_sound_page_and_cycles() {
          let mut s = Settings::default();
 diff --git a/horizon/crates/horizon-client-render/src/settings.rs b/horizon/crates/horizon-client-render/src/settings.rs
-index 2ead838..947f3b7 100644
+index 2ead838..c9f0a21 100644
 --- a/horizon/crates/horizon-client-render/src/settings.rs
 +++ b/horizon/crates/horizon-client-render/src/settings.rs
-@@ -207,6 +207,12 @@ pub struct Settings {
+@@ -207,6 +207,14 @@ pub struct Settings {
      pub controller: crate::gamepad::PadSettings,
      /// Horizon's optional extras (`horizon-extras.txt`), all off by default.
      pub extras: crate::extras::Extras,
@@ -4834,20 +5313,23 @@ index 2ead838..947f3b7 100644
 +    pub touch_layout: horizon_client_input::touch_layout::ControlLayout,
 +    /// The correction fitted from the player's own taps (`horizon-imc-touch-calibration.txt`).
 +    pub touch_calibration: horizon_client_input::touch_calibration::Calibration,
++    /// The extra on-screen buttons that are on, and their keys (`horizon-imc-buttons.txt`).
++    pub touch_extras: horizon_client_input::touch_extras::Extras,
      /// The Horizon mods turned on (`horizon-mods.txt`), all off by default.
      pub mods: crate::mod_list::ModList,
      /// The packs in `shaderpacks/`, listed when the Shader Packs page opens; the pick is
-@@ -295,6 +301,9 @@ impl Default for Settings {
+@@ -295,6 +303,10 @@ impl Default for Settings {
              video_modes: Vec::new(),
              controller: Default::default(),
              extras: Default::default(),
 +            imc: Default::default(),
 +            touch_layout: Default::default(),
 +            touch_calibration: Default::default(),
++            touch_extras: Default::default(),
              mods: Default::default(),
              shader_packs: Vec::new(),
              shader_options: None,
-@@ -362,6 +371,27 @@ impl Settings {
+@@ -362,6 +374,34 @@ impl Settings {
              .and_then(|dir| fs::read_to_string(dir.join(crate::extras::FILE)).ok())
              .unwrap_or_default();
          let mut extras = crate::extras::Extras::parse(&extras_text);
@@ -4872,50 +5354,61 @@ index 2ead838..947f3b7 100644
 +            })
 +            .map(|text| horizon_client_input::touch_calibration::Calibration::parse(&text))
 +            .unwrap_or_default();
++        let touch_extras = path
++            .parent()
++            .and_then(|dir| {
++                fs::read_to_string(dir.join(horizon_client_input::touch_extras::FILE)).ok()
++            })
++            .map(|text| horizon_client_input::touch_extras::Extras::parse(&text))
++            .unwrap_or_default();
          // The enabled mods are the game folder's, shared by its players (`--player-dir`).
          let mods = path
              .parent()
-@@ -375,6 +405,9 @@ impl Settings {
+@@ -375,6 +415,10 @@ impl Settings {
                      horizon,
                      controller,
                      extras,
 +                    imc,
 +                    touch_layout,
 +                    touch_calibration,
++                    touch_extras,
                      mods,
                      ..Self::parse(&text)
                  }
-@@ -383,6 +416,9 @@ impl Settings {
+@@ -383,6 +427,10 @@ impl Settings {
                  horizon,
                  controller,
                  extras,
 +                imc,
 +                touch_layout,
 +                touch_calibration,
++                touch_extras,
                  mods,
                  ..Self::default()
              },
-@@ -498,6 +534,9 @@ impl Settings {
+@@ -498,6 +546,10 @@ impl Settings {
              video_modes: Vec::new(),
              controller: Default::default(),
              extras: Default::default(),
 +            imc: Default::default(),
 +            touch_layout: Default::default(),
 +            touch_calibration: Default::default(),
++            touch_extras: Default::default(),
              mods: Default::default(),
              shader_packs: Vec::new(),
              shader_options: None,
-@@ -663,6 +702,9 @@ impl Settings {
+@@ -663,6 +715,10 @@ impl Settings {
              horizon: self.horizon.clone(),
              controller: self.controller.clone(),
              extras: self.extras.clone(),
 +            imc: self.imc.clone(),
 +            touch_layout: self.touch_layout.clone(),
 +            touch_calibration: self.touch_calibration,
++            touch_extras: self.touch_extras.clone(),
              mods: self.mods.clone(),
              video_modes: self.video_modes.clone(),
              ..Self::from_file(file)
-@@ -686,6 +728,19 @@ impl Settings {
+@@ -686,6 +742,23 @@ impl Settings {
              let mut extras = self.extras.clone();
              extras.emote_key = self.keys.get("key.emote").to_owned();
              extras.save(dir);
@@ -4932,14 +5425,18 @@ index 2ead838..947f3b7 100644
 +            if !self.touch_calibration.is_identity() || calibration_path.exists() {
 +                let _ = fs::write(calibration_path, self.touch_calibration.to_text());
 +            }
++            let extras_path = dir.join(horizon_client_input::touch_extras::FILE);
++            if !self.touch_extras.is_default() || extras_path.exists() {
++                let _ = fs::write(extras_path, self.touch_extras.serialize());
++            }
              self.mods.save(&crate::logging::shared_dir(dir));
          }
      }
 diff --git a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-index 7466983..3adbf92 100644
+index 7466983..07f9ec0 100644
 --- a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
 +++ b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-@@ -720,6 +720,65 @@
+@@ -720,6 +720,83 @@
    "horizon.pages.pvp": "PvP & HUD",
    "horizon.pages.pvp.tooltip": "Crosshair, HUD and PvP settings, all off by default. Nothing here shows what vanilla doesn't.",
    "horizon.pages.open.pvp": "PvP & HUD...",
@@ -4954,6 +5451,24 @@ index 7466983..3adbf92 100644
 +  "horizon.imc.editor": "Edit touch controls",
 +  "horizon.imc.calibrate": "Calibrate touch",
 +  "horizon.imc.calibrate.tooltip": "Fixes a touch that lands a little off, more toward the edges of the screen. Tap the five crosses with the tip of your finger; the game works out the correction and keeps it. Reset to none undoes it.",
++  "horizon.imc.extra_buttons": "Extra buttons",
++  "horizon.pages.touch_buttons": "Extra buttons",
++  "horizon.pages.touch_buttons.tooltip": "More buttons on the screen while you play: Chat, F3, F2 and View press the key you set for them in Controls, and Key 1 and Key 2 press a key you pick here. Each is off until you switch it on; move and resize it with Edit touch controls.",
++  "horizon.imc.header.extra_buttons": "Buttons on the screen",
++  "horizon.imc.extra.chat": "Chat",
++  "horizon.imc.extra.chat.tooltip": "A button that opens the chat, like your Chat key.",
++  "horizon.imc.extra.debug": "F3",
++  "horizon.imc.extra.debug.tooltip": "A button for the debug screen (F3): coordinates, frame rate and the like.",
++  "horizon.imc.extra.shot": "F2",
++  "horizon.imc.extra.shot.tooltip": "A button that takes a screenshot, like your Screenshot key.",
++  "horizon.imc.extra.view": "View",
++  "horizon.imc.extra.view.tooltip": "A button that changes the camera: first person, behind you, in front of you.",
++  "horizon.imc.extra.key1": "Key 1",
++  "horizon.imc.extra.key1.tooltip": "A button that presses the key chosen on the right. It shows only once a key is chosen.",
++  "horizon.imc.extra.key2": "Key 2",
++  "horizon.imc.extra.key2.tooltip": "A button that presses the key chosen on the right. It shows only once a key is chosen.",
++  "horizon.imc.extra.key": "Key",
++  "horizon.imc.extra.key.tooltip": "Click to step to the next key: none, then F1, F4 to F11, and some letters. The button on the left must be on for it to show.",
 +  "horizon.imc.editor.tooltip": "Drag the on-screen buttons where you want them, and set the size and opacity of each. Needs a world open: the buttons show over it.",
 +  "horizon.imc.touchControls": "On-screen buttons",
 +  "horizon.imc.touchControls.tooltip": "Show the buttons on the screen while you play.",
@@ -6067,10 +6582,10 @@ index 3fd7216..3219d79 100644
                  // and no music tracks to list or play).
 diff --git a/horizon/crates/horizon-client/src/game/touch.rs b/horizon/crates/horizon-client/src/game/touch.rs
 new file mode 100644
-index 0000000..b36bd8e
+index 0000000..d4a793b
 --- /dev/null
 +++ b/horizon/crates/horizon-client/src/game/touch.rs
-@@ -0,0 +1,761 @@
+@@ -0,0 +1,880 @@
 +//! Touch on a phone: fingers become the inputs the game already has.
 +//!
 +//! The finger logic is `horizon_client_input::touch` (pure, unit tested). This file only
@@ -6093,7 +6608,8 @@ index 0000000..b36bd8e
 +use horizon_client_input::touch::{
 +    Action as TouchAction, FingerId, Mode, Rect, Touch, hotbar_slots, to_surface,
 +};
-+use horizon_client_input::touch_layout::back;
++use horizon_client_input::touch_extras::Extra;
++use horizon_client_input::touch_layout::{EXTRA_FIRST, back};
 +use std::time::Instant;
 +use winit::{
 +    dpi::PhysicalPosition,
@@ -6133,23 +6649,77 @@ index 0000000..b36bd8e
 +/// `PADS`' index into the layout file's buttons (`touch_layout::NAMES`).
 +const PAD_SLOT: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 +
-+/// How many on-screen buttons there are, for the editor.
-+pub(super) const PAD_COUNT: usize = PADS.len();
-+/// Pad `i`'s place in the layout file.
-+pub(super) fn pad_slot(i: usize) -> usize {
-+    PAD_SLOT[i]
++/// What a pad index means: one of the nine that are always there, or an extra that is on.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(super) enum PadKind {
++    /// An index into `PADS`.
++    Fixed(usize),
++    /// An extra button, and its number among the extras that are showing (for its default place).
++    Extra(Extra, usize),
 +}
-+/// Pad `i`'s name on its button.
-+pub(super) fn pad_label(i: usize) -> &'static str {
-+    PADS[i].label
++
++impl PadKind {
++    /// The button's place in the layout file.
++    pub(super) fn slot(self) -> usize {
++        match self {
++            PadKind::Fixed(i) => PAD_SLOT[i],
++            PadKind::Extra(e, _) => {
++                EXTRA_FIRST + Extra::ALL.iter().position(|x| *x == e).unwrap_or(0)
++            }
++        }
++    }
++
++    pub(super) fn label(self) -> &'static str {
++        match self {
++            PadKind::Fixed(i) => PADS[i].label,
++            PadKind::Extra(e, _) => e.label(),
++        }
++    }
++
++    /// Where the button is before the player's arrangement, as `[x, y, w, h]`. The extras stand
++    /// in a column down the left edge under Pause, one under the other.
++    pub(super) fn base(self, size: (f32, f32), margin: f32) -> [f32; 4] {
++        match self {
++            PadKind::Fixed(i) => PADS[i].base(size, margin),
++            PadKind::Extra(_, n) => Pad {
++                at: Anchor::TopLeft(0.0, 0.15 + 0.115 * n as f32, 0.07, 0.10),
++                label: "",
++                button: Button::Start,
++            }
++            .base(size, margin),
++        }
++    }
 +}
-+/// Where the layout puts pad `i` before the player's arrangement, as `[x, y, w, h]`.
-+pub(super) fn pad_base(i: usize, size: (f32, f32), margin: f32) -> [f32; 4] {
-+    let r = PADS[i].rect(size, margin);
-+    [r.x, r.y, r.w, r.h]
++
++/// The controller button pad `i` holds while a finger is on it. The extras press a key once and
++/// hold nothing, so they answer `None`.
++fn held_button(i: usize) -> Option<Button> {
++    PADS.get(i).map(|p| p.button)
++}
++
++impl Game<'_> {
++    /// The buttons now on offer, in index order: the nine, then the extras that are on and have
++    /// a key to press. The hotbar's slots follow, so every place that counts buttons asks here.
++    pub(super) fn pad_kinds(&self) -> Vec<PadKind> {
++        let mut kinds: Vec<PadKind> = (0..PADS.len()).map(PadKind::Fixed).collect();
++        kinds.extend(
++            self.settings
++                .touch_extras
++                .active()
++                .enumerate()
++                .map(|(n, e)| PadKind::Extra(e, n)),
++        );
++        kinds
++    }
 +}
 +
 +impl Pad {
++    /// Where the layout puts this pad before the player's arrangement, as `[x, y, w, h]`.
++    fn base(&self, size: (f32, f32), margin: f32) -> [f32; 4] {
++        let r = self.rect(size, margin);
++        [r.x, r.y, r.w, r.h]
++    }
++
 +    /// The button as a rectangle in pixels on a screen of `size`. `margin` scales the safe
 +    /// edges (iMC Settings' Screen margin): 1.0 is the layout's own.
 +    fn rect(&self, size: (f32, f32), margin: f32) -> Rect {
@@ -6344,10 +6914,11 @@ index 0000000..b36bd8e
 +            // In the world the buttons are hit by rectangle, not by the engine's pointer, so the
 +            // log says where the finger was against the nearest button: how far left or right,
 +            // above or below its centre. A test reads the offset straight off these lines.
++            let kinds = self.pad_kinds();
 +            let near = rects
 +                .iter()
 +                .enumerate()
-+                .take(PADS.len())
++                .take(kinds.len())
 +                .map(|(i, r)| (i, (at.0 - (r.x + r.w / 2.0), at.1 - (r.y + r.h / 2.0)), r))
 +                .min_by(|a, b| {
 +                    let d = |v: (f32, f32)| v.0 * v.0 + v.1 * v.1;
@@ -6359,7 +6930,7 @@ index 0000000..b36bd8e
 +                     rect {:.0}x{:.0} at ({:.0}, {:.0}) hit {}",
 +                    at.0,
 +                    at.1,
-+                    PADS[i].label,
++                    kinds[i].label(),
 +                    r.w,
 +                    r.h,
 +                    r.x,
@@ -6372,14 +6943,18 @@ index 0000000..b36bd8e
 +            TouchPhase::Started => {
 +                let (hit, actions) = self.touch.logic.down(id, at, now, &rects);
 +                if let Some(i) = hit {
-+                    if i < PADS.len() {
++                    let kinds = self.pad_kinds();
++                    if let Some(PadKind::Extra(extra, _)) = kinds.get(i).copied() {
++                        // An extra presses its key once, as a tap on the keyboard would.
++                        self.touch_extra_key(event_loop, extra);
++                    } else if i < PADS.len() {
 +                        self.touch.holding.push((id, i));
 +                        self.touch_button(event_loop, PADS[i].button, true);
 +                    } else if !self.spectator() {
 +                        // A hotbar slot: the same as pressing its number key. Nothing is held,
 +                        // so there is nothing to let go of. A spectator's number keys open the
 +                        // teleport menu instead (`play_keys.rs`), which a tap does not.
-+                        self.hotbar_presses.push(i - PADS.len());
++                        self.hotbar_presses.push(i - kinds.len());
 +                    }
 +                }
 +                actions
@@ -6388,7 +6963,9 @@ index 0000000..b36bd8e
 +            TouchPhase::Ended | TouchPhase::Cancelled => {
 +                if let Some(n) = self.touch.holding.iter().position(|(f, _)| *f == id) {
 +                    let (_, i) = self.touch.holding.remove(n);
-+                    self.touch_button(event_loop, PADS[i].button, false);
++                    if let Some(button) = held_button(i) {
++                        self.touch_button(event_loop, button, false);
++                    }
 +                }
 +                self.touch.logic.up(id, now)
 +            }
@@ -6441,7 +7018,7 @@ index 0000000..b36bd8e
 +            .touch
 +            .holding
 +            .iter()
-+            .any(|(_, i)| PADS[*i].button == Button::LeftStick);
++            .any(|(_, i)| held_button(*i) == Some(Button::LeftStick));
 +        // Held by sprint only while no pad finger holds it; checked every frame, so lifting the
 +        // pad's finger with the thumb still forward hands the press back to sprint.
 +        let hold = want && !run_pad_held;
@@ -6463,7 +7040,9 @@ index 0000000..b36bd8e
 +        }
 +        let held = std::mem::take(&mut self.touch.holding);
 +        for (_, i) in held {
-+            self.touch_button(event_loop, PADS[i].button, false);
++            if let Some(button) = held_button(i) {
++                self.touch_button(event_loop, button, false);
++            }
 +        }
 +        let actions = self.touch.logic.cancel_all();
 +        self.touch_apply(event_loop, actions);
@@ -6485,7 +7064,9 @@ index 0000000..b36bd8e
 +            // inventory opened does not stay down.
 +            let held = std::mem::take(&mut self.touch.holding);
 +            for (_, i) in held {
-+                self.touch_button(event_loop, PADS[i].button, false);
++                if let Some(button) = held_button(i) {
++                    self.touch_button(event_loop, button, false);
++                }
 +            }
 +            let actions = self.touch.logic.set_mode(mode);
 +            self.touch_apply(event_loop, actions);
@@ -6580,14 +7161,29 @@ index 0000000..b36bd8e
 +    /// Where pad `i` is on a screen of `size`: the layout's own place, then the player's
 +    /// arrangement. The hit test and the drawing both come here, so they cannot disagree.
 +    /// `None` for a button the player hid.
-+    fn pad_rect(&self, i: usize, size: (f32, f32)) -> Option<Rect> {
-+        let slot = self.settings.touch_layout.slot(PAD_SLOT[i]);
++    fn pad_rect(&self, kind: PadKind, size: (f32, f32)) -> Option<Rect> {
++        let slot = self.settings.touch_layout.slot(kind.slot());
 +        if !slot.shown {
 +            return None;
 +        }
-+        let base = PADS[i].rect(size, self.settings.imc.safe_margin_scale());
-+        let [x, y, w, h] = slot.place([base.x, base.y, base.w, base.h], size);
++        let base = kind.base(size, self.settings.imc.safe_margin_scale());
++        let [x, y, w, h] = slot.place(base, size);
 +        Some(Rect { x, y, w, h })
++    }
++
++    /// Presses the key an extra button stands for, once: the player's own binding for Chat, F3,
++    /// F2 and View, or the key they picked. It goes in as the control line `key <name> tap`, the
++    /// same path a script's key takes, so every screen and rebind treats it as the keyboard's.
++    fn touch_extra_key(&mut self, event_loop: &dyn EventLoopCtl, extra: Extra) {
++        let name = match extra.binding() {
++            Some(binding) => self.settings.keys.get(binding).to_owned(),
++            None => self.settings.touch_extras.key_of(extra).to_owned(),
++        };
++        if !horizon_client_input::touch_extras::valid_key_name(&name) {
++            log::info!("touch: {} has no key to press ({name})", extra.label());
++            return;
++        }
++        self.replay_line(&format!("key {name} tap"), event_loop);
 +    }
 +
 +    fn touch_rects(&self, size: (f32, f32)) -> Vec<Rect> {
@@ -6599,9 +7195,11 @@ index 0000000..b36bd8e
 +        let (bx, by) = self.settings.imc.button_shift();
 +        let _ = margin;
 +        // A hidden button keeps its index, with no area, so nothing else shifts.
-+        let mut rects: Vec<Rect> = (0..PADS.len())
-+            .map(|i| {
-+                self.pad_rect(i, size).unwrap_or(Rect {
++        let kinds = self.pad_kinds();
++        let mut rects: Vec<Rect> = kinds
++            .iter()
++            .map(|&kind| {
++                self.pad_rect(kind, size).unwrap_or(Rect {
 +                    x: -1.0,
 +                    y: -1.0,
 +                    w: 0.0,
@@ -6609,7 +7207,7 @@ index 0000000..b36bd8e
 +                })
 +            })
 +            .collect();
-+        // The nine hotbar slots follow the pads: an index of `PADS.len()` or more is a slot.
++        // The nine hotbar slots follow the pads: an index of the pads' count or more is a slot.
 +        if let Some(scale) = self.gui_scale().map(|b| b.scale) {
 +            rects.extend(hotbar_slots(size, scale, HOTBAR_LIFT));
 +        }
@@ -6733,19 +7331,20 @@ index 0000000..b36bd8e
 +        }
 +        let atlas = &self.gui.atlas;
 +        let (w, h) = (batch.width, batch.height);
-+        for (i, p) in PADS.iter().enumerate() {
++        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
 +            // The same fractions as the hit test, on the GUI-unit size instead of pixels.
-+            let Some(Rect { x, y, w: bw, h: bh }) = self.pad_rect(i, (w, h)) else {
++            let Some(Rect { x, y, w: bw, h: bh }) = self.pad_rect(kind, (w, h)) else {
 +                continue;
 +            };
-+            let opacity = self.settings.touch_layout.slot(PAD_SLOT[i]).opacity;
++            let opacity = self.settings.touch_layout.slot(kind.slot()).opacity;
 +            let down = self.touch.holding.iter().any(|(_, held)| *held == i);
 +            let fill = faded(if down { 0x90FF_FFFF } else { 0x5000_0000 }, opacity);
 +            batch.fill(atlas, x, y, bw, bh, fill);
-+            let tw = HudBatch::text_width(atlas, p.label);
++            let label = kind.label();
++            let tw = HudBatch::text_width(atlas, label);
 +            batch.text(
 +                atlas,
-+                p.label,
++                label,
 +                x + (bw - tw) / 2.0,
 +                y + (bh - 8.0) / 2.0,
 +                faded(0xFFFF_FFFF, opacity),
@@ -6783,9 +7382,44 @@ index 0000000..b36bd8e
 +            assert!(*slot < COUNT, "{} has no slot", PADS[i].label);
 +            assert!(PAD_SLOT[i + 1..].iter().all(|o| o != slot));
 +        }
-+        // Back is the one slot that is not a pad.
-+        assert_eq!(COUNT, PADS.len() + 1);
-+        assert_eq!(NAMES[COUNT - 1], "back");
++        // Back is the one slot of the first ten that is not a pad; the extras follow it.
++        assert_eq!(EXTRA_FIRST, PADS.len() + 1);
++        assert_eq!(NAMES[EXTRA_FIRST - 1], "back");
++        assert_eq!(COUNT, EXTRA_FIRST + Extra::ALL.len());
++    }
++
++    #[test]
++    fn the_extras_have_their_own_slots_and_stay_on_the_screen() {
++        for (n, e) in Extra::ALL.iter().enumerate() {
++            let kind = PadKind::Extra(*e, n);
++            assert!(kind.slot() >= EXTRA_FIRST && kind.slot() < COUNT);
++            assert_eq!(NAMES[kind.slot()], e.name());
++            let [x, y, w, h] = kind.base(PHONE, 1.0);
++            assert!(x >= 0.0 && y >= 0.0 && x + w <= PHONE.0 && y + h <= PHONE.1, "{e:?}");
++        }
++    }
++
++    #[test]
++    fn the_extras_do_not_sit_on_the_fixed_buttons() {
++        let fixed: Vec<Rect> = PADS.iter().map(|p| p.rect(PHONE, 1.0)).collect();
++        let overlap = |a: &Rect, b: &Rect| {
++            a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
++        };
++        for n in 0..Extra::ALL.len() {
++            let [x, y, w, h] = PadKind::Extra(Extra::ALL[n], n).base(PHONE, 1.0);
++            let r = Rect { x, y, w, h };
++            assert!(!fixed.iter().any(|f| overlap(&r, f)), "extra {n} is on a fixed button");
++            for m in 0..n {
++                let [x, y, w, h] = PadKind::Extra(Extra::ALL[m], m).base(PHONE, 1.0);
++                assert!(!overlap(&r, &Rect { x, y, w, h }), "extras {m} and {n} overlap");
++            }
++        }
++    }
++
++    #[test]
++    fn an_extra_holds_no_controller_button() {
++        assert_eq!(held_button(PADS.len()), None);
++        assert_eq!(held_button(0), Some(Button::South));
 +    }
 +
 +    #[test]
@@ -6995,10 +7629,10 @@ index 0000000..14482c5
 +}
 diff --git a/horizon/crates/horizon-client/src/game/touch_editor.rs b/horizon/crates/horizon-client/src/game/touch_editor.rs
 new file mode 100644
-index 0000000..a83f514
+index 0000000..90aab35
 --- /dev/null
 +++ b/horizon/crates/horizon-client/src/game/touch_editor.rs
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,275 @@
 +//! The touch controls editor (iMC Settings > Edit touch controls): the on-screen buttons drawn
 +//! exactly as they are in play, over the world, on a wide stage the player drags them around.
 +//! A panel on the right sets the size and opacity of the one picked, hides it or puts it back.
@@ -7006,7 +7640,7 @@ index 0000000..a83f514
 +//! file) are `horizon_client_input::touch_layout`. Nothing here reaches a server.
 +//!
 +//! Done keeps the arrangement. Cancel, and Back, put back the one the editor opened with.
-+use super::touch::{PAD_COUNT, faded, pad_base, pad_label, pad_slot};
++use super::touch::{PadKind, faded};
 +use super::{Game, Screen};
 +use horizon_client::{
 +    hud::{HudBatch, rgba},
@@ -7077,23 +7711,27 @@ index 0000000..a83f514
 +    /// shown faintly on the stage so it can be picked and shown again.
 +    fn editor_pad_at(&self) -> Option<usize> {
 +        let size = self.gui_size();
-+        (0..PAD_COUNT).rev().find(|&i| {
-+            let r = self.editor_pad_rect(i, size);
++        let kinds = self.pad_kinds();
++        (0..kinds.len()).rev().find(|&i| {
++            let r = self.editor_pad_rect(kinds[i], size);
 +            let (cx, cy) = self.cursor;
 +            cx >= r[0] && cx < r[0] + r[2] && cy >= r[1] && cy < r[1] + r[3]
 +        })
 +    }
 +
 +    /// A pad's rectangle in GUI units, shown or not.
-+    fn editor_pad_rect(&self, i: usize, size: (f32, f32)) -> [f32; 4] {
++    fn editor_pad_rect(&self, kind: PadKind, size: (f32, f32)) -> [f32; 4] {
 +        let slot = Slot {
 +            shown: true,
-+            ..self.settings.touch_layout.slot(pad_slot(i))
++            ..self.settings.touch_layout.slot(kind.slot())
 +        };
-+        slot.place(
-+            pad_base(i, size, self.settings.imc.safe_margin_scale()),
-+            size,
-+        )
++        slot.place(kind.base(size, self.settings.imc.safe_margin_scale()), size)
++    }
++
++    /// The button the editor has picked, or the first if the list got shorter under it.
++    fn editor_kind(&self, picked: usize) -> PadKind {
++        let kinds = self.pad_kinds();
++        kinds.get(picked).or(kinds.first()).copied().unwrap_or(PadKind::Fixed(0))
 +    }
 +
 +    pub(super) fn draw_touch_editor(&mut self, batch: &mut HudBatch) {
@@ -7117,13 +7755,13 @@ index 0000000..a83f514
 +            colour(0xC000_0000),
 +        );
 +
-+        for i in 0..PAD_COUNT {
-+            let slot = self.settings.touch_layout.slot(pad_slot(i));
-+            let [x, y, w, h] = self.editor_pad_rect(i, size);
++        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
++            let slot = self.settings.touch_layout.slot(kind.slot());
++            let [x, y, w, h] = self.editor_pad_rect(kind, size);
 +            // A hidden button is drawn faintly, outlined, so it can still be found.
 +            let opacity = if slot.shown { slot.opacity } else { 0.25 };
 +            batch.fill(atlas, x, y, w, h, faded(0x5000_0000, opacity));
-+            let label = pad_label(i);
++            let label = kind.label();
 +            let tw = HudBatch::text_width(atlas, label);
 +            batch.text(
 +                atlas,
@@ -7141,15 +7779,16 @@ index 0000000..a83f514
 +        }
 +
 +        // The heading and the picked button's numbers, at the top of the panel.
-+        let slot = self.settings.touch_layout.slot(pad_slot(picked));
-+        let name = Text::literal(pad_label(picked));
++        let picked_kind = self.editor_kind(picked);
++        let slot = self.settings.touch_layout.slot(picked_kind.slot());
++        let name = Text::literal(picked_kind.label());
 +        let line = |t: &str| Text::literal(t);
 +        let head = line("Touch controls");
 +        let hx = stage + 8.0;
 +        batch.text_styled(atlas, &head, hx, 4.0, u32::MAX, true);
 +        let info = Text::literal(&format!(
 +            "{}  {}  {}{}",
-+            pad_label(picked),
++            picked_kind.label(),
 +            editor::percent(slot.scale),
 +            editor::percent(slot.opacity),
 +            if slot.shown { "" } else { "  hidden" }
@@ -7192,7 +7831,7 @@ index 0000000..a83f514
 +            return;
 +        }
 +        if let Some(i) = self.editor_pad_at() {
-+            let r = self.editor_pad_rect(i, size);
++            let r = self.editor_pad_rect(self.editor_kind(i), size);
 +            let grab = (self.cursor.0 - r[0], self.cursor.1 - r[1]);
 +            if let Some(e) = &mut self.touch_editor {
 +                e.picked = i;
@@ -7205,7 +7844,7 @@ index 0000000..a83f514
 +        let Some(picked) = self.touch_editor.as_ref().map(|e| e.picked) else {
 +            return;
 +        };
-+        let index = pad_slot(picked);
++        let index = self.editor_kind(picked).slot();
 +        match action {
 +            Action::Done => self.close_touch_editor(true),
 +            Action::Cancel => self.close_touch_editor(false),
@@ -7228,9 +7867,10 @@ index 0000000..a83f514
 +            return;
 +        };
 +        let size = self.gui_size();
-+        let index = pad_slot(picked);
++        let kind = self.editor_kind(picked);
++        let index = kind.slot();
 +        let slot = self.settings.touch_layout.slot(index);
-+        let base = pad_base(picked, size, self.settings.imc.safe_margin_scale());
++        let base = kind.base(size, self.settings.imc.safe_margin_scale());
 +        // The size the button has now, held where the finger took it.
 +        let placed = Slot {
 +            dx: 0.0,
