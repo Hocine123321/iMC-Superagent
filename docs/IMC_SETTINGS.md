@@ -24,6 +24,8 @@ belong to the iOS app and not to Minecraft. It follows the same pattern as the P
 | Stick size | Small, Normal, Large, Largest | Normal | Finger travel for full speed, as a fraction of the screen's shorter side: 0.10, 0.14, 0.18, 0.22. |
 | Steering area | Narrow, Normal, Wide, Widest | Normal | How much of the left side steers: 30%, 40%, 50%, 60% of the width. |
 | Screen margin | None, Small, Normal, Large | Normal | Multiplies the button layout's safe margins (8% sides, 4% top, 7% bottom) by 0, 0.5, 1 and 1.5. |
+| Auto sprint | On, Off | **Off** | Pushing the stick forward to its edge holds Run (starts at 95% of full tilt, stops below 80%). Backward and sideways never sprint. A thumb that is steering cannot also hold the Run button. |
+| Touch shift X, Y | -16, -8, 0, +8, +16 px | 0 | Moves every touch by that many screen pixels, after the safe-area correction. For an offset that is left on this phone (see below). |
 | Reset to defaults | button | | Puts every setting back, Auto Performance included. |
 
 **The defaults are the values touch had before this page existed**, so nothing changes until the
@@ -142,6 +144,23 @@ These are edits under `horizon/`, which is normally off limits. They were kept t
 the input crate plus small hooks, and no dependency or `Cargo.lock` change was needed
 (`horizon-client-render` already depends on `horizon-client-input`).
 
+## Touch behaviour added with Auto Performance
+
+Written 2026-11-09, **compiled on CI only, never run on a phone**; the pure logic has tests.
+
+- **Tap a hotbar slot to select it** (`touch::hotbar_slots`). The nine slots are laid out as the
+  engine draws them (182 by 22 GUI units, centred; `hud_layout::hotbar`) and each target is the
+  whole 20-unit column, grown 6 units upward for a thumb. It pushes onto the same queue as the
+  number keys (`hotbar_presses`), so multiplayer ordering is the engine's. Skipped for spectators.
+  The hotbar's left end is inside the steering zone; the slots are checked first, so a finger
+  there selects a slot instead of starting the stick.
+- **Auto sprint**: see the table. Held on the virtual controller's Run button, so the player's
+  rebind applies. The Run pad's own finger keeps its press if both want it.
+- **The stick follows an overshoot**: past full travel the origin is dragged after the thumb, so
+  turning back is one short move.
+- **Tap tolerance scales with the screen** (1% of the shorter side, never under 8 px; 11.7 px on
+  an iPhone 12, close to the fixed 12 it replaces).
+
 ## Not done
 
 - The page is reachable from the game's Options only. Opening it from the launcher's Home screen is
@@ -186,6 +205,33 @@ clamped to the surface.
 
 Four tests: the iPhone 12 numbers with a safe-area surface, a whole-window surface (no move), a
 desktop window (no move), and a touch on the notch (lands on the nearest edge pixel).
+
+## An offset that is left (2026-11-09, second report)
+
+The owner reported the offset "still there by a small margin" after the fix above. **The cause is
+not known.** What the winit 0.30.13 source rules out:
+
+- Menu pointer mapping is right: `CursorMoved` is divided by the GUI scale, the exact inverse of how
+  the GUI is drawn (`game.rs`, `HudBatch::new`).
+- Touch scale is not the suspect: touches and the surface both use the screen's scale (3.0 on an
+  iPhone 12).
+- Once `layoutSubviews` has run, `Resized` reports the **whole screen frame**, so the surface is
+  the whole window and no shift is wanted; only the first surface (before layout) is the safe area.
+  `to_surface` handles both, but it **decides which one it is by comparing sizes to within 1 px**,
+  and that comparison is the one part that is a heuristic and not a fact. If the surface size is
+  neither, the touch is left alone.
+
+I could not run the phone, so I did not guess a third change. Two things were added instead:
+
+1. **Touch shift X and Y** (iMC Settings > Screen): zero the offset on the spot. Move the shift the
+   opposite way to the error: if the finger lands to the right, use a negative X.
+2. **A log line on every press**, in `latest.log`:
+   `touch: raw (x, y) safe origin (...) safe size WxH surface WxH window ... scale S -> (x, y) shift (...)`.
+   Press the centre of a known button and send the log: the raw point, the sizes and the result
+   state the error in numbers, and the shift needed is the difference.
+
+The log line is cheap (one line per finger down, none per move) but should be removed once the
+cause is fixed.
 
 ## Still to check on the phone
 

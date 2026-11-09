@@ -30,6 +30,12 @@ pub enum Item {
     HoldTime,
     /// A double tap on the world jumps.
     DoubleTapJump,
+    /// Sprint while the stick is pushed forward to its edge.
+    AutoSprint,
+    /// Moves every touch sideways by a few pixels, to cancel an offset on this phone.
+    ShiftX,
+    /// Moves every touch up or down by a few pixels.
+    ShiftY,
     /// The edges a notch or rounded corner hides: where the buttons stop.
     SafeMargin,
     /// Gives memory back when the phone runs short (`auto_performance`).
@@ -47,13 +53,16 @@ pub enum Item {
 }
 
 impl Item {
-    pub const ALL: [Item; 13] = [
+    pub const ALL: [Item; 16] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
         Item::MoveZone,
         Item::HoldTime,
         Item::DoubleTapJump,
+        Item::AutoSprint,
+        Item::ShiftX,
+        Item::ShiftY,
         Item::SafeMargin,
         Item::AutoPerformance,
         Item::AutoSensitivity,
@@ -72,6 +81,9 @@ impl Item {
             Item::MoveZone => "moveZone",
             Item::HoldTime => "holdTime",
             Item::DoubleTapJump => "doubleTapJump",
+            Item::AutoSprint => "autoSprint",
+            Item::ShiftX => "shiftX",
+            Item::ShiftY => "shiftY",
             Item::SafeMargin => "safeMargin",
             Item::AutoPerformance => "autoPerformance",
             Item::AutoSensitivity => "autoSensitivity",
@@ -91,6 +103,9 @@ impl Item {
             Item::MoveZone => "Steering area",
             Item::HoldTime => "Hold to mine",
             Item::DoubleTapJump => "Double tap to jump",
+            Item::AutoSprint => "Auto sprint",
+            Item::ShiftX => "Touch shift X",
+            Item::ShiftY => "Touch shift Y",
             Item::SafeMargin => "Screen margin",
             Item::AutoPerformance => "Auto Performance",
             Item::AutoSensitivity => "Reacts",
@@ -141,6 +156,15 @@ impl Item {
             Item::MoveZone => "How much of the left side of the screen steers.",
             Item::HoldTime => "How long you hold a finger still before it starts mining.",
             Item::DoubleTapJump => "Tap the world twice quickly to jump.",
+            Item::ShiftX => {
+                "Moves every touch sideways, in screen pixels. Positive moves it right. If your finger lands to the right of where it acts, use a negative value."
+            }
+            Item::ShiftY => {
+                "Moves every touch up or down, in screen pixels. Positive moves it down. If your finger lands below where it acts, use a negative value."
+            }
+            Item::AutoSprint => {
+                "Push the stick forward to its edge and you sprint, without holding Run. Ease off and you walk."
+            }
             Item::SafeMargin => {
                 "Keeps the buttons away from the notch, the corners and the home bar."
             }
@@ -172,6 +196,16 @@ const STICK_SIZES: [f32; 4] = [0.10, 0.14, 0.18, 0.22];
 const MOVE_ZONES: [f32; 4] = [0.30, 0.40, 0.50, 0.60];
 const HOLD_TIMES: [f64; 4] = [0.15, 0.25, 0.40, 0.60];
 const SAFE_MARGINS: [f32; 4] = [0.0, 0.5, 1.0, 1.5];
+/// The touch shifts, in physical pixels, by step. The middle one (index 2) is no shift. Five
+/// steps, because every setting comes round in at most six clicks (a test holds them to it) and
+/// a phone has no room for a long click-through. 8 px is a small part of the screen but the size
+/// of the offset reported ("a small margin"); a larger one is a different bug.
+const SHIFTS: [i16; 5] = [-16, -8, 0, 8, 16];
+const NO_SHIFT: u8 = 2;
+const SHIFT_NAMES: [&str; 5] = ["-16", "-8", "0", "+8", "+16"];
+fn shift_name(i: u8) -> &'static str {
+    SHIFT_NAMES[usize::from(i).min(SHIFT_NAMES.len() - 1)]
+}
 
 /// The names the page shows for a stepped setting, in the same order as its choices.
 const LOOK_NAMES: [&str; 5] = ["Slowest", "Slow", "Normal", "Fast", "Fastest"];
@@ -201,6 +235,11 @@ pub struct ImcSettings {
     pub hold_time: u8,
     pub double_tap_jump: bool,
     pub safe_margin: u8,
+    /// Sprint while the stick is pushed forward to its edge.
+    pub auto_sprint: bool,
+    /// Index into [`SHIFTS`] for x and y.
+    pub shift_x: u8,
+    pub shift_y: u8,
     /// Auto Performance (`auto_performance`).
     pub auto: AutoConfig,
 }
@@ -216,6 +255,9 @@ impl Default for ImcSettings {
             hold_time: 1,
             double_tap_jump: false,
             safe_margin: 2,
+            auto_sprint: false,
+            shift_x: NO_SHIFT,
+            shift_y: NO_SHIFT,
             auto: AutoConfig::default(),
         }
     }
@@ -248,6 +290,13 @@ impl ImcSettings {
                 "moveZone" => s.move_zone = step(MOVE_ZONES.len()).unwrap_or(s.move_zone),
                 "holdTime" => s.hold_time = step(HOLD_TIMES.len()).unwrap_or(s.hold_time),
                 "safeMargin" => s.safe_margin = step(SAFE_MARGINS.len()).unwrap_or(s.safe_margin),
+                "shiftX" => s.shift_x = step(SHIFTS.len()).unwrap_or(s.shift_x),
+                "shiftY" => s.shift_y = step(SHIFTS.len()).unwrap_or(s.shift_y),
+                "autoSprint" => {
+                    if let Ok(v) = value.parse() {
+                        s.auto_sprint = v;
+                    }
+                }
                 "autoPerformance" => {
                     if let Ok(v) = value.parse() {
                         s.auto.enabled = v;
@@ -287,7 +336,7 @@ impl ImcSettings {
     /// The file's text.
     pub fn serialize(&self) -> String {
         format!(
-            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\n\
+            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\nshiftX:{}\nshiftY:{}\n\
              autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\n",
             self.controls,
             self.look_speed,
@@ -296,6 +345,9 @@ impl ImcSettings {
             self.hold_time,
             self.double_tap_jump,
             self.safe_margin,
+            self.auto_sprint,
+            self.shift_x,
+            self.shift_y,
             self.auto.enabled,
             self.auto_sensitivity_index(),
             self.auto_min_distance_index(),
@@ -317,6 +369,9 @@ impl ImcSettings {
             Item::MoveZone => name(&ZONE_NAMES, self.move_zone),
             Item::HoldTime => name(&HOLD_NAMES, self.hold_time),
             Item::SafeMargin => name(&MARGIN_NAMES, self.safe_margin),
+            Item::AutoSprint => on_off(self.auto_sprint),
+            Item::ShiftX => shift_name(self.shift_x),
+            Item::ShiftY => shift_name(self.shift_y),
             Item::AutoPerformance => on_off(self.auto.enabled),
             Item::AutoSensitivity => self.auto.sensitivity.name(),
             Item::AutoMinDistance => name(&MIN_DISTANCE_NAMES, self.auto_min_distance_index()),
@@ -361,6 +416,9 @@ impl ImcSettings {
             Item::MoveZone => turn(&mut self.move_zone, MOVE_ZONES.len()),
             Item::HoldTime => turn(&mut self.hold_time, HOLD_TIMES.len()),
             Item::SafeMargin => turn(&mut self.safe_margin, SAFE_MARGINS.len()),
+            Item::AutoSprint => self.auto_sprint = !self.auto_sprint,
+            Item::ShiftX => turn(&mut self.shift_x, SHIFTS.len()),
+            Item::ShiftY => turn(&mut self.shift_y, SHIFTS.len()),
             Item::AutoPerformance => self.auto.enabled = !self.auto.enabled,
             Item::AutoFarTerrain => self.auto.use_far_terrain = !self.auto.use_far_terrain,
             Item::AutoRenderDistance => {
@@ -400,6 +458,12 @@ impl ImcSettings {
 
     /// The factor the on-screen buttons' safe margins are multiplied by (1.0 is the layout's
     /// own: 8% at the sides, 4% at the top, 7% at the bottom).
+    /// The shift to add to every touch, `(x, y)` in physical pixels.
+    pub fn touch_shift(&self) -> (f32, f32) {
+        let at = |i: u8| f32::from(SHIFTS[usize::from(i).min(SHIFTS.len() - 1)]);
+        (at(self.shift_x), at(self.shift_y))
+    }
+
     pub fn safe_margin_scale(&self) -> f32 {
         SAFE_MARGINS[usize::from(self.safe_margin).min(SAFE_MARGINS.len() - 1)]
     }
@@ -749,5 +813,38 @@ mod tests {
         }
         assert!(Item::AutoRenderDistance.cost().is_some());
         assert!(Item::LookSpeed.cost().is_none());
+    }
+
+    #[test]
+    fn the_touch_shift_defaults_to_none_and_steps_in_both_directions() {
+        let mut s = ImcSettings::default();
+        assert_eq!(s.touch_shift(), (0.0, 0.0));
+        assert_eq!(s.value(Item::ShiftX), "0");
+        s.cycle(Item::ShiftX, false);
+        assert_eq!(s.touch_shift(), (8.0, 0.0));
+        assert_eq!(s.value(Item::ShiftX), "+8");
+        s.cycle(Item::ShiftY, true);
+        s.cycle(Item::ShiftY, true);
+        assert_eq!(s.touch_shift(), (8.0, -16.0));
+        assert_eq!(s.value(Item::ShiftY), "-16");
+        // It round-trips through the file, and a value out of range keeps the default.
+        assert_eq!(ImcSettings::parse(&s.serialize()), s);
+        assert_eq!(ImcSettings::parse("shiftX:99\n").touch_shift(), (0.0, 0.0));
+        s.reset();
+        assert_eq!(s.touch_shift(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn every_shift_name_matches_its_step() {
+        assert_eq!(SHIFTS.len(), SHIFT_NAMES.len());
+        assert_eq!(SHIFTS[usize::from(NO_SHIFT)], 0);
+        for (v, n) in SHIFTS.iter().zip(SHIFT_NAMES) {
+            let shown = if *v > 0 {
+                format!("+{v}")
+            } else {
+                v.to_string()
+            };
+            assert_eq!(shown, n);
+        }
     }
 }

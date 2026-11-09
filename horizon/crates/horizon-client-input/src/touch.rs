@@ -36,7 +36,8 @@ impl Default for Layout {
 /// Tuning that is a matter of feel, kept apart from the layout so it can become a setting.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Feel {
-    /// A finger that moves less than this many pixels is still "a tap or a hold".
+    /// A finger that moves less than this many pixels is still "a tap or a hold". The game sets
+    /// it from the screen (`slop_for`) so it is the same distance under the thumb on every phone.
     pub slop_px: f32,
     /// A tap is a press shorter than this.
     pub tap_secs: f64,
@@ -61,6 +62,14 @@ impl Default for Feel {
             double_tap_secs: 0.30,
         }
     }
+}
+
+/// The slop for a screen: 1% of its shorter side, never under 8 pixels. On the iPhone 12 in
+/// landscape (1170 px high) that is 11.7 px, close to the fixed 12 px it replaces; on a screen with
+/// more pixels it grows with them, so it stays the same distance under the thumb. A GUESS to
+/// tune on the phone.
+pub fn slop_for(screen: (f32, f32)) -> f32 {
+    (screen.0.min(screen.1) * 0.01).max(8.0)
 }
 
 /// What the player is doing, which decides what a finger means.
@@ -149,6 +158,8 @@ pub struct Touch {
     right_down: Option<FingerId>,
     last_scroll_y: Option<f32>,
     last_tap: Option<(f64, (f32, f32))>,
+    /// The thumb is at the forward edge of the stick (`sprinting`).
+    sprint: bool,
     /// Treat a double tap on the world as a jump.
     pub double_tap_jump: bool,
     out: Vec<Action>,
@@ -169,6 +180,7 @@ impl Touch {
             right_down: None,
             last_scroll_y: None,
             last_tap: None,
+            sprint: false,
             double_tap_jump: false,
             out: Vec::new(),
         }
@@ -177,6 +189,7 @@ impl Touch {
     /// The window changed size (rotation, split view).
     pub fn resize(&mut self, screen: (f32, f32)) {
         self.screen = screen;
+        self.feel.slop_px = slop_for(screen);
     }
 
     pub fn mode(&self) -> Mode {
@@ -196,6 +209,28 @@ impl Touch {
     /// The steering stick, `[x, y]`, right and up positive, deadzone already applied.
     pub fn stick(&self) -> [f32; 2] {
         self.stick
+    }
+
+    /// Whether the thumb is pushed to the edge of the stick, forward: that sprints, as double
+    /// tapping forward does on a keyboard. A thumb that is steering cannot also hold a Run
+    /// button, so this is how a phone player sprints. Backward and sideways pushes do not
+    /// (vanilla only sprints forward), and it lets go once the push eases off, with a margin so
+    /// a thumb resting at the edge does not flicker.
+    pub fn sprinting(&self) -> bool {
+        self.sprint
+    }
+
+    /// Works out `sprint` from the stick: on at [`SPRINT_AT`], off below [`SPRINT_OFF`].
+    fn update_sprint(&mut self) {
+        let [x, y] = self.stick;
+        let tilt = (x * x + y * y).sqrt();
+        let forward = y > 0.0 && y >= x.abs() * 0.5;
+        self.sprint = forward
+            && if self.sprint {
+                tilt >= SPRINT_OFF
+            } else {
+                tilt >= SPRINT_AT
+            };
     }
 
     /// Where the floating stick started, for drawing it.
@@ -221,6 +256,7 @@ impl Touch {
         self.fingers.clear();
         self.stick_origin = None;
         self.stick = [0.0; 2];
+        self.sprint = false;
         self.last_scroll_y = None;
         out
     }
@@ -256,6 +292,7 @@ impl Touch {
         {
             self.stick_origin = Some(at);
             self.stick = [0.0; 2];
+            self.sprint = false;
             Role::Stick
         } else {
             Role::World
@@ -288,11 +325,14 @@ impl Touch {
         match f.role {
             Role::Stick => {
                 if let Some(o) = self.stick_origin {
-                    self.stick = stick_vector(
-                        (at.0 - o.0, at.1 - o.1),
-                        self.layout.stick_radius * self.screen.0.min(self.screen.1),
-                        self.layout.stick_deadzone,
-                    );
+                    let radius = self.layout.stick_radius * self.screen.0.min(self.screen.1);
+                    // The origin trails the thumb: past full travel it is dragged along, so
+                    // turning back is one short move instead of a trip back across the stick.
+                    let o = follow(o, at, radius * FOLLOW_AFTER);
+                    self.stick_origin = Some(o);
+                    self.stick =
+                        stick_vector((at.0 - o.0, at.1 - o.1), radius, self.layout.stick_deadzone);
+                    self.update_sprint();
                 }
             }
             Role::World => {
@@ -368,6 +408,7 @@ impl Touch {
             Role::Stick => {
                 self.stick_origin = None;
                 self.stick = [0.0; 2];
+                self.sprint = false;
             }
             Role::World => {
                 if self.attacking == Some(id) {
@@ -415,6 +456,46 @@ impl Touch {
             .get(&id)
             .is_some_and(|f| f.role == Role::Button)
     }
+}
+
+/// The stick tilt at which forward starts sprinting, and the lower one at which it stops, so a
+/// thumb resting at the edge does not make it flicker.
+const SPRINT_AT: f32 = 0.95;
+const SPRINT_OFF: f32 = 0.80;
+
+/// The nine hotbar slots as touch targets, in physical pixels, for a GUI `scale` (physical pixels
+/// per GUI unit) on a surface `screen` pixels wide and high.
+///
+/// The hotbar is 182 by 22 GUI units, centred, on the bottom edge (`hud_layout::hotbar`:
+/// `center - 91`, `h - 22`), and slot `i` starts 3 units in and 20 apart. Each target is the
+/// whole 20-unit column and the full height of the bar, grown upward by `lift` GUI units, because
+/// a thumb is much larger than the 16-unit icon it aims at.
+pub fn hotbar_slots(screen: (f32, f32), scale: f32, lift: f32) -> [Rect; 9] {
+    let center = screen.0 / 2.0;
+    let top = screen.1 - (22.0 + lift) * scale;
+    std::array::from_fn(|i| Rect {
+        x: center + (-91.0 + 3.0 + 20.0 * i as f32 - 2.0) * scale,
+        y: top,
+        w: 20.0 * scale,
+        h: (22.0 + lift) * scale,
+    })
+}
+
+/// How far past full travel the thumb may go before the stick's origin follows, as a multiple of
+/// the radius.
+const FOLLOW_AFTER: f32 = 1.0;
+
+/// The origin moved toward `at` just enough that `at` is within `reach` of it.
+fn follow(origin: (f32, f32), at: (f32, f32), reach: f32) -> (f32, f32) {
+    let d = dist(origin, at);
+    if reach <= 0.0 || d <= reach {
+        return origin;
+    }
+    let k = (d - reach) / d;
+    (
+        origin.0 + (at.0 - origin.0) * k,
+        origin.1 + (at.1 - origin.1) * k,
+    )
 }
 
 fn dist(a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -810,5 +891,87 @@ mod tests {
         // A zero-sized surface does not panic.
         let zero = (0.0, 0.0);
         assert_eq!(to_surface((5.0, 5.0), zero, zero, zero), (0.0, 0.0));
+    }
+
+    #[test]
+    fn the_slop_follows_the_screen_with_a_floor() {
+        assert!(near(slop_for((2532.0, 1170.0)), 11.7));
+        assert!(near(slop_for((2796.0, 1290.0)), 12.9));
+        assert!(
+            near(slop_for((200.0, 100.0)), 8.0),
+            "never smaller than 8 px"
+        );
+        let mut t = touch();
+        t.resize((2796.0, 1290.0));
+        assert!(near(t.feel.slop_px, 12.9));
+    }
+
+    #[test]
+    fn a_thumb_pushed_past_full_travel_drags_the_stick_origin_along() {
+        let mut t = touch();
+        t.down(1, (300.0, 800.0), 0.0, &[]);
+        let radius = t.layout.stick_radius * 1170.0;
+        // Out to three radii: the stick is at full tilt and its origin has moved after the thumb.
+        t.moved(1, (300.0 + radius * 3.0, 800.0), 0.1);
+        let o = t.stick_origin().unwrap();
+        assert!(near(o.0, 300.0 + radius * 2.0), "origin {o:?}");
+        assert!(near(t.stick()[0], 1.0));
+        // Turning back by one radius now reverses the stick, which the fixed origin would not.
+        t.moved(1, (300.0 + radius * 2.0, 800.0), 0.2);
+        assert!(near(t.stick()[0], 0.0), "{:?}", t.stick());
+    }
+
+    #[test]
+    fn a_thumb_inside_full_travel_leaves_the_origin_where_it_landed() {
+        let mut t = touch();
+        t.down(1, (300.0, 800.0), 0.0, &[]);
+        let radius = t.layout.stick_radius * 1170.0;
+        t.moved(1, (300.0 + radius * 0.7, 800.0), 0.1);
+        assert_eq!(t.stick_origin(), Some((300.0, 800.0)));
+    }
+
+    #[test]
+    fn forward_at_the_edge_sprints_and_it_does_not_flicker() {
+        let mut t = touch();
+        t.down(1, (300.0, 800.0), 0.0, &[]);
+        let radius = t.layout.stick_radius * 1170.0;
+        // Forward is up the screen (y down is negative here).
+        t.moved(1, (300.0, 800.0 - radius), 0.1);
+        assert!(t.sprinting());
+        // Easing to 85% keeps it: that is between the two lines.
+        t.moved(1, (300.0, 800.0 - radius * 0.88), 0.2);
+        assert!(t.sprinting(), "{:?}", t.stick());
+        // Easing further lets go.
+        t.moved(1, (300.0, 800.0 - radius * 0.6), 0.3);
+        assert!(!t.sprinting());
+        // And 85% alone, from rest, does not start it.
+        t.moved(1, (300.0, 800.0 - radius * 0.88), 0.4);
+        assert!(!t.sprinting());
+    }
+
+    #[test]
+    fn backward_and_sideways_never_sprint() {
+        let mut t = touch();
+        t.down(1, (300.0, 800.0), 0.0, &[]);
+        let radius = t.layout.stick_radius * 1170.0;
+        t.moved(1, (300.0, 800.0 + radius), 0.1);
+        assert!(!t.sprinting(), "backward");
+        t.moved(1, (300.0 + radius, 800.0), 0.2);
+        assert!(!t.sprinting(), "sideways");
+    }
+
+    #[test]
+    fn lifting_the_steering_finger_stops_the_sprint() {
+        let mut t = touch();
+        t.down(1, (300.0, 800.0), 0.0, &[]);
+        let radius = t.layout.stick_radius * 1170.0;
+        t.moved(1, (300.0, 800.0 - radius), 0.1);
+        assert!(t.sprinting());
+        t.up(1, 0.2);
+        assert!(!t.sprinting());
+        t.down(2, (300.0, 800.0), 0.3, &[]);
+        t.moved(2, (300.0, 800.0 - radius), 0.4);
+        t.cancel_all();
+        assert!(!t.sprinting());
     }
 }

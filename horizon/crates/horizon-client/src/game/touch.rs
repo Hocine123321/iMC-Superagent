@@ -17,7 +17,9 @@ use super::event_loop::EventLoopCtl;
 use super::{Game, Screen, input_trace};
 use horizon_client::gamepad::Button;
 use horizon_client::hud::HudBatch;
-use horizon_client_input::touch::{Action as TouchAction, FingerId, Mode, Rect, Touch, to_surface};
+use horizon_client_input::touch::{
+    Action as TouchAction, FingerId, Mode, Rect, Touch, hotbar_slots, to_surface,
+};
 use std::time::Instant;
 use winit::{
     dpi::PhysicalPosition,
@@ -130,6 +132,10 @@ const PADS: &[Pad] = &[
     },
 ];
 
+/// How far above the hotbar a tap still selects its slot, in GUI units. The icons are 16 units
+/// across and a thumb is not; this is room for it without reaching the buttons above.
+const HOTBAR_LIFT: f32 = 6.0;
+
 /// Everything touch keeps in the game.
 pub(super) struct TouchState {
     logic: Touch,
@@ -138,6 +144,8 @@ pub(super) struct TouchState {
     holding: Vec<(FingerId, usize)>,
     /// The last physical position of a menu finger, to send a release at the same place.
     pointer: (f32, f32),
+    /// Auto-sprint is holding the Run button down now (`touch_sprint`).
+    sprint_held: bool,
     /// Touch was used since the app started: the controls draw only then, so a desktop run with
     /// a mouse never shows them.
     pub(super) seen: bool,
@@ -150,6 +158,7 @@ impl Default for TouchState {
             started: Instant::now(),
             holding: Vec::new(),
             pointer: (0.0, 0.0),
+            sprint_held: false,
             seen: false,
         }
     }
@@ -175,20 +184,49 @@ impl Game<'_> {
         // winit reports the touch from the window's corner; whether the surface starts there
         // too depends on its size: see `to_surface`.
         let (safe_origin, safe_size) = self.touch_safe_area();
-        let at = to_surface(
-            (touch.location.x as f32, touch.location.y as f32),
-            safe_origin,
-            safe_size,
-            size,
+        let raw = (touch.location.x as f32, touch.location.y as f32);
+        let moved = to_surface(raw, safe_origin, safe_size, size);
+        // iMC Settings' Touch shift: the player's own correction for what is left over.
+        let (sx, sy) = self.settings.imc.touch_shift();
+        let at = (
+            (moved.0 + sx).clamp(0.0, (size.0 - 1.0).max(0.0)),
+            (moved.1 + sy).clamp(0.0, (size.1 - 1.0).max(0.0)),
         );
+        if touch.phase == TouchPhase::Started {
+            // What decides where a finger lands, once per press, so a phone test states the
+            // offset in numbers: the raw touch, the safe area, the surface, the result.
+            log::info!(
+                "touch: raw ({:.0}, {:.0}) safe origin ({:.0}, {:.0}) safe size {:.0}x{:.0} \
+                 surface {:.0}x{:.0} window {:?} scale {:.2} -> ({:.0}, {:.0}) shift ({sx}, {sy})",
+                raw.0,
+                raw.1,
+                safe_origin.0,
+                safe_origin.1,
+                safe_size.0,
+                safe_size.1,
+                size.0,
+                size.1,
+                self.window.as_ref().map(|w| w.outer_size()),
+                self.window.as_ref().map_or(0.0, |w| w.scale_factor()),
+                at.0,
+                at.1,
+            );
+        }
         let id = touch.id;
         let rects = self.touch_rects(size);
         let actions = match touch.phase {
             TouchPhase::Started => {
                 let (hit, actions) = self.touch.logic.down(id, at, now, &rects);
                 if let Some(i) = hit {
-                    self.touch.holding.push((id, i));
-                    self.touch_button(event_loop, PADS[i].button, true);
+                    if i < PADS.len() {
+                        self.touch.holding.push((id, i));
+                        self.touch_button(event_loop, PADS[i].button, true);
+                    } else if !self.spectator() {
+                        // A hotbar slot: the same as pressing its number key. Nothing is held,
+                        // so there is nothing to let go of. A spectator's number keys open the
+                        // teleport menu instead (`play_keys.rs`), which a tap does not.
+                        self.hotbar_presses.push(i - PADS.len());
+                    }
                 }
                 actions
             }
@@ -235,6 +273,32 @@ impl Game<'_> {
             [0.0; 2]
         };
         self.pad.set_injected_left(stick);
+        self.touch_sprint(event_loop);
+    }
+
+    /// Forward at the edge of the stick holds the Run button, as a thumb that is steering cannot
+    /// hold the on-screen one. The Run pad's own finger keeps its press: this only holds the
+    /// button when no pad finger does, and lets go only of what it pressed itself.
+    fn touch_sprint(&mut self, event_loop: &dyn EventLoopCtl) {
+        let want = self.settings.imc.auto_sprint
+            && self.touch.logic.mode() == Mode::Playing
+            && self.touch.logic.sprinting();
+        let run_pad_held = self
+            .touch
+            .holding
+            .iter()
+            .any(|(_, i)| PADS[*i].button == Button::LeftStick);
+        // Held by sprint only while no pad finger holds it; checked every frame, so lifting the
+        // pad's finger with the thumb still forward hands the press back to sprint.
+        let hold = want && !run_pad_held;
+        if hold != self.touch.sprint_held {
+            self.touch.sprint_held = hold;
+            // When the pad's finger took the button over, it already holds the press: letting go
+            // here would cut it.
+            if hold || !run_pad_held {
+                self.touch_button(event_loop, Button::LeftStick, hold);
+            }
+        }
     }
 
     /// Everything touch holds is let go: the app is going to the background, or a screen that
@@ -250,6 +314,9 @@ impl Game<'_> {
         let actions = self.touch.logic.cancel_all();
         self.touch_apply(event_loop, actions);
         self.pad.set_injected_left([0.0; 2]);
+        if std::mem::take(&mut self.touch.sprint_held) {
+            self.touch_button(event_loop, Button::LeftStick, false);
+        }
     }
 
     /// The screen decides what a finger means: the world, or a pointer.
@@ -276,7 +343,12 @@ impl Game<'_> {
             return Vec::new();
         }
         let margin = self.settings.imc.safe_margin_scale();
-        PADS.iter().map(|p| p.rect(size, margin)).collect()
+        let mut rects: Vec<Rect> = PADS.iter().map(|p| p.rect(size, margin)).collect();
+        // The nine hotbar slots follow the pads: an index of `PADS.len()` or more is a slot.
+        if let Some(scale) = self.gui_scale().map(|b| b.scale) {
+            rects.extend(hotbar_slots(size, scale, HOTBAR_LIFT));
+        }
+        rects
     }
 
     /// The on-screen buttons show while a world is being played.

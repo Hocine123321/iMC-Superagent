@@ -2792,7 +2792,12 @@ impl OptionsUi {
                     rows.push(Row::Buttons(imc(pair[0]), Some(imc(pair[1]))));
                 }
                 rows.push(Row::Header("horizon.imc.header.screen"));
-                rows.push(Row::Buttons(imc(Item::SafeMargin), None));
+                rows.push(Row::Buttons(
+                    imc(Item::SafeMargin),
+                    Some(imc(Item::AutoSprint)),
+                ));
+                // Where a finger lands. Only needed if the touch is off on this phone.
+                rows.push(Row::Buttons(imc(Item::ShiftX), Some(imc(Item::ShiftY))));
                 // Performance: the switch, how early it reacts, then what it may give up.
                 rows.push(Row::Header("horizon.imc.header.performance"));
                 rows.push(Row::Buttons(
