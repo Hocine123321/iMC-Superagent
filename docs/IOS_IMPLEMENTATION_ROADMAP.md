@@ -173,6 +173,53 @@ So on iOS the app is its own launcher and M3 must supply the first-run experienc
 
 ---
 
+## M3b. The launcher: home screen, settings, file manager (added 2026-11-09)
+
+**Why.** The app is meant to be a launcher for Horizon, not the game's title menu. Today, after the
+loading screen, the player lands in the engine's own title menu ("Minecraft, Rust edition"). There
+is no home screen of our own, no place to manage the game files, and no settings that belong to the
+launcher (as opposed to the game's own options). M3 says the app is its own launcher, and M8b and
+M9 add download, preparation and sign-in, but nothing builds the screens they need.
+
+**What the launcher shows.**
+- Home: the app name and icon, the installed Horizon and Minecraft versions, a big **Play** button,
+  and the state of the game files (missing, damaged, ready, size).
+- Game files: where they are, how much space they take, **Import** (a folder picked with the Files
+  app, replacing "copy it with the Files app and hope"), **Check**, **Delete**, and later
+  **Download and prepare** (M8b).
+- Settings: launcher settings (graphics API, render distance preset, "Mobile" preset from M5,
+  controls layout, keep screen on), and a link to the game's own options.
+- Account: sign-in and ownership (M9), shown here, not inside the game.
+- Diagnostics: the crash report (`crash.txt`), the last log, and a Share button, so a tester does
+  not need the Files app to send them.
+
+**How it is built (the constraint, read from winit 0.30 source).** `EventLoop::run` asserts that
+`UIApplicationMain` has not been called. The game owns `UIApplicationMain`, so a UIKit launcher and
+the game cannot be two screens of one running process by the easy route. Options:
+
+1. **Launcher inside the engine's own UI** (Rust, `ui_theme`): one process, no handoff, but every
+   screen is drawn by hand with the engine's HUD atlas; file pickers, text fields, sign-in sheets
+   and Share all need native iOS and would have to be bridged one by one.
+2. **Native launcher that owns `UIApplicationMain`, and the game runs inside a view it hosts.**
+   Needs winit to attach to an existing `UIView`/`CAMetalLayer` instead of creating its own window.
+   winit 0.30 cannot do that, and upgrading it changes `Cargo.lock`. This is the better product and
+   the larger engineering task. Needs the owner's approval to change dependencies.
+3. **Native launcher, then the game on the next launch.** The launcher writes a "start the game"
+   flag and exits; the game starts as it does now. Works today with no dependency change; the cost
+   is one relaunch when pressing Play, and a way back to the launcher (a button in the game's pause
+   menu that sets the flag and exits).
+
+**Recommendation.** Do 3 first (it is the only one that works with the current dependencies, and
+the first-run screen in `platform/ios/App/FirstRun.m` is already a start of it), and keep 2 as the
+goal if the owner agrees to a winit upgrade.
+
+**Success test.** From a clean install: the launcher opens, shows the state of the game files,
+imports a folder, checks it, and Play starts the game. The pause menu's "back to launcher" returns.
+
+**Depends on.** M3 (the title screen is reached), M4 (lifecycle).
+
+---
+
 ## M4. Lifecycle correctness
 
 **Findings from reading winit 0.30.13 and the engine (VERIFIED in source, not yet run).**

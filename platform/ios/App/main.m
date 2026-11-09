@@ -8,7 +8,8 @@
 #import <Foundation/Foundation.h>
 #import "Diagnostics.h"
 #import "CrashReporter.h"
-#import "FirstRun.h"
+#import "Launcher.h"
+#import "LauncherModel.h"
 #include <crt_externs.h>   // _NSGetArgc / _NSGetArgv (iOS 13 SDK and later)
 #include <stdlib.h>
 #include <string.h>
@@ -37,12 +38,16 @@ int main(int argc, char *argv[]) {
         // Read-only checks, run before the engine; see Diagnostics.m.
         HorizonWriteDiagnostics(root);
 
-        // No prepared game files yet: say how to put them on the phone, instead of the engine's
-        // own screen (which sends the player to a desktop launcher). The engine is not started, so
-        // UIApplicationMain runs here, once; copying the files and reopening the app is the way on.
-        if (!HorizonResourcesPresent(resources)) {
-            horizon_ios_breadcrumb("main: no resources, showing the first-run screen");
-            return HorizonRunFirstRunScreen(argc, argv, resources);
+        // The app is a launcher first. The game is a separate run of the app (winit's EventLoop
+        // cannot start after UIApplicationMain), so Play leaves a one-shot flag and the next open
+        // starts the game. Without the flag, or without usable game files, the launcher opens.
+        // The check is the engine's own, so a folder the engine would refuse never reaches it.
+        BOOL startGame = [[HZLauncherModel shared] consumeStartGameFlag];
+        NSString *why = nil;
+        if (!startGame || [[HZLauncherModel shared] checkFiles:&why] != HZFilesReady) {
+            horizon_ios_breadcrumb(startGame ? "main: start flag set but the files are not usable, launcher"
+                                             : "main: opening the launcher");
+            return HorizonRunLauncher(argc, argv);
         }
 
         // The engine's game folder (saves, servers.dat, packs, mods) is its working directory,

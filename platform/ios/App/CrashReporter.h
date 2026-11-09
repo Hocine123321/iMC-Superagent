@@ -13,6 +13,10 @@
 // Call first thing in main(), before the engine starts. `root` is Documents/Horizon.
 void HorizonInstallCrashReporter(NSString *root);
 
+// Call before a deliberate exit(): removes the "running" marker, so the next launch does not take
+// it for a kill by the system.
+void HorizonCrashReporterCleanExit(void);
+
 // Engine-side breadcrumb: the last step reached, shown in the report. Cheap and signal-safe to
 // read; call from anywhere (also exported to Rust as horizon_ios_breadcrumb).
 void horizon_ios_breadcrumb(const char *step);

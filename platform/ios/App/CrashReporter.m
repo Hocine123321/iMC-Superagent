@@ -98,6 +98,10 @@ static void OnException(NSException *e) {
     if (gFd >= 0 && c) { (void)!write(gFd, c, strlen(c)); fsync(gFd); }
 }
 
+void HorizonCrashReporterCleanExit(void) {
+    if (gRunningPath[0]) unlink(gRunningPath);
+}
+
 void HorizonInstallCrashReporter(NSString *root) {
     NSString *crash = [root stringByAppendingPathComponent:@"crash.txt"];
     NSString *marker = [root stringByAppendingPathComponent:@".running"];
@@ -113,7 +117,11 @@ void HorizonInstallCrashReporter(NSString *root) {
                   "(the system probably killed it; memory is the usual cause)\n%@\n", m];
     }
     // Keep the last report beside the new one: crash.txt is the newest, crash-previous.txt before.
-    if (previous.length) [previous writeToFile:[root stringByAppendingPathComponent:@"crash-previous.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    // Only a report that records a crash is kept: crash.txt is rewritten at every launch, and a
+    // launch that did not crash (the launcher, then the game) must not overwrite the evidence.
+    BOOL wasCrash = [previous containsString:@"=== FATAL SIGNAL"] || [previous containsString:@"=== UNCAUGHT"]
+                 || [previous containsString:@"=== PREVIOUS RUN ENDED"];
+    if (wasCrash) [previous writeToFile:[root stringByAppendingPathComponent:@"crash-previous.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
     gFd = open(crash.fileSystemRepresentation, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     NSString *head = [NSString stringWithFormat:@"%@launch: %@\ndevice: iOS %@\n",

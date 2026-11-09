@@ -1,0 +1,36 @@
+name: iOS shell check
+
+# Compiles only the Objective-C files of the app shell (platform/ios/App) against the iOS SDK,
+# without the engine. It finishes in about a minute, so a typo in the launcher screens shows up
+# before the 25 minute engine build rather than after it. Nothing is linked or signed.
+on:
+  push:
+    branches: [main]
+    paths: ["platform/ios/App/**", ".github/workflows/ios-shell-check.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-shell-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax:
+    name: Objective-C shell compiles
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile each file for the iOS SDK
+        working-directory: platform/ios/App
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "SDK: $SDK"
+          FAILED=0
+          for f in *.m; do
+            echo "--- $f"
+            if ! xcrun --sdk iphoneos clang -fsyntax-only -fobjc-arc -fmodules -Wall -Wextra \
+                 -Wno-unused-parameter -arch arm64 -miphoneos-version-min=16.0 -isysroot "$SDK" "$f"; then
+              FAILED=1
+            fi
+          done
+          exit $FAILED
