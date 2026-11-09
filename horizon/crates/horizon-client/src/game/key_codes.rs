@@ -65,6 +65,14 @@ pub(super) fn follow_named_keymap(
             _ => return,
         };
         *physical_key = PhysicalKey::Code(code);
+    } else if let Key::Character(text) = logical_key {
+        // The iOS keyboard (the on-screen one and a paired one) hands winit every key as text,
+        // one character at a time, with no physical key and a Character logical key: Return
+        // arrives as "\n", never as Named(Enter). Without this chat took it for text, and the
+        // text box drops a line break, so Return sent nothing.
+        if unidentified(physical_key) && matches!(text.as_str(), "\n" | "\r") {
+            *physical_key = PhysicalKey::Code(KeyCode::Enter);
+        }
     }
 }
 
@@ -88,6 +96,30 @@ mod named_key_tests {
     fn an_enter_with_no_physical_key_becomes_enter() {
         let none = PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
         assert_eq!(follow(NamedKey::Enter, none), PhysicalKey::Code(KeyCode::Enter));
+    }
+
+    // What winit's iOS backend really sends for the Return key (platform_impl/ios/view.rs,
+    // handle_insert_text): a Character logical key holding the line break, no physical key.
+    #[test]
+    fn a_return_typed_as_text_becomes_enter() {
+        let none = || PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
+        for text in ["\n", "\r"] {
+            let mut physical = none();
+            follow_named_keymap(&Key::Character(text.into()), &mut physical);
+            assert_eq!(physical, PhysicalKey::Code(KeyCode::Enter), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn other_text_and_known_keys_are_left_alone() {
+        let none = || PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
+        let mut physical = none();
+        follow_named_keymap(&Key::Character("a".into()), &mut physical);
+        assert_eq!(physical, none());
+        // A desktop keyboard that already named the key keeps it.
+        let mut known = PhysicalKey::Code(KeyCode::KeyA);
+        follow_named_keymap(&Key::Character("\n".into()), &mut known);
+        assert_eq!(known, PhysicalKey::Code(KeyCode::KeyA));
     }
 
     #[test]

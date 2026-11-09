@@ -342,7 +342,7 @@ the log line below says what actually arrives.
 
 | File | Change |
 |---|---|
-| `game/key_codes.rs` | `follow_named_keymap` also recovers Enter, Backspace, Tab, Delete, the arrows, Home, End, Page Up and Page Down from the logical key, **only** when the physical key is missing (a known key, such as the numpad Enter, is never overridden). 3 tests. |
+| `game/key_codes.rs` | `follow_named_keymap` also recovers Enter, Backspace, Tab, Delete, the arrows, Home, End, Page Up and Page Down from the logical key, **only** when the physical key is missing (a known key, such as the numpad Enter, is never overridden). **Return from the iOS keyboard** is also recovered: winit's iOS backend sends every typed key as `Key::Character` text with no physical key, so Return arrives as `"\n"` and never as `Named(Enter)`; the first fix handled only `Named(Enter)` and so did nothing on a phone. A `"\n"` or `"\r"` with no physical key now becomes `Enter`. 5 tests. |
 | `game.rs` | In the chat arm, a key event with no physical code is logged (`chat key with no physical code: logical ..., text ...`) and its text is typed by `chat_unplaced_key`. |
 | `game/chat.rs` | `chat_unplaced_key(text)`: types the text into the chat box. |
 

@@ -6866,10 +6866,10 @@ index 7d2b6fa..adb3cc2 100644
              && let Some(window) = &self.window
          {
 diff --git a/horizon/crates/horizon-client/src/game/key_codes.rs b/horizon/crates/horizon-client/src/game/key_codes.rs
-index 1d0ead6..b8a9faf 100644
+index 1d0ead6..623ebf9 100644
 --- a/horizon/crates/horizon-client/src/game/key_codes.rs
 +++ b/horizon/crates/horizon-client/src/game/key_codes.rs
-@@ -46,12 +46,74 @@ pub(super) fn follow_named_keymap(
+@@ -46,9 +46,103 @@ pub(super) fn follow_named_keymap(
              NamedKey::F33 => KeyCode::F33,
              NamedKey::F34 => KeyCode::F34,
              NamedKey::F35 => KeyCode::F35,
@@ -6892,9 +6892,17 @@ index 1d0ead6..b8a9faf 100644
              _ => return,
          };
          *physical_key = PhysicalKey::Code(code);
-     }
- }
- 
++    } else if let Key::Character(text) = logical_key {
++        // The iOS keyboard (the on-screen one and a paired one) hands winit every key as text,
++        // one character at a time, with no physical key and a Character logical key: Return
++        // arrives as "\n", never as Named(Enter). Without this chat took it for text, and the
++        // text box drops a line break, so Return sent nothing.
++        if unidentified(physical_key) && matches!(text.as_str(), "\n" | "\r") {
++            *physical_key = PhysicalKey::Code(KeyCode::Enter);
++        }
++    }
++}
++
 +/// The platform gave no physical key for this event.
 +fn unidentified(physical_key: &PhysicalKey) -> bool {
 +    matches!(physical_key, PhysicalKey::Unidentified(_))
@@ -6915,6 +6923,30 @@ index 1d0ead6..b8a9faf 100644
 +    fn an_enter_with_no_physical_key_becomes_enter() {
 +        let none = PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
 +        assert_eq!(follow(NamedKey::Enter, none), PhysicalKey::Code(KeyCode::Enter));
++    }
++
++    // What winit's iOS backend really sends for the Return key (platform_impl/ios/view.rs,
++    // handle_insert_text): a Character logical key holding the line break, no physical key.
++    #[test]
++    fn a_return_typed_as_text_becomes_enter() {
++        let none = || PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
++        for text in ["\n", "\r"] {
++            let mut physical = none();
++            follow_named_keymap(&Key::Character(text.into()), &mut physical);
++            assert_eq!(physical, PhysicalKey::Code(KeyCode::Enter), "{text:?}");
++        }
++    }
++
++    #[test]
++    fn other_text_and_known_keys_are_left_alone() {
++        let none = || PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
++        let mut physical = none();
++        follow_named_keymap(&Key::Character("a".into()), &mut physical);
++        assert_eq!(physical, none());
++        // A desktop keyboard that already named the key keeps it.
++        let mut known = PhysicalKey::Code(KeyCode::KeyA);
++        follow_named_keymap(&Key::Character("\n".into()), &mut known);
++        assert_eq!(known, PhysicalKey::Code(KeyCode::KeyA));
 +    }
 +
 +    #[test]
@@ -6938,12 +6970,9 @@ index 1d0ead6..b8a9faf 100644
 +        // The numpad Enter stays the numpad Enter.
 +        let numpad = PhysicalKey::Code(KeyCode::NumpadEnter);
 +        assert_eq!(follow(NamedKey::Enter, numpad), numpad);
-+    }
-+}
-+
- /// The modifier `modifiers` stands for, as GLFW words it in the native mods'
- /// input hooks: `GLFW_MOD_SHIFT` 1, `GLFW_MOD_CONTROL` 2, `GLFW_MOD_ALT` 4,
- /// `GLFW_MOD_SUPER` 8 — the word a NeoForge listener reads off its event
+     }
+ }
+ 
 diff --git a/horizon/crates/horizon-client/src/game/lifecycle.rs b/horizon/crates/horizon-client/src/game/lifecycle.rs
 new file mode 100644
 index 0000000..1b72e1c
