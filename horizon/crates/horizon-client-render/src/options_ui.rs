@@ -1366,6 +1366,8 @@ enum Act {
     PvpPreset,
     /// PvP & HUD's Edit HUD button.
     HudEditor,
+    /// iMC Settings' Edit touch controls button.
+    TouchEditor,
     /// The installed native mod's settings page.
     ModSettings(usize),
     /// A native mod's key (mod, key) waits for a key; a button of its page.
@@ -1525,6 +1527,8 @@ pub enum Event {
     Credits,
     /// PvP & HUD's Edit HUD: open the HUD editor over the game.
     HudEditor,
+    /// iMC Settings' Edit touch controls: open the touch controls editor over the game.
+    TouchEditor,
     /// Copy how an agent connects (the AI Agent page).
     CopyAgentDetails,
     /// The AI Agent page's recording button: start or stop.
@@ -1930,6 +1934,7 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::Push(Page::Accessibility) => Some("options.accessibility.tooltip".into()),
         Act::PvpPreset => Some("horizon.pvp.preset.tooltip".into()),
         Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
+        Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
         _ => None,
     };
     if let Some(key) = key.filter(|key| lang::has(key)) {
@@ -2880,9 +2885,12 @@ impl OptionsUi {
                         lang::get_or(&format!("horizon.imc.heavy.{}", h.name_key), h.notice),
                     )));
                 }
+                // The editor moves the buttons over the real view: only from a world.
+                let edit = button(0.0, 0.0, 150.0, tr("horizon.imc.editor"), Act::TouchEditor);
+                let edit = if self.in_world { edit } else { inactive(edit) };
                 rows.push(Row::Buttons(
-                    button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
-                    None,
+                    edit,
+                    Some(button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset)),
                 ));
                 rows
             }
@@ -4445,6 +4453,7 @@ impl OptionsUi {
                             events.push(Event::Changed);
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
+                        Act::TouchEditor => events.push(Event::TouchEditor),
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
@@ -5391,6 +5400,7 @@ impl OptionsUi {
                             events.push(Event::Changed);
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
+                        Act::TouchEditor => events.push(Event::TouchEditor),
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),

@@ -726,6 +726,8 @@
   "horizon.imc.header.controls": "Touch controls",
   "horizon.imc.header.screen": "Screen",
   "horizon.imc.reset": "Reset to defaults",
+  "horizon.imc.editor": "Edit touch controls",
+  "horizon.imc.editor.tooltip": "Drag the on-screen buttons where you want them, and set the size and opacity of each. Needs a world open: the buttons show over it.",
   "horizon.imc.touchControls": "On-screen buttons",
   "horizon.imc.touchControls.tooltip": "Show the buttons on the screen while you play.",
   "horizon.imc.lookSpeed": "Look speed",

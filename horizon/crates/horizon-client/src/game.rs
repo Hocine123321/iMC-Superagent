@@ -169,6 +169,7 @@ mod growth;
 mod hand;
 mod headless;
 mod hud_editor;
+mod touch_editor;
 mod ime;
 mod initial_spawn;
 mod input_trace;
@@ -979,6 +980,8 @@ enum Screen {
     Mod,
     /// PvP & HUD's widget editor (game/hud_editor.rs).
     HudEditor,
+    /// iMC Settings' touch controls editor (game/touch_editor.rs).
+    TouchEditor,
 }
 impl Screen {
     /// The id native mods see for this screen (`NativeScreenView.id`, the
@@ -1009,6 +1012,7 @@ impl Screen {
             Screen::DebugOptions => "debug_options",
             Screen::Mod => "mod",
             Screen::HudEditor => "hud_editor",
+            Screen::TouchEditor => "touch_editor",
         }
     }
 }
@@ -2453,6 +2457,10 @@ struct Game<'a> {
     focused: bool,
     /// Whether the window currently accepts input method events.
     ime_allowed: bool,
+    /// Touch's Back put the phone's keyboard away while a text box still has the focus.
+    ime_hidden: bool,
+    /// The touch controls editor, while it is open (`game/touch_editor.rs`).
+    touch_editor: Option<touch_editor::TouchEditor>,
     /// The candidate window's area last given to the window, in pixels.
     ime_area: Option<[i32; 4]>,
     /// When the window lost focus, while it is still without
@@ -8002,6 +8010,7 @@ impl Game<'_> {
             Screen::BlockEditor => self.draw_block_editor(&mut batch),
             Screen::DebugOptions => self.draw_debug_options(&mut batch),
             Screen::HudEditor => self.draw_hud_editor(&mut batch),
+            Screen::TouchEditor => self.draw_touch_editor(&mut batch),
             Screen::Inventory => {
                 let from = batch.vertices.len();
                 self.draw_inventory(&mut batch);
@@ -15029,6 +15038,9 @@ impl Game<'_> {
                         if self.screen == Screen::HudEditor {
                             self.hud_editor_drag();
                         }
+                        if self.screen == Screen::TouchEditor {
+                            self.touch_editor_drag();
+                        }
                         if self.screen == Screen::WorldOptions {
                             self.world_options_drag();
                         }
@@ -15428,6 +15440,12 @@ impl Game<'_> {
                         }
                         Screen::HudEditor if button == MouseButton::Left => {
                             self.hud_editor_release()
+                        }
+                        Screen::TouchEditor if pressed && button == MouseButton::Left => {
+                            self.touch_editor_press()
+                        }
+                        Screen::TouchEditor if button == MouseButton::Left => {
+                            self.touch_editor_release()
                         }
                         Screen::ConfirmLink if pressed && button == MouseButton::Left => {
                             self.confirm_link_click()
@@ -16226,6 +16244,8 @@ impl<'a> Game<'a> {
             split_auth: None,
             focused: true,
             ime_allowed: false,
+            ime_hidden: false,
+            touch_editor: None,
             ime_area: None,
             focus_lost: None,
             modifiers: winit::keyboard::ModifiersState::empty(),

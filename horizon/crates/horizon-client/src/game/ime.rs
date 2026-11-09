@@ -44,7 +44,12 @@ impl Game<'_> {
 
     /// Allow the input method only while a text box has focus.
     pub(super) fn sync_ime(&mut self) {
-        let want = self.text_field_focused();
+        // Touch's Back put the keyboard away: the field keeps its text and its focus, but the
+        // phone's keyboard stays down until the player taps a field again (`ime_hidden`).
+        let want = self.text_field_focused() && !self.ime_hidden;
+        if !self.text_field_focused() {
+            self.ime_hidden = false;
+        }
         if want != self.ime_allowed
             && let Some(window) = &self.window
         {

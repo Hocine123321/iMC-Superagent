@@ -276,8 +276,35 @@ So the cause is **still unknown**. Two things were added, as for the menu offset
    send `latest.log`: the average `dx, dy` is the shift to set, and it says whether the cause is
    constant.
 
+## Edit touch controls, Back, and controller hints
+
+**Edit touch controls** (iMC Settings, next to *Reset to defaults*; needs a world open, the buttons are
+shown over it). The buttons are drawn exactly as in play. Drag one to move it; the panel on the right
+sets its size (50% to 200%) and fade (20% to 100%), hides or shows it, and resets it. *Reset all* puts
+every button back. **Done** keeps the arrangement, **Cancel** (or Back) restores the one the editor
+opened with. A hidden button is drawn faintly in the editor so it can be found again.
+
+The arrangement is saved in `horizon-touch-layout.txt`, beside `horizon-imc.txt`, as the difference
+from the built-in layout. Nothing edited means no file, and every button exactly where it was.
+Screen margin and Button shift still apply on top. A damaged file is ignored line by line and cannot
+push a button off the screen.
+
+**Back button.** On the inventory (and chests, furnaces, crafting), creative, chat, command block,
+block editor, signs and books there is a Back button in the top left, since a phone has no Escape. It
+fires when the finger lifts on it, so brushing past does nothing. While the phone's keyboard is up it
+reads **Done**: the first tap puts the keyboard away (the text stays), the next leaves the screen.
+
+**Controller hints.** The corner hints and the button symbols on menus are for a controller. Touch
+no longer turns them on; they appear for a real controller, or a script's. This also stops the
+engine's own on-screen keyboard from opening over the phone's.
+
 ## Still to check on the phone
 
+00. New this round: open the inventory in a world. Is there a Back button top left, and does it close
+    it? Open chat: with the keyboard up it should say Done; Done hides the keyboard, then Back leaves.
+    No controller symbols or hints should appear anywhere while you only use your fingers.
+01. iMC Settings > Edit touch controls: drag a button, change its size and fade, Done. Leave the
+    world and come back: the arrangement is kept. Cancel restores. Reset all returns the original.
 0. Menus: tap, slide a slider sideways, scroll a list with one finger, and try to press by accident.
    Raise Menu touch if it still happens.
 1. That a finger now lands exactly under itself, in menus and in the world.

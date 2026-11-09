@@ -209,6 +209,8 @@ pub struct Settings {
     pub extras: crate::extras::Extras,
     /// iMC Settings, the iOS app's own (`horizon-imc.txt`, not options.txt).
     pub imc: horizon_client_input::imc_settings::ImcSettings,
+    /// Where the player put the on-screen touch buttons (`horizon-touch-layout.txt`).
+    pub touch_layout: horizon_client_input::touch_layout::ControlLayout,
     /// The Horizon mods turned on (`horizon-mods.txt`), all off by default.
     pub mods: crate::mod_list::ModList,
     /// The packs in `shaderpacks/`, listed when the Shader Packs page opens; the pick is
@@ -298,6 +300,7 @@ impl Default for Settings {
             controller: Default::default(),
             extras: Default::default(),
             imc: Default::default(),
+            touch_layout: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
             shader_options: None,
@@ -372,6 +375,13 @@ impl Settings {
             })
             .map(|text| horizon_client_input::imc_settings::ImcSettings::parse(&text))
             .unwrap_or_default();
+        let touch_layout = path
+            .parent()
+            .and_then(|dir| {
+                fs::read_to_string(dir.join(horizon_client_input::touch_layout::FILE)).ok()
+            })
+            .map(|text| horizon_client_input::touch_layout::ControlLayout::parse(&text))
+            .unwrap_or_default();
         // The enabled mods are the game folder's, shared by its players (`--player-dir`).
         let mods = path
             .parent()
@@ -386,6 +396,7 @@ impl Settings {
                     controller,
                     extras,
                     imc,
+                    touch_layout,
                     mods,
                     ..Self::parse(&text)
                 }
@@ -395,6 +406,7 @@ impl Settings {
                 controller,
                 extras,
                 imc,
+                touch_layout,
                 mods,
                 ..Self::default()
             },
@@ -511,6 +523,7 @@ impl Settings {
             controller: Default::default(),
             extras: Default::default(),
             imc: Default::default(),
+            touch_layout: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
             shader_options: None,
@@ -677,6 +690,7 @@ impl Settings {
             controller: self.controller.clone(),
             extras: self.extras.clone(),
             imc: self.imc.clone(),
+            touch_layout: self.touch_layout.clone(),
             mods: self.mods.clone(),
             video_modes: self.video_modes.clone(),
             ..Self::from_file(file)
@@ -704,6 +718,10 @@ impl Settings {
             let imc_path = dir.join(horizon_client_input::imc_settings::FILE);
             if self.imc != Default::default() || imc_path.exists() {
                 let _ = fs::write(imc_path, self.imc.serialize());
+            }
+            let layout_path = dir.join(horizon_client_input::touch_layout::FILE);
+            if !self.touch_layout.is_default() || layout_path.exists() {
+                let _ = fs::write(layout_path, self.touch_layout.serialize());
             }
             self.mods.save(&crate::logging::shared_dir(dir));
         }

@@ -7,8 +7,8 @@ what `horizon/` holds now, why each exists, and how to put it back.
 ## How this stays true
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
-  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **40 files,
-  +4426 / -70: 9 new files, 31 modified, none deleted.** Only 70 upstream lines are removed or
+  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **50 files,
+  +5698 / -77: 11 new files, 39 modified, none deleted.** Only 77 upstream lines are removed or
   rewritten in total; everything else is added.
 - **`docs/horizon-changes.patch` is the exact diff** (generated, not hand-written). When this prose
   and the patch disagree, the patch is right. Replay it onto a new upstream with
@@ -28,7 +28,7 @@ could not be built without it) and some of it (the iMC Settings page, Auto Perfo
 goes beyond a touch fix. They are listed here as the facts they are, not as approved. **Each entry
 carries a risk, so you can decide what to keep when you rebase.**
 
-Entries are grouped by what they are for, not by file. Every one of the 40 files appears once, in
+Entries are grouped by what they are for, not by file. Every one of the 50 files appears once, in
 the index at the end.
 
 ---
@@ -134,7 +134,7 @@ until it passes. The patch will conflict wherever upstream reshaped `finish` or 
 | File | Lines | What it is |
 |---|---|---|
 | `crates/horizon-client-input/src/touch.rs` | 1164 | Pure finger state machine: stick, look, tap/hold attack, double-tap jump, hotbar slots, menu gestures (tap on lift, slide, scroll, long press), the surface mapping `to_surface`. 74-test crate with `imc_settings.rs`. |
-| `crates/horizon-client/src/game/touch.rs` | 515 | The glue: winit `Touch` event to `touch.rs`, on-screen buttons (`PADS`), hit rectangles, drawing, pointer events fed to the normal mouse path, auto sprint, the per-press log. |
+| `crates/horizon-client/src/game/touch.rs` | 729 | The glue: winit `Touch` event to `touch.rs`, on-screen buttons (`PADS`), hit rectangles, drawing, pointer events fed to the normal mouse path, auto sprint, the per-press log. |
 | `crates/horizon-client/src/game/lifecycle.rs` | 47 | `app_suspended` (save on going to the background) and `app_memory_warning`. |
 
 ### C2. Hooks into existing files
@@ -145,7 +145,7 @@ until it passes. The patch will conflict wherever upstream reshaped `finish` or 
 | `game/window_handler.rs` | `self.touch_frame(event_loop); self.auto_performance_frame();` per frame, and `ApplicationHandler::suspended` / `memory_warning` forwarding to `lifecycle.rs`. |
 | `game/split.rs` | The same two `suspended` / `memory_warning` forwards on `Split`. |
 | `game/loading_screen.rs` | `App::suspended` / `memory_warning` forwards. |
-| `game/pad.rs` | `set_injected_left(stick)` added (the steering stick writes the virtual controller's left stick), and `pad_cancel_inputs` made `pub(super)`. |
+| `game/pad.rs` | `set_injected_left(stick)` added (the steering stick writes the virtual controller's left stick), and `pad_cancel_inputs` made `pub(super)`. Changed again in I2: touch now writes `Pads::touched`. |
 
 **Known open problem (2026-11-09):** the on-screen buttons are hit a little left and up of where they
 are drawn. The cause is **not found**. Measured: hit and drawn rectangles differ by 0 to 2 px only.
@@ -213,7 +213,36 @@ swap each read that sizes streaming for `capped_render_distance()`.
 
 ---
 
-## F. Index: all 40 files
+## I. Touch controls editor, Back button, controller hints (2026-11-09)
+
+Three things that were wrong on the phone, fixed together because they share files.
+
+### I1. New files (copy as they are)
+| File | Lines | What it is |
+|---|---|---|
+| `crates/horizon-client-input/src/touch_layout.rs` | 678 | Pure: where each on-screen button sits (`Slot`: move, scale, opacity, shown), saved as the **difference from the built-in layout** in `horizon-touch-layout.txt` (an unedited layout writes nothing and places every button bit-for-bit as before). Also `back` (the Back button's rectangle and what a tap does) and `editor` (the panel's rectangles and the size/opacity steps). 27 tests. |
+| `crates/horizon-client/src/game/touch_editor.rs` | 246 | The editor screen: the real buttons drawn on a dimmed stage, drag to move, a panel on the right (size, fade, hide, reset, Cancel, Done). Cancel puts back the arrangement it opened with. |
+
+### I2. Hooks into existing files
+| File | Change |
+|---|---|
+| `horizon-client-input/src/lib.rs` | `pub mod touch_layout;` |
+| `horizon-client-render/src/settings.rs` | `touch_layout: ControlLayout` on `Settings`: default in two constructors, cloned in `with_option`, loaded from `horizon-touch-layout.txt` (both `match` arms), saved only when changed or the file exists. |
+| `horizon-client-render/src/options_ui.rs` | `Act::TouchEditor` and `Event::TouchEditor`; the *Edit touch controls* button next to Reset on the iMC page (greyed outside a world: the editor needs the view); its tooltip; the two click handlers. |
+| `assets/horizon/lang/en_us.json` | `horizon.imc.editor` and `horizon.imc.editor.tooltip` (2 keys). |
+| `game.rs` | `Screen::TouchEditor` (+ its name), `mod touch_editor;`, the `ime_hidden` and `touch_editor` fields, the draw arm, and the editor's three pointer hooks (drag, press, release) beside the HUD editor's. |
+| `game/touch.rs` | **Back button** (`touch_back_*`): drawn over the inventory, creative, chat, command block, block editor, signs and books, which a phone cannot close by key. A finger that goes down on it is kept from the pointer and fires on lift; the first tap puts the phone's keyboard away, the next leaves like Escape. **Layout:** `pad_rect` places every button (hit test and drawing both use it), `faded` for opacity. Helpers exported for the editor. 5 tests. |
+| `game/ime.rs` | `sync_ime` honours `ime_hidden`, so Back can put the keyboard away while the text box keeps its text. |
+| `game/pad.rs` | **Controller hints.** Touch now writes its buttons and steering into `Pads::touched`, not `injected`. `state` still includes it (touch plays as before) but the "pad in use" check does not, so a finger no longer turns on the controller glyphs, the menus' controller focus, or the engine's own on-screen keyboard (which stacked on the phone's). `virtual_input` counts `touched` so input still reaches the game. |
+| `game/agent.rs`, `game/control.rs`, `game/debug_options.rs`, `game/pad_menu.rs`, `game/play_keys.rs`, `game/pointer_capture.rs`, `game/screens.rs`, `game/options.rs`, `game/startup_menu.rs` | One arm each for the new `Screen::TouchEditor` / `Event::TouchEditor`, next to `HudEditor`'s: its name for the agent and control APIs, no blur, controller pointer screen, Escape cancels, pointer released, the options event opens it. |
+
+**Re-apply:** copy the two new files, add `Screen::TouchEditor` and let the compiler list every
+`match` that needs an arm (each is one line beside `HudEditor`), then re-do the `pad.rs`, `ime.rs`
+and `touch.rs` hunks by their anchors.
+
+---
+
+## F. Index: all 50 files
 
 `A` = new file, `M` = modified. Section in brackets.
 
@@ -224,8 +253,9 @@ M horizon/crates/horizon-client-input/Cargo.toml                  [A2]
 A horizon/crates/horizon-client-input/src/auto_performance.rs     [E1]
 A horizon/crates/horizon-client-input/src/imc_settings.rs         [D1]
 M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
-M horizon/crates/horizon-client-input/src/lib.rs                  [C2]
+M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
 A horizon/crates/horizon-client-input/src/touch.rs                [C1]
+A horizon/crates/horizon-client-input/src/touch_layout.rs         [I1]
 M horizon/crates/horizon-client-input/src/window.rs               [A4]
 M horizon/crates/horizon-client-render/src/gfx.rs                 [A1, B]
 M horizon/crates/horizon-client-render/src/gfx/flat.rs            [A6]
@@ -234,24 +264,33 @@ M horizon/crates/horizon-client-render/src/graphics_ui.rs         [A1, D2]
 A horizon/crates/horizon-client-render/src/ios_unused.rs          [D1]
 M horizon/crates/horizon-client-render/src/lib.rs                 [D2]
 M horizon/crates/horizon-client-render/src/logging.rs             [A1]
-M horizon/crates/horizon-client-render/src/options_ui.rs          [A1, D2]
-M horizon/crates/horizon-client-render/src/settings.rs            [D2]
-M horizon/crates/horizon-client/assets/horizon/lang/en_us.json    [D2]
-M horizon/crates/horizon-client/src/game.rs                       [B, C2, E2]
+M horizon/crates/horizon-client-render/src/options_ui.rs          [A1, D2, I2]
+M horizon/crates/horizon-client-render/src/settings.rs            [D2, I2]
+M horizon/crates/horizon-client/assets/horizon/lang/en_us.json    [D2, I2]
+M horizon/crates/horizon-client/src/game.rs                       [B, C2, E2, I2]
+M horizon/crates/horizon-client/src/game/agent.rs                [I2]
 A horizon/crates/horizon-client/src/game/auto_performance.rs      [E1]
+M horizon/crates/horizon-client/src/game/control.rs               [I2]
+M horizon/crates/horizon-client/src/game/debug_options.rs         [I2]
 M horizon/crates/horizon-client/src/game/dedicated.rs             [E2]
+M horizon/crates/horizon-client/src/game/ime.rs                   [I2]
 A horizon/crates/horizon-client/src/game/lifecycle.rs             [C1]
 M horizon/crates/horizon-client/src/game/loading_screen.rs        [A4, B, C2]
 M horizon/crates/horizon-client/src/game/loading_window.rs        [B]
 M horizon/crates/horizon-client/src/game/no_resources.rs          [A4]
-M horizon/crates/horizon-client/src/game/options.rs               [E2]
-M horizon/crates/horizon-client/src/game/pad.rs                   [C2]
+M horizon/crates/horizon-client/src/game/options.rs               [E2, I2]
+M horizon/crates/horizon-client/src/game/pad.rs                   [C2, I2]
+M horizon/crates/horizon-client/src/game/pad_menu.rs              [I2]
+M horizon/crates/horizon-client/src/game/play_keys.rs             [I2]
+M horizon/crates/horizon-client/src/game/pointer_capture.rs       [I2]
 M horizon/crates/horizon-client/src/game/remote.rs                [E2]
 M horizon/crates/horizon-client/src/game/render_settings.rs       [E2]
+M horizon/crates/horizon-client/src/game/screens.rs               [I2]
 M horizon/crates/horizon-client/src/game/split.rs                 [C2]
 M horizon/crates/horizon-client/src/game/split/players.rs         [B]
-M horizon/crates/horizon-client/src/game/startup_menu.rs          [B]
-A horizon/crates/horizon-client/src/game/touch.rs                 [C1]
+M horizon/crates/horizon-client/src/game/startup_menu.rs          [B, I2]
+A horizon/crates/horizon-client/src/game/touch.rs                 [C1, I2]
+A horizon/crates/horizon-client/src/game/touch_editor.rs          [I1]
 M horizon/crates/horizon-client/src/game/window_handler.rs        [A4, C2]
 M horizon/crates/horizon-hdr/Cargo.toml                           [A1]
 M horizon/crates/horizon-hdr/src/lib.rs                           [A1]
@@ -263,7 +302,7 @@ A horizon/platform/ios-bridge/src/lib.rs                          [A5]
 ## G. Rebase checklist
 
 1. Import the new upstream beside the old one; do **not** overwrite `horizon/` first.
-2. Copy the nine new files (C1, D1, E1, A5): they are self-contained.
+2. Copy the eleven new files (C1, D1, E1, A5, I1): they are self-contained.
 3. Do section A (mechanical), then B (by intent, measure the stack), then the hooks in C2, D2, E2.
 4. `cargo test -p horizon-client-input` (touch, settings and Auto Performance logic) needs no
    engine build. The render and client crates build on CI only.

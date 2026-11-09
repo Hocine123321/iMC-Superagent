@@ -58,6 +58,7 @@ impl Game<'_> {
                     | Screen::CommandBlock
                     | Screen::DebugOptions
                     | Screen::HudEditor
+                    | Screen::TouchEditor
             ) || self.book.is_some()
                 || self.win_screen_pauses())
     }

@@ -20,6 +20,7 @@ use horizon_client::hud::HudBatch;
 use horizon_client_input::touch::{
     Action as TouchAction, FingerId, Mode, Rect, Touch, hotbar_slots, to_surface,
 };
+use horizon_client_input::touch_layout::back;
 use std::time::Instant;
 use winit::{
     dpi::PhysicalPosition,
@@ -54,6 +55,25 @@ enum Anchor {
     TopLeft(f32, f32, f32, f32),
     TopRight(f32, f32, f32, f32),
     BottomRight(f32, f32, f32, f32),
+}
+
+/// `PADS`' index into the layout file's buttons (`touch_layout::NAMES`).
+const PAD_SLOT: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+/// How many on-screen buttons there are, for the editor.
+pub(super) const PAD_COUNT: usize = PADS.len();
+/// Pad `i`'s place in the layout file.
+pub(super) fn pad_slot(i: usize) -> usize {
+    PAD_SLOT[i]
+}
+/// Pad `i`'s name on its button.
+pub(super) fn pad_label(i: usize) -> &'static str {
+    PADS[i].label
+}
+/// Where the layout puts pad `i` before the player's arrangement, as `[x, y, w, h]`.
+pub(super) fn pad_base(i: usize, size: (f32, f32), margin: f32) -> [f32; 4] {
+    let r = PADS[i].rect(size, margin);
+    [r.x, r.y, r.w, r.h]
 }
 
 impl Pad {
@@ -132,6 +152,12 @@ const PADS: &[Pad] = &[
     },
 ];
 
+/// A colour (0xAARRGGBB) with its alpha scaled by `opacity`, 0 to 1.
+pub(super) fn faded(colour: u32, opacity: f32) -> u32 {
+    let alpha = ((colour >> 24) as f32 * opacity.clamp(0.0, 1.0)).round() as u32;
+    (alpha.min(255) << 24) | (colour & 0x00FF_FFFF)
+}
+
 /// How far above the hotbar a tap still selects its slot, in GUI units. The icons are 16 units
 /// across and a thumb is not; this is room for it without reaching the buttons above.
 const HOTBAR_LIFT: f32 = 6.0;
@@ -149,6 +175,8 @@ pub(super) struct TouchState {
     /// Touch was used since the app started: the controls draw only then, so a desktop run with
     /// a mouse never shows them.
     pub(super) seen: bool,
+    /// The finger that went down on Back, and is not a pointer: it fires when it lifts on Back.
+    back_finger: Option<FingerId>,
 }
 
 impl Default for TouchState {
@@ -160,6 +188,7 @@ impl Default for TouchState {
             pointer: (0.0, 0.0),
             sprint_held: false,
             seen: false,
+            back_finger: None,
         }
     }
 }
@@ -213,6 +242,9 @@ impl Game<'_> {
             );
         }
         let id = touch.id;
+        if self.touch_back_event(event_loop, id, touch.phase, at, size) {
+            return;
+        }
         let rects = self.touch_rects(size);
         if touch.phase == TouchPhase::Started && !rects.is_empty() {
             // In the world the buttons are hit by rectangle, not by the engine's pointer, so the
@@ -366,6 +398,97 @@ impl Game<'_> {
         }
     }
 
+    /// Screens that close by a key a phone does not have: the inventory and what opens through it
+    /// (chests, furnaces, crafting), creative, chat and the other text screens, signs and books.
+    /// The screens with their own Back or Done button are not on this list.
+    fn touch_back_wanted(&self) -> bool {
+        self.touch.seen
+            && self.settings.imc.controls
+            && self.title.is_none()
+            && !self.prompt_open()
+            && (self.sign_edit.is_some()
+                || self.book.is_some()
+                || matches!(
+                    self.screen,
+                    Screen::Inventory
+                        | Screen::Creative
+                        | Screen::Chat
+                        | Screen::CommandBlock
+                        | Screen::BlockEditor
+                ))
+    }
+
+    /// Back's finger: a press on the button is kept from the pointer, and fires on lift. Returns
+    /// whether the event was Back's, so the caller leaves it alone.
+    fn touch_back_event(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        id: FingerId,
+        phase: TouchPhase,
+        at: (f32, f32),
+        size: (f32, f32),
+    ) -> bool {
+        let rect = back::rect(size);
+        let on_button = at.0 >= rect[0]
+            && at.0 < rect[0] + rect[2]
+            && at.1 >= rect[1]
+            && at.1 < rect[1] + rect[3];
+        match phase {
+            TouchPhase::Started => {
+                if self.touch_back_wanted() && on_button && self.touch.back_finger.is_none() {
+                    self.touch.back_finger = Some(id);
+                    return true;
+                }
+                // Any other touch on a screen is the player going to a field: the keyboard may
+                // come back.
+                self.ime_hidden = false;
+                false
+            }
+            TouchPhase::Moved => self.touch.back_finger == Some(id),
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                if self.touch.back_finger != Some(id) {
+                    return false;
+                }
+                self.touch.back_finger = None;
+                if phase == TouchPhase::Ended && back::fires(true, at, rect) {
+                    self.touch_back_fire(event_loop);
+                }
+                true
+            }
+        }
+    }
+
+    /// The first tap puts the keyboard away; the next leaves, as Escape does.
+    fn touch_back_fire(&mut self, event_loop: &dyn EventLoopCtl) {
+        let _ = event_loop;
+        let keyboard_open = self.ime_allowed && !self.ime_hidden;
+        match back::effect(keyboard_open) {
+            back::Effect::CloseKeyboard => {
+                self.ime_hidden = true;
+                self.sync_ime();
+            }
+            back::Effect::Leave => {
+                self.ime_hidden = false;
+                if let Err(e) = self.pad_back() {
+                    log::warn!("Horizon: touch back: {e}");
+                }
+            }
+        }
+    }
+
+    /// Where pad `i` is on a screen of `size`: the layout's own place, then the player's
+    /// arrangement. The hit test and the drawing both come here, so they cannot disagree.
+    /// `None` for a button the player hid.
+    fn pad_rect(&self, i: usize, size: (f32, f32)) -> Option<Rect> {
+        let slot = self.settings.touch_layout.slot(PAD_SLOT[i]);
+        if !slot.shown {
+            return None;
+        }
+        let base = PADS[i].rect(size, self.settings.imc.safe_margin_scale());
+        let [x, y, w, h] = slot.place([base.x, base.y, base.w, base.h], size);
+        Some(Rect { x, y, w, h })
+    }
+
     fn touch_rects(&self, size: (f32, f32)) -> Vec<Rect> {
         if self.touch.logic.mode() != Mode::Playing || !self.touch_controls_visible() {
             return Vec::new();
@@ -373,7 +496,18 @@ impl Game<'_> {
         let margin = self.settings.imc.safe_margin_scale();
         // iMC Settings' Button shift: where the buttons answer, not where they are drawn.
         let (bx, by) = self.settings.imc.button_shift();
-        let mut rects: Vec<Rect> = PADS.iter().map(|p| p.rect(size, margin)).collect();
+        let _ = margin;
+        // A hidden button keeps its index, with no area, so nothing else shifts.
+        let mut rects: Vec<Rect> = (0..PADS.len())
+            .map(|i| {
+                self.pad_rect(i, size).unwrap_or(Rect {
+                    x: -1.0,
+                    y: -1.0,
+                    w: 0.0,
+                    h: 0.0,
+                })
+            })
+            .collect();
         // The nine hotbar slots follow the pads: an index of `PADS.len()` or more is a slot.
         if let Some(scale) = self.gui_scale().map(|b| b.scale) {
             rects.extend(hotbar_slots(size, scale, HOTBAR_LIFT));
@@ -476,6 +610,19 @@ impl Game<'_> {
     /// The on-screen buttons and the steering stick, over the world. Nothing before the first
     /// touch, so a desktop run never shows them.
     pub(super) fn draw_touch_controls(&self, batch: &mut HudBatch) {
+        if self.touch_back_wanted() {
+            let [x, y, w, h] = back::rect((batch.width, batch.height));
+            let atlas = &self.gui.atlas;
+            let down = self.touch.back_finger.is_some();
+            batch.fill(atlas, x, y, w, h, if down { 0xA0FF_FFFF } else { 0x7000_0000 });
+            let label = if self.ime_allowed && !self.ime_hidden {
+                "Done"
+            } else {
+                "Back"
+            };
+            let tw = HudBatch::text_width(atlas, label);
+            batch.text(atlas, label, x + (w - tw) / 2.0, y + (h - 8.0) / 2.0, 0xFFFF_FFFF, true);
+        }
         if !self.touch_controls_visible() {
             return;
         }
@@ -483,9 +630,12 @@ impl Game<'_> {
         let (w, h) = (batch.width, batch.height);
         for (i, p) in PADS.iter().enumerate() {
             // The same fractions as the hit test, on the GUI-unit size instead of pixels.
-            let Rect { x, y, w: bw, h: bh } = p.rect((w, h), self.settings.imc.safe_margin_scale());
+            let Some(Rect { x, y, w: bw, h: bh }) = self.pad_rect(i, (w, h)) else {
+                continue;
+            };
+            let opacity = self.settings.touch_layout.slot(PAD_SLOT[i]).opacity;
             let down = self.touch.holding.iter().any(|(_, held)| *held == i);
-            let fill = if down { 0x90FF_FFFF } else { 0x5000_0000 };
+            let fill = faded(if down { 0x90FF_FFFF } else { 0x5000_0000 }, opacity);
             batch.fill(atlas, x, y, bw, bh, fill);
             let tw = HudBatch::text_width(atlas, p.label);
             batch.text(
@@ -493,7 +643,7 @@ impl Game<'_> {
                 p.label,
                 x + (bw - tw) / 2.0,
                 y + (bh - 8.0) / 2.0,
-                0xFFFF_FFFF,
+                faded(0xFFFF_FFFF, opacity),
                 true,
             );
         }
@@ -511,5 +661,69 @@ impl Game<'_> {
                 0xA0FF_FFFF,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use horizon_client_input::touch_layout::{COUNT, ControlLayout, NAMES, Slot};
+
+    const PHONE: (f32, f32) = (2532.0, 1170.0);
+
+    #[test]
+    fn every_pad_has_a_layout_slot_and_they_are_distinct() {
+        assert_eq!(PAD_SLOT.len(), PADS.len());
+        for (i, slot) in PAD_SLOT.iter().enumerate() {
+            assert!(*slot < COUNT, "{} has no slot", PADS[i].label);
+            assert!(PAD_SLOT[i + 1..].iter().all(|o| o != slot));
+        }
+        // Back is the one slot that is not a pad.
+        assert_eq!(COUNT, PADS.len() + 1);
+        assert_eq!(NAMES[COUNT - 1], "back");
+    }
+
+    #[test]
+    fn an_unedited_layout_leaves_every_pad_where_it_was() {
+        let layout = ControlLayout::default();
+        for (i, pad) in PADS.iter().enumerate() {
+            let base = pad.rect(PHONE, 1.0);
+            let placed = layout
+                .slot(PAD_SLOT[i])
+                .place([base.x, base.y, base.w, base.h], PHONE);
+            assert_eq!(placed, [base.x, base.y, base.w, base.h], "{}", pad.label);
+        }
+    }
+
+    #[test]
+    fn the_pads_do_not_overlap_each_other_in_the_default_layout() {
+        let rects: Vec<Rect> = PADS.iter().map(|p| p.rect(PHONE, 1.0)).collect();
+        for (i, a) in rects.iter().enumerate() {
+            for b in &rects[i + 1..] {
+                let apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+                assert!(apart, "{a:?} overlaps {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_hidden_pad_cannot_be_hit() {
+        let hidden = Slot {
+            shown: false,
+            ..Slot::default()
+        };
+        assert!(!hidden.shown);
+        // The sentinel the hit test uses for a hidden pad has no area, so no point is inside it.
+        let none = Rect { x: -1.0, y: -1.0, w: 0.0, h: 0.0 };
+        assert!(!none.contains((-1.0, -1.0)) && !none.contains((0.0, 0.0)));
+    }
+
+    #[test]
+    fn fading_scales_only_the_alpha() {
+        assert_eq!(faded(0x80FF_8040, 1.0), 0x80FF_8040);
+        assert_eq!(faded(0x80FF_8040, 0.5), 0x40FF_8040);
+        assert_eq!(faded(0xFFFF_FFFF, 0.0), 0x00FF_FFFF);
+        // Out of range opacity cannot overflow the alpha byte.
+        assert_eq!(faded(0xFF00_0000, 7.0), 0xFF00_0000);
     }
 }
