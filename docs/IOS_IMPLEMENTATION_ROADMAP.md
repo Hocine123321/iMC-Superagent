@@ -396,7 +396,7 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 **Objective.** Complete the feature set that makes it a product.
 
 **Work.**
-- Multiplayer to Java servers on protocol 777 using the existing client (`net.rs`, `remote*.rs`). Verify TLS roots on iOS (the `ureq`/`rustls` root store question, UNRESOLVED), the Local Network permission for LAN, and reconnect after background (sockets die on suspend).
+- Multiplayer to Java servers on protocol 777 using the existing client (`net.rs`, `remote*.rs`). TLS roots on iOS are settled from the lockfile (`webpki-roots`, compiled in; see the feasibility report), the Local Network usage text is in `project.yml`, and whether LAN multicast also needs Apple's multicast entitlement is still to be tried on a phone, and reconnect after background (sockets die on suspend).
 - Online-mode join uses the Minecraft session from M9.
 - Audio: spatialisation, ducking, silent-switch policy, headphones route.
 - Mobile menus, inventory, crafting and the recipe book at touch size; HUD safe areas; landscape and optional portrait.

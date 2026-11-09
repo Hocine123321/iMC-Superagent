@@ -43,6 +43,10 @@ targets:
         # The Files app shows Documents/Horizon, where the player puts the prepared game files.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        # Joining or hosting a LAN world sends and listens on the local network (Minecraft's LAN
+        # announcement is UDP multicast on 224.0.2.60:4445, not Bonjour, so no NSBonjourServices).
+        # Without this text iOS 14 and later blocks local traffic and shows no prompt.
+        NSLocalNetworkUsageDescription: iMC Horizon uses your local network to find and join Minecraft worlds hosted on other devices in your home.
     settings:
       base:
         INFOPLIST_FILE: App/Info.plist
