@@ -71,12 +71,14 @@ fn turned_away(game: &Game<'_>) -> Option<String> {
     })
 }
 
-/// The `Game` `start` makes (~67 KB, by value) into a box, in a frame of its own that is gone
-/// once it is: the copies stay out of the caller's frame, deep in the event loop.
+/// The `Game` `start` makes, already on the heap (`start_game` builds it there), as a plain box;
+/// a start that yields no game is an error for a guest.
 #[inline(never)]
-fn boxed(start: impl FnOnce() -> Result<Option<Game<'static>>>) -> Result<Box<Game<'static>>> {
+fn boxed(
+    start: impl FnOnce() -> Result<Option<Box<Game<'static>>>>,
+) -> Result<Box<Game<'static>>> {
     match start() {
-        Ok(Some(game)) => Ok(Box::new(game)),
+        Ok(Some(game)) => Ok(game),
         Ok(None) => Err("the player's game did not start".into()),
         Err(e) => Err(e),
     }

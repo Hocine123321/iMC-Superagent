@@ -54,3 +54,26 @@ Run the app and watch `latest.log`: after `loading the title artwork` it should 
 `title renderer ready` (breadcrumb) and show the title screen. `crash.txt` records the main thread's
 stack size and where any later fault landed. To measure the frames again, read the `sub sp` prologues
 in the arm64 binary (see git history of this file for the script).
+
+## What builds 22 to 25 taught (measured on the arm64 binaries)
+
+Each fix moved the crash one step deeper, because the budget was only ever checked for the step that
+had just failed. The real rule: **every frame from `run_with` down to the deepest callee of the
+startup is on the 1008 KB main thread at once**, and a `Game` is held by value by every function
+that receives it.
+
+| build | worst chain (Rust frames) | died in |
+|---|---|---|
+| 22 (v1) | 1,232 KB | `Loading::finish` (596 KB frame beneath the renderer) |
+| 24 (v2) | 914 KB measured, +95 KB system frames | `finish_game` (596 KB, under `start_game`) |
+| 25 (v3) | 972 KB measured, +95 KB | `start_game` (280 KB) over `start_boxed` (268 KB) |
+
+What did not work: a thread with a big stack (`Game` is not `Send`: it holds `Rc`, `Box<dyn Editor>`),
+and switching stacks with `makecontext` (unavailable on iOS). `unsafe` is forbidden in this crate.
+
+What does: `Game::new_boxed` builds the `Game` on the heap (`Box::new(Game { .. })`), `start_game`
+returns `Option<Box<Game>>`, and `Game::new` (used by the tests) unboxes it. No function on the
+startup path then holds a `Game` by value.
+
+`tools/check_stack_budget.py` reads the frame sizes of the chain from the built binary and fails
+the CI run when the total passes 760 KB, so a build that would crash is not published.

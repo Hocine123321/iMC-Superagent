@@ -266,7 +266,7 @@ pub(super) fn start_game<'a>(
     settings: Option<Settings>,
     prepared: Option<GameCpuResources>,
     entity_models: Option<Arc<horizon_client::mobs::EntityModelDocument>>,
-) -> Result<Option<Game<'a>>> {
+) -> Result<Option<Box<Game<'a>>>> {
     let handoff = prepared.is_some();
     let mut settings = match settings {
         Some(settings) => settings,
@@ -284,7 +284,7 @@ pub(super) fn start_game<'a>(
             entity_models.as_deref(),
         )?),
     };
-    let mut game = Game::new(res, pack, gui, options, settings, audio, prepared)?;
+    let mut game = Game::new_boxed(res, pack, gui, options, settings, audio, prepared)?;
     game.rest_loader = rest_loader;
     game.ui.vanilla_root = vanilla_root;
     if let Some(error) = pack_error {

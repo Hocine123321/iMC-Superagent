@@ -163,6 +163,15 @@ jobs:
         run: |
           APP=$(find build/dd -name Horizon.app -maxdepth 6 | head -1)
           mkdir -p Payload && cp -R "$APP" Payload/ && zip -qry Horizon-unsigned.ipa Payload && ls -la Horizon-unsigned.ipa
+      # Three builds in a row died of a stack overflow on the iOS main thread (1008 KB), each one a
+      # step deeper in the startup. This reads the frame sizes of that call chain from the binary
+      # and fails the run over budget, so a build that would crash is not published.
+      - name: Check the startup stack budget
+        if: matrix.sdk == 'iphoneos'
+        run: |
+          python3 -m pip install --quiet lief capstone
+          APP=$(find platform/ios/build/dd -name Horizon.app -maxdepth 6 | head -1)
+          python3 tools/check_stack_budget.py "$APP/Horizon" 760
       - uses: actions/upload-artifact@v4
         if: matrix.sdk == 'iphoneos'
         with:

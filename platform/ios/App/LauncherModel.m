@@ -67,6 +67,7 @@
     unsigned long long total = 0;
     NSDirectoryEnumerator *e = [[NSFileManager defaultManager] enumeratorAtPath:_resources];
     for (NSString *rel in e) {
+        (void)rel;
         NSDictionary *a = e.fileAttributes;
         if ([a.fileType isEqualToString:NSFileTypeRegular]) total += a.fileSize;
     }
@@ -115,6 +116,7 @@
             // copy is made beside the old files (a failed import must leave them alone).
             NSDirectoryEnumerator *sizer = [fm enumeratorAtPath:base.path];
             for (NSString *rel in sizer) {
+                (void)rel;
                 if ([sizer.fileAttributes.fileType isEqualToString:NSFileTypeRegular]) needed += sizer.fileAttributes.fileSize;
             }
             NSDictionary *fs = [fm attributesOfFileSystemForPath:_root error:nil];

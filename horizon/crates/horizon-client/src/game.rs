@@ -16075,6 +16075,24 @@ impl<'a> Game<'a> {
         audio: Audio,
         prepared: Option<GameCpuResources>,
     ) -> Result<Self> {
+        Ok(*Self::new_boxed(
+            res, pack, gui, options, settings, audio, prepared,
+        )?)
+    }
+
+    /// `new`, with the `Game` on the heap from the start. `Game` is large and `new` is deep in the
+    /// event loop on an iOS main thread (1 MB): a `Game` returned by value is held by every caller
+    /// on the way up, each in a frame of its own (docs/IOS_CRASH_STACK.md).
+    #[inline(never)]
+    fn new_boxed(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        gui: UiResources,
+        options: Options,
+        settings: Settings,
+        audio: Audio,
+        prepared: Option<GameCpuResources>,
+    ) -> Result<Box<Self>> {
         let root = options.resources.clone();
         let registry = pack.assets.registry;
         // Until a world is opened the streamer is idle.
@@ -16107,7 +16125,7 @@ impl<'a> Game<'a> {
             &gui.atlas.sprites,
             &gui.atlas.translucent,
         );
-        let mut game = Game {
+        let mut game = Box::new(Game {
             world_biomes: None,
             world_biomes_base: None,
             res: res.clone(),
@@ -16645,7 +16663,7 @@ impl<'a> Game<'a> {
             camera_type: Default::default(),
             fangs: Default::default(),
             player_model: None,
-        };
+        });
         if game.native_window() {
             game.native_client_start();
         }
@@ -17294,7 +17312,7 @@ fn run_synchronous(
             );
             game.settings.save(&Game::options_path());
         }
-        run_event_loop(game)?;
+        run_event_loop(*game)?;
     }
     Ok(())
 }

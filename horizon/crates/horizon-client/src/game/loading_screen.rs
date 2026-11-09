@@ -392,9 +392,8 @@ impl Loading {
         let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));
         let game_at = Instant::now();
         let game_step = startup::step("handoff.start_game");
-        // Boxed in a frame of its own, as splitscreen does (`players.rs`): the `Game` start_game
-        // returns by value is gone when this returns, so this frame only holds a pointer while
-        // `start_game` runs (docs/IOS_CRASH_STACK.md).
+        // The `Game` is on the heap from `Game::new_boxed` on, so this frame only holds a pointer
+        // while `start_game` runs (docs/IOS_CRASH_STACK.md).
         let started = start_boxed(
             res,
             loaded.pack,
@@ -460,8 +459,8 @@ impl Loading {
     }
 }
 
-/// `start_game`, with the `Game` it returns by value put in a box in a frame that is gone when
-/// this returns. Never inlined: that is the point.
+/// `start_game`, in a frame of its own so `finish_game` stays small beneath it. `start_game` and
+/// `Game::new_boxed` build the `Game` on the heap, so nothing here holds one by value.
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
 fn start_boxed(
@@ -478,7 +477,7 @@ fn start_boxed(
     prepared: Option<GameCpuResources>,
     entity_models: Option<Arc<horizon_client::mobs::EntityModelDocument>>,
 ) -> Result<Option<Box<Game<'static>>>> {
-    Ok(start_game(
+    start_game(
         res,
         pack,
         gui,
@@ -491,8 +490,7 @@ fn start_boxed(
         settings,
         prepared,
         entity_models,
-    )?
-    .map(Box::new))
+    )
 }
 
 /// A `Split` around a boxed `Game`, built in a frame that is gone when this returns: `Split::new`

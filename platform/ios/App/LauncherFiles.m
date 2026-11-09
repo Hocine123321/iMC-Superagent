@@ -6,7 +6,7 @@
 @property (strong) UILabel *stateLabel, *detailLabel, *progressLabel;
 @property (strong) UIProgressView *progress;
 @property (strong) UIButton *importButton, *checkButton, *deleteButton;
-@property BOOL busy;
+@property (nonatomic) BOOL busy;
 @end
 
 @implementation HZLauncherFilesController
