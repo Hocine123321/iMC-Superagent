@@ -166,8 +166,12 @@ jobs:
       # Three builds in a row died of a stack overflow on the iOS main thread (1008 KB), each one a
       # step deeper in the startup. This reads the frame sizes of that call chain from the binary
       # and fails the run over budget, so a build that would crash is not published.
+      # The check never hides the build: it records pass or fail, the IPA is always uploaded as a
+      # workflow artifact (named by the verdict), and only a pass is published under Releases.
       - name: Check the startup stack budget
+        id: stack
         if: matrix.sdk == 'iphoneos'
+        continue-on-error: true
         run: |
           # Homebrew's Python refuses a plain pip install (PEP 668): a throwaway virtual environment.
           python3 -m venv /tmp/stackcheck
@@ -175,9 +179,15 @@ jobs:
           APP=$(find platform/ios/build/dd -name Horizon.app -maxdepth 6 | head -1)
           /tmp/stackcheck/bin/python tools/check_stack_budget.py "$APP/Horizon" 760
       - uses: actions/upload-artifact@v4
-        if: matrix.sdk == 'iphoneos'
+        if: matrix.sdk == 'iphoneos' && steps.stack.outcome == 'success'
         with:
           name: Horizon-unsigned-ipa
+          path: platform/ios/Horizon-unsigned.ipa
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: matrix.sdk == 'iphoneos' && steps.stack.outcome != 'success'
+        with:
+          name: Horizon-unsigned-ipa-STACK-CHECK-FAILED-may-crash
           path: platform/ios/Horizon-unsigned.ipa
           retention-days: 7
       # Every successful device build on main is published under Releases, so the IPA is one tap
@@ -185,7 +195,7 @@ jobs:
       # "iMC Horizon v7": the number counts published releases (not workflow runs, which also count
       # failures), and the commit and run are in the notes. The newest 15 are kept.
       - name: Publish the IPA to Releases
-        if: matrix.sdk == 'iphoneos' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.sdk == 'iphoneos' && steps.stack.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN: ${{ github.run_number }}
