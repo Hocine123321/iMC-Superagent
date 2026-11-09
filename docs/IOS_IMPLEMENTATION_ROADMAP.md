@@ -295,7 +295,7 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 - Compare against the Mac desktop Metal result from M0 as a sanity ratio, not as a target.
 - Amethyst comparison only if you want it, on the same device and world, clearly labelled as indicative.
 
-**Started 2026-11-09.** The shell now writes a local timeline (`session-log.csv`: memory footprint, memory still available, thermal state, Low Power Mode, battery level and state, foreground) every 5 seconds (`SESSION_LOG.md`). It covers the "extend the report" line for everything iOS gives to the shell. Still open: the `--benchmark` scenarios on the phone, frame times, and GPU bytes by category (these need engine hooks).
+**Started 2026-11-09.** The shell now writes a local timeline (`session-log.csv`: memory footprint, memory still available, thermal state, Low Power Mode, battery level and state, foreground) every 5 seconds (`SESSION_LOG.md`). It covers the "extend the report" line for everything iOS gives to the shell. Still open: the `--benchmark` scenarios on the phone, frame times, and GPU bytes by category (these need engine hooks). Also open: the log's header names the device, iOS and app version but not the git commit or the iMC Settings in use, so two logs cannot yet be compared on settings. The commit needs a build setting passed from `ios-app.yml` (a workflow edit the token cannot push); the settings need the engine's player folder (`logging::player_dir()`), which the shell has not been checked against on a phone.
 
 **Risks.** Thermal throttling makes runs non-comparable; control by starting each run at a recorded thermal state and room temperature, and by recording rather than hiding it. Performance mode differences with the device plugged in.
 
