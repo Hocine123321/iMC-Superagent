@@ -303,8 +303,10 @@ impl Loading {
             );
         }
     }
-    // Not inlined: its locals are about 600 KB, and the event loop's per-iteration handler
-    // (`about_to_wait`) would otherwise hold them while the title screen is built.
+    // Not inlined, and small: it builds the world renderer, so on iOS (1 MB of main-thread stack)
+    // it must not hold the `Game` that `finish_game` creates afterwards. rustc reserves a
+    // function's whole frame on entry, so the two halves are two functions
+    // (docs/IOS_CRASH_STACK.md).
     #[inline(never)]
     pub(super) fn finish(&mut self, loaded: Loaded) -> Result<Option<Box<split::Split<'static>>>> {
         horizon_client::gfx::breadcrumb("finish: starting the game");
@@ -321,6 +323,7 @@ impl Loading {
             renderer.release_surface();
         }
         let renderer_at = Instant::now();
+        horizon_client::gfx::breadcrumb("finish: building the world renderer");
         let renderer = startup::time("renderer.world", || {
             build_renderer(
                 window.clone(),
@@ -343,7 +346,40 @@ impl Loading {
             "Horizon: world renderer ready after {} ms",
             self.started.elapsed().as_millis()
         );
+        horizon_client::gfx::breadcrumb("finish: world renderer ready");
         let renderer_ms = renderer_at.elapsed().as_millis();
+        self.finish_game(
+            Handoff {
+                options,
+                gui,
+                window,
+                renderer,
+                handoff_at,
+                renderer_ms,
+            },
+            Loaded {
+                renderer_cpu: None,
+                ..loaded
+            },
+        )
+    }
+    /// The second half of `finish`: the audio device and the game itself. Its frame holds the
+    /// `Game` (hundreds of kilobytes), which is why it is not part of `finish`: the world
+    /// renderer above is built while that frame does not exist yet.
+    #[inline(never)]
+    fn finish_game(
+        &mut self,
+        handoff: Handoff,
+        loaded: Loaded,
+    ) -> Result<Option<Box<split::Split<'static>>>> {
+        let Handoff {
+            options,
+            gui,
+            window,
+            renderer,
+            handoff_at,
+            renderer_ms,
+        } = handoff;
         // Audio is created on the main thread, after the core is ready.
         let audio = if !options.execution_role.is_client() {
             Audio::silent(&options.resources)
@@ -399,6 +435,16 @@ impl Loading {
         // and not a `Split`-sized temporary: that cost 276 KB of the main thread's 1 MB on iOS.
         Ok(Some(Box::new(split::Split::new(game))))
     }
+}
+
+/// What `finish` hands to `finish_game`: the values it made or took before the world renderer.
+struct Handoff {
+    options: Options,
+    gui: UiResources,
+    window: Arc<Window>,
+    renderer: Renderer,
+    handoff_at: Instant,
+    renderer_ms: u128,
 }
 
 /// The application: the loading screen until the resources are ready, then
