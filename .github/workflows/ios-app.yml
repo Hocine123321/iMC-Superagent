@@ -183,10 +183,10 @@ jobs:
           TAG="build-${RUN}-${SHORT}"
           SUBJECT=$(git log -1 --pretty=%s)
           NOTES=$(printf 'Unsigned IPA for iPhone (sideload with AltStore, Sideloadly or similar).\n\nCommit %s: %s\n\nBuilt by workflow run %s.' "$SHORT" "$SUBJECT" "$RUN")
-          cp Horizon-unsigned.ipa "Horizon-${TAG}.ipa"
-          gh release create "$TAG" "Horizon-${TAG}.ipa" \
+          cp Horizon-unsigned.ipa "iMC-Horizon-${TAG}.ipa"
+          gh release create "$TAG" "iMC-Horizon-${TAG}.ipa" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Horizon ${TAG}" --notes "$NOTES" --prerelease
+            --title "iMC Horizon ${TAG}" --notes "$NOTES" --prerelease
           echo "published $TAG"
           # Keep the newest 15 build releases.
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt \
