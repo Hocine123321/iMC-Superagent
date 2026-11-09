@@ -7,8 +7,8 @@ what `horizon/` holds now, why each exists, and how to put it back.
 ## How this stays true
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
-  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **51 files,
-  +5848 / -77: 12 new files, 39 modified, none deleted.** Only 77 upstream lines are removed or
+  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **58 files,
+  +8120 / -77: 16 new files, 42 modified, none deleted.** Only 77 upstream lines are removed or
   rewritten in total; everything else is added.
 - **`docs/horizon-changes.patch` is the exact diff** (generated, not hand-written). When this prose
   and the patch disagree, the patch is right. Replay it onto a new upstream with
@@ -28,7 +28,7 @@ could not be built without it) and some of it (the iMC Settings page, Auto Perfo
 goes beyond a touch fix. They are listed here as the facts they are, not as approved. **Each entry
 carries a risk, so you can decide what to keep when you rebase.**
 
-Entries are grouped by what they are for, not by file. Every one of the 51 files appears once, in
+Entries are grouped by what they are for, not by file. Every one of the 58 files appears once, in
 the index at the end.
 
 ---
@@ -321,7 +321,38 @@ three safe constants `pub(super)`, then replace `touch_editor.rs`.
 
 ---
 
-## F. Index: all 51 files
+## M. Touch attack and use, Enter in chat (2026-11-09)
+
+Two bugs found on the phone, both fixed with the smallest change that reaches them.
+
+**M1. A finger on Attack or Use did nothing.** The engine reads the two triggers from their analog
+value (`PadState::triggers`) and drops a trigger whose analog value is below the threshold, whatever
+its button bit says. Touch only set the bit, so `key.attack` (right trigger) and `key.use` (left
+trigger) never fired: tap to hit, hold to break and the Use button all failed, while Jump (a plain
+button) worked. A test reproduced it (`Edges::update` returned no edge for a touch-held trigger).
+
+| File | Change |
+|---|---|
+| `horizon-client-input/src/gamepad.rs` | `PadState::set_pressed(button, down)`: `set`, and a trigger is also pulled to 1.0 or released to 0.0. A `touch_triggers` test module (5 tests: both triggers press, release, an ordinary button unchanged, any threshold from 0.1 to 1.0). |
+| `game/pad.rs` | `inject_button` calls `set_pressed` instead of `set` (touch's only way in). |
+
+**M2. Enter did not send a chat message.** A hardware keyboard on iOS can deliver a key with no
+physical code, and the chat screen drops such a key before it sees it. Not yet confirmed on a phone:
+the log line below says what actually arrives.
+
+| File | Change |
+|---|---|
+| `game/key_codes.rs` | `follow_named_keymap` also recovers Enter, Backspace, Tab, Delete, the arrows, Home, End, Page Up and Page Down from the logical key, **only** when the physical key is missing (a known key, such as the numpad Enter, is never overridden). 3 tests. |
+| `game.rs` | In the chat arm, a key event with no physical code is logged (`chat key with no physical code: logical ..., text ...`) and its text is typed by `chat_unplaced_key`. |
+| `game/chat.rs` | `chat_unplaced_key(text)`: types the text into the chat box. |
+
+**Re-apply:** add `set_pressed` and its tests, change the one line in `inject_button`, add the
+named keys and `unidentified` helper to `follow_named_keymap`, add the `else if` arm in the chat
+branch and the `chat_unplaced_key` method.
+
+---
+
+## F. Index: all 58 files
 
 `A` = new file, `M` = modified. Section in brackets.
 
@@ -330,6 +361,7 @@ M horizon/Cargo.lock                                              [A5]
 M horizon/Cargo.toml                                              [A5]
 M horizon/crates/horizon-client-input/Cargo.toml                  [A2]
 A horizon/crates/horizon-client-input/src/auto_performance.rs     [E1]
+M horizon/crates/horizon-client-input/src/gamepad.rs                  [M1]
 A horizon/crates/horizon-client-input/src/imc_settings.rs         [D1]
 M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
 M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
@@ -350,19 +382,21 @@ M horizon/crates/horizon-client-render/src/logging.rs             [A1]
 M horizon/crates/horizon-client-render/src/options_ui.rs          [A1, D2, I2]
 M horizon/crates/horizon-client-render/src/settings.rs            [D2, I2]
 M horizon/crates/horizon-client/assets/horizon/lang/en_us.json    [D2, I2]
-M horizon/crates/horizon-client/src/game.rs                       [B, C2, E2, I2]
+M horizon/crates/horizon-client/src/game.rs                       [B, C2, E2, I2, M]
 M horizon/crates/horizon-client/src/game/agent.rs                [I2]
 A horizon/crates/horizon-client/src/game/auto_performance.rs      [E1]
+M horizon/crates/horizon-client/src/game/chat.rs                    [M2]
 M horizon/crates/horizon-client/src/game/control.rs               [I2]
 M horizon/crates/horizon-client/src/game/debug_options.rs         [I2]
 M horizon/crates/horizon-client/src/game/dedicated.rs             [E2]
 M horizon/crates/horizon-client/src/game/ime.rs                   [I2]
+M horizon/crates/horizon-client/src/game/key_codes.rs              [M2]
 A horizon/crates/horizon-client/src/game/lifecycle.rs             [C1]
 M horizon/crates/horizon-client/src/game/loading_screen.rs        [A4, B, C2]
 M horizon/crates/horizon-client/src/game/loading_window.rs        [B]
 M horizon/crates/horizon-client/src/game/no_resources.rs          [A4]
 M horizon/crates/horizon-client/src/game/options.rs               [E2, I2]
-M horizon/crates/horizon-client/src/game/pad.rs                   [C2, I2]
+M horizon/crates/horizon-client/src/game/pad.rs                   [C2, I2, M]
 M horizon/crates/horizon-client/src/game/pad_menu.rs              [I2]
 M horizon/crates/horizon-client/src/game/play_keys.rs             [I2]
 M horizon/crates/horizon-client/src/game/pointer_capture.rs       [I2]

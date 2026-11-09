@@ -1162,6 +1162,26 @@ impl Game<'_> {
         };
         self.chat_key_code(key, event.text.as_deref());
     }
+    /// A key with no physical code reached the chat: type its text, if it has any. The caller logs
+    /// what arrived.
+    pub(super) fn chat_unplaced_key(&mut self, text: Option<&str>) {
+        let Some(text) = text.filter(|t| !t.is_empty()) else {
+            return;
+        };
+        if !self.types_text() {
+            return;
+        }
+        let Some(mut screen) = self.ui.chat_screen.take() else {
+            return;
+        };
+        let m = Measure(&self.gui.atlas.font);
+        let c = Commands {
+            dispatcher: chat_tree(&self.remote),
+            registries: &self.ui.registries,
+        };
+        screen.type_text(&m, &c, text);
+        self.ui.chat_screen = Some(screen);
+    }
     /// A key (and the text it typed) while the chat screen is open.
     pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) {
         // The live modifiers, not `self.keys`: every ModifiersChanged runs

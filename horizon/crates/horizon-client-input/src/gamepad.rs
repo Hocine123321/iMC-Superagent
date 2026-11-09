@@ -158,6 +158,18 @@ impl PadState {
             self.buttons &= !button.bit();
         }
     }
+    /// `set`, but a trigger is also pulled all the way. The edge detector reads a trigger from its
+    /// analog value, never from its button bit, so a bit alone (what a finger or a script holds)
+    /// is dropped and the trigger's action (attack, use) never fires.
+    pub fn set_pressed(&mut self, button: Button, down: bool) {
+        self.set(button, down);
+        let value = if down { 1.0 } else { 0.0 };
+        match button {
+            Button::LeftTrigger => self.triggers[0] = value,
+            Button::RightTrigger => self.triggers[1] = value,
+            _ => {}
+        }
+    }
     pub fn held(&self, button: Button) -> bool {
         self.buttons & button.bit() != 0
     }
@@ -2530,5 +2542,54 @@ bind_key.hotbar.2:north
             GlyphStyle::PlayStation
         );
         assert_eq!(GlyphStyle::of_device(Some(0x0f0d), None), GlyphStyle::Xbox);
+    }
+}
+
+#[cfg(test)]
+mod touch_triggers {
+    use super::*;
+
+    fn edges_for(button: Button, down: bool) -> Vec<(Button, bool)> {
+        let mut touched = PadState::default();
+        touched.set_pressed(button, down);
+        Edges::default().update(&PadState::default().merge(&touched), 0.5)
+    }
+
+    #[test]
+    fn a_finger_on_the_attack_button_presses_the_right_trigger() {
+        assert_eq!(edges_for(Button::RightTrigger, true), [(Button::RightTrigger, true)]);
+    }
+
+    #[test]
+    fn a_finger_on_the_use_button_presses_the_left_trigger() {
+        assert_eq!(edges_for(Button::LeftTrigger, true), [(Button::LeftTrigger, true)]);
+    }
+
+    #[test]
+    fn lifting_the_finger_releases_the_trigger() {
+        let mut touched = PadState::default();
+        let mut edges = Edges::default();
+        touched.set_pressed(Button::RightTrigger, true);
+        edges.update(&PadState::default().merge(&touched), 0.5);
+        touched.set_pressed(Button::RightTrigger, false);
+        assert_eq!(
+            edges.update(&PadState::default().merge(&touched), 0.5),
+            [(Button::RightTrigger, false)]
+        );
+    }
+
+    #[test]
+    fn an_ordinary_button_still_works_the_same() {
+        assert_eq!(edges_for(Button::South, true), [(Button::South, true)]);
+    }
+
+    #[test]
+    fn it_holds_at_any_trigger_threshold_the_player_sets() {
+        for threshold in [0.1, 0.5, 0.9, 1.0] {
+            let mut touched = PadState::default();
+            touched.set_pressed(Button::RightTrigger, true);
+            let out = Edges::default().update(&PadState::default().merge(&touched), threshold);
+            assert_eq!(out, [(Button::RightTrigger, true)], "threshold {threshold}");
+        }
     }
 }

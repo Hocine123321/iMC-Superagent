@@ -15549,6 +15549,16 @@ impl Game<'_> {
                         } else {
                             self.keys.remove(&key);
                         }
+                    } else if event.state == ElementState::Pressed {
+                        // A key with no physical code (a hardware keyboard on iOS can send one).
+                        // Enter and the editing keys are recovered in `follow_named_keymap`; this
+                        // is for anything else, so a test on a phone shows what arrived.
+                        log::info!(
+                            "Horizon: chat key with no physical code: logical {:?}, text {:?}",
+                            event.logical_key,
+                            event.text
+                        );
+                        self.chat_unplaced_key(event.text.as_deref());
                     }
                 }
                 WindowEvent::KeyboardInput { event, .. } if self.sign_edit.is_some() => {

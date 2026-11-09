@@ -211,7 +211,7 @@ impl Pads {
 
     /// A replay's pad button, in place of `pad`'s line.
     pub(super) fn inject_button(&mut self, button: Button, down: bool) {
-        self.touched.set(button, down);
+        self.touched.set_pressed(button, down);
     }
     /// Touch's steering stick, on the virtual controller's left stick.
     pub(super) fn set_injected_left(&mut self, stick: [f32; 2]) {

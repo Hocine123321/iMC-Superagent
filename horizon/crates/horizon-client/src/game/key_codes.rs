@@ -46,9 +46,71 @@ pub(super) fn follow_named_keymap(
             NamedKey::F33 => KeyCode::F33,
             NamedKey::F34 => KeyCode::F34,
             NamedKey::F35 => KeyCode::F35,
+            // The editing and navigation keys. A hardware keyboard on iOS can deliver these with
+            // no identified physical key, which `chat_key` and the text fields drop, so Enter sent
+            // nothing. They are taken from the logical key only while the physical one is missing,
+            // so a keymap that remaps them on a desktop is not overridden.
+            NamedKey::Enter if unidentified(physical_key) => KeyCode::Enter,
+            NamedKey::Backspace if unidentified(physical_key) => KeyCode::Backspace,
+            NamedKey::Tab if unidentified(physical_key) => KeyCode::Tab,
+            NamedKey::Delete if unidentified(physical_key) => KeyCode::Delete,
+            NamedKey::ArrowUp if unidentified(physical_key) => KeyCode::ArrowUp,
+            NamedKey::ArrowDown if unidentified(physical_key) => KeyCode::ArrowDown,
+            NamedKey::ArrowLeft if unidentified(physical_key) => KeyCode::ArrowLeft,
+            NamedKey::ArrowRight if unidentified(physical_key) => KeyCode::ArrowRight,
+            NamedKey::Home if unidentified(physical_key) => KeyCode::Home,
+            NamedKey::End if unidentified(physical_key) => KeyCode::End,
+            NamedKey::PageUp if unidentified(physical_key) => KeyCode::PageUp,
+            NamedKey::PageDown if unidentified(physical_key) => KeyCode::PageDown,
             _ => return,
         };
         *physical_key = PhysicalKey::Code(code);
+    }
+}
+
+/// The platform gave no physical key for this event.
+fn unidentified(physical_key: &PhysicalKey) -> bool {
+    matches!(physical_key, PhysicalKey::Unidentified(_))
+}
+
+#[cfg(test)]
+mod named_key_tests {
+    use super::*;
+    use winit::keyboard::{Key, NamedKey, NativeKeyCode};
+
+    fn follow(named: NamedKey, physical: PhysicalKey) -> PhysicalKey {
+        let mut physical = physical;
+        follow_named_keymap(&Key::Named(named), &mut physical);
+        physical
+    }
+
+    #[test]
+    fn an_enter_with_no_physical_key_becomes_enter() {
+        let none = PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
+        assert_eq!(follow(NamedKey::Enter, none), PhysicalKey::Code(KeyCode::Enter));
+    }
+
+    #[test]
+    fn the_editing_keys_are_recovered_the_same_way() {
+        let none = || PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
+        for (named, code) in [
+            (NamedKey::Backspace, KeyCode::Backspace),
+            (NamedKey::Tab, KeyCode::Tab),
+            (NamedKey::Delete, KeyCode::Delete),
+            (NamedKey::ArrowUp, KeyCode::ArrowUp),
+            (NamedKey::ArrowDown, KeyCode::ArrowDown),
+            (NamedKey::ArrowLeft, KeyCode::ArrowLeft),
+            (NamedKey::ArrowRight, KeyCode::ArrowRight),
+        ] {
+            assert_eq!(follow(named, none()), PhysicalKey::Code(code));
+        }
+    }
+
+    #[test]
+    fn a_known_physical_key_is_never_overridden() {
+        // The numpad Enter stays the numpad Enter.
+        let numpad = PhysicalKey::Code(KeyCode::NumpadEnter);
+        assert_eq!(follow(NamedKey::Enter, numpad), numpad);
     }
 }
 
