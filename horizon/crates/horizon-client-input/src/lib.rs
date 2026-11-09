@@ -19,5 +19,6 @@ pub mod modifiers;
 pub mod mouse;
 pub mod snap;
 pub mod touch;
+pub mod touch_calibration;
 pub mod touch_layout;
 pub mod window;

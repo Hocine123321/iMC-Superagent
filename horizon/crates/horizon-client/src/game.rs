@@ -169,6 +169,7 @@ mod growth;
 mod hand;
 mod headless;
 mod hud_editor;
+mod touch_calibration;
 mod touch_editor;
 mod ime;
 mod initial_spawn;

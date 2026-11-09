@@ -729,6 +729,8 @@
   "horizon.imc.mobile": "Mobile preset",
   "horizon.imc.mobile.tooltip": "One tap to settings that suit a phone: the Performance preset (render distance 8, simulation distance 6, no clouds, minimal particles), battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Every setting stays yours to change afterwards. The Auto Performance block below keeps its own limits.",
   "horizon.imc.editor": "Edit touch controls",
+  "horizon.imc.calibrate": "Calibrate touch",
+  "horizon.imc.calibrate.tooltip": "Fixes a touch that lands a little off, more toward the edges of the screen. Tap the five crosses with the tip of your finger; the game works out the correction and keeps it. Reset to none undoes it.",
   "horizon.imc.editor.tooltip": "Drag the on-screen buttons where you want them, and set the size and opacity of each. Needs a world open: the buttons show over it.",
   "horizon.imc.touchControls": "On-screen buttons",
   "horizon.imc.touchControls.tooltip": "Show the buttons on the screen while you play.",

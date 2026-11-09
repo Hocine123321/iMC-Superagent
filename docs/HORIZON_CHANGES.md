@@ -243,6 +243,32 @@ and `touch.rs` hunks by their anchors.
 
 ---
 
+## J. Touch calibration, Back on the title menus (2026-11-09)
+
+Two fixes for the phone: a touch that lands off the button, and title pages with no way back.
+
+### J1. New files (copy as they are)
+| File | Lines | What it is |
+|---|---|---|
+| `crates/horizon-client-input/src/touch_calibration.rs` | 260 | Pure: five target positions, a least-squares fit of shift and stretch (per axis) from the player's taps, `apply` to correct a point, and the file text (`horizon-imc-touch-calibration.txt`). An unfitted calibration is the identity and writes nothing. Refuses a run whose taps are too close together to tell shift from stretch. |
+| `crates/horizon-client/src/game/touch_calibration.rs` | 155 | The screen: five crosses to tap one after another, the result kept, and a log line per tap (reported point against target) so the real cause of an offset can be read off a log. |
+
+### J2. Hooks into existing files
+| File | Change |
+|---|---|
+| `horizon-client-input/src/lib.rs` | `pub mod touch_calibration;` |
+| `horizon-client-render/src/settings.rs` | `touch_calibration` on `Settings`: default in the constructors, cloned in `with_option`, loaded from the file beside `options.txt`, saved only when it is not the identity or the file exists. |
+| `horizon-client-render/src/options_ui.rs` | `Act::TouchCalibrate` and `Event::TouchCalibrate`; the *Calibrate touch* button beside *Reset* on the iMC page; its tooltip; the two click handlers. |
+| `assets/horizon/lang/en_us.json` | `horizon.imc.calibrate` and `horizon.imc.calibrate.tooltip`. |
+| `game.rs` | `mod touch_calibration;` |
+| `game/options.rs`, `game/startup_menu.rs` | One arm each for `Event::TouchCalibrate` (options opens the screen; the title menu ignores it, like the editor). |
+| `game/touch.rs` | `Touch::calibrating` (+ `Calibrating`); while it is set a finger is a sample and nothing behind it hears of it; the correction is applied to every touch before it is read; `touch_safe_area` is `pub(super)`. **Back button:** `touch_back_visible` now also shows on the title screen for every page but the first, and for Options opened from the title. |
+
+**Re-apply:** copy the two new files, add the `Act`/`Event` variants and let the compiler list each
+`match` that needs an arm, then re-do the `settings.rs` and `touch.rs` hunks by their anchors.
+
+---
+
 ## F. Index: all 51 files
 
 `A` = new file, `M` = modified. Section in brackets.
@@ -256,6 +282,7 @@ A horizon/crates/horizon-client-input/src/imc_settings.rs         [D1]
 M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
 M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
 A horizon/crates/horizon-client-input/src/touch.rs                [C1]
+A horizon/crates/horizon-client-input/src/touch_calibration.rs    [J1]
 A horizon/crates/horizon-client-input/src/touch_layout.rs         [I1]
 M horizon/crates/horizon-client-input/src/window.rs               [A4]
 M horizon/crates/horizon-client-render/src/gfx.rs                 [A1, B]
@@ -292,6 +319,7 @@ M horizon/crates/horizon-client/src/game/split.rs                 [C2]
 M horizon/crates/horizon-client/src/game/split/players.rs         [B]
 M horizon/crates/horizon-client/src/game/startup_menu.rs          [B, I2]
 A horizon/crates/horizon-client/src/game/touch.rs                 [C1, I2]
+A horizon/crates/horizon-client/src/game/touch_calibration.rs     [J1]
 A horizon/crates/horizon-client/src/game/touch_editor.rs          [I1]
 M horizon/crates/horizon-client/src/game/window_handler.rs        [A4, C2]
 M horizon/crates/horizon-hdr/Cargo.toml                           [A1]

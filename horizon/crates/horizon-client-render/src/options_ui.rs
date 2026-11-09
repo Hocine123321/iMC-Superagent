@@ -1368,6 +1368,8 @@ enum Act {
     HudEditor,
     /// iMC Settings' Edit touch controls button.
     TouchEditor,
+    /// iMC Settings' Calibrate touch button.
+    TouchCalibrate,
     /// iMC Settings' Mobile preset button (`mobile_preset::apply`).
     MobilePreset,
     /// The installed native mod's settings page.
@@ -1531,6 +1533,8 @@ pub enum Event {
     HudEditor,
     /// iMC Settings' Edit touch controls: open the touch controls editor over the game.
     TouchEditor,
+    /// iMC Settings' Calibrate touch: five targets to tap, from which the touch is corrected.
+    TouchCalibrate,
     /// Copy how an agent connects (the AI Agent page).
     CopyAgentDetails,
     /// The AI Agent page's recording button: start or stop.
@@ -1937,6 +1941,7 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::PvpPreset => Some("horizon.pvp.preset.tooltip".into()),
         Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
         Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
+        Act::TouchCalibrate => Some("horizon.imc.calibrate.tooltip".into()),
         Act::MobilePreset => Some("horizon.imc.mobile.tooltip".into()),
         _ => None,
     };
@@ -2897,7 +2902,13 @@ impl OptionsUi {
                 ));
                 rows.push(Row::Buttons(
                     button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
-                    None,
+                    Some(button(
+                        0.0,
+                        0.0,
+                        150.0,
+                        tr("horizon.imc.calibrate"),
+                        Act::TouchCalibrate,
+                    )),
                 ));
                 rows
             }
@@ -4461,6 +4472,7 @@ impl OptionsUi {
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
                         Act::TouchEditor => events.push(Event::TouchEditor),
+                        Act::TouchCalibrate => events.push(Event::TouchCalibrate),
                         Act::MobilePreset => {
                             crate::mobile_preset::apply(s);
                             events.push(Event::Changed);
@@ -5412,6 +5424,7 @@ impl OptionsUi {
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
                         Act::TouchEditor => events.push(Event::TouchEditor),
+                        Act::TouchCalibrate => events.push(Event::TouchCalibrate),
                         Act::MobilePreset => {
                             crate::mobile_preset::apply(s);
                             events.push(Event::Changed);

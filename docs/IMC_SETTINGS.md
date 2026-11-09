@@ -291,6 +291,17 @@ from the built-in layout. Nothing edited means no file, and every button exactly
 Screen margin and Button shift still apply on top. A damaged file is ignored line by line and cannot
 push a button off the screen.
 
+**Calibrate touch.** If a touch lands a little off, more toward the edges of the screen, *Calibrate
+touch* (beside *Reset*) shows five crosses. Tap the centre of each with the tip of a finger; the game
+fits a shift and a stretch for each axis from the five taps and keeps them
+(`horizon-imc-touch-calibration.txt`). It applies to every touch, menus and world alike, on top of
+Touch shift. If the taps are too close together to tell, it says so and starts over. Each tap is also
+written to the log (where the window said it was against where the cross is), so a stubborn offset
+can be diagnosed.
+
+**Back on the title menus.** Every title page but the first (Add Server, Direct Connection, Create
+World, a world's Edit, Realms) and Options opened from the title now have the Back button.
+
 **Back button.** On the inventory (and chests, furnaces, crafting), creative, chat, command block,
 block editor, signs and books there is a Back button in the top left, since a phone has no Escape. It
 fires when the finger lifts on it, so brushing past does nothing. While the phone's keyboard is up it

@@ -98,7 +98,7 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     UIStackView *direct = [[UIStackView alloc] initWithArrangedSubviews:@[directLabel, self.directSwitch]];
     direct.spacing = 12; direct.alignment = UIStackViewAlignmentCenter;
     UILabel *directNote = [UILabel new];
-    directNote.text = @"Skips this screen when the game files are ready. This screen comes back after a crash, or when a file named open-launcher is in the Horizon folder.";
+    directNote.text = @"Skips this screen when the game files are ready. Stopping the app (from Xcode, StikDebug or the app switcher) does not bring it back. It comes back after a crash, after the app ends four times in a row within 15 seconds, or when a file named open-launcher is in the Horizon folder.";
     directNote.font = [UIFont systemFontOfSize:12];
     directNote.textColor = [UIColor colorWithWhite:0.55 alpha:1];
     directNote.numberOfLines = 0;

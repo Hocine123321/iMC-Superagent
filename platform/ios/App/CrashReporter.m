@@ -111,7 +111,14 @@ void HorizonInstallCrashReporter(NSString *root) {
     NSString *previous = @"";
     if ([fm fileExistsAtPath:crash]) previous = [NSString stringWithContentsOfFile:crash encoding:NSUTF8StringEncoding error:nil] ?: @"";
     NSString *banner = @"";
+    // How many runs in a row ended with no signal and no exception (a debugger stop, a swipe in
+    // the app switcher, the system's memory kill). "Straight to game" (LauncherModel) puts up
+    // the launcher only when this reaches three, which looks like a kill loop, not for one stop.
+    NSString *countFile = [root stringByAppendingPathComponent:@"unclean-ends"];
+    NSInteger unclean = [[NSString stringWithContentsOfFile:countFile encoding:NSUTF8StringEncoding error:nil] integerValue];
     if ([fm fileExistsAtPath:marker]) {
+        unclean += 1;
+        [[NSString stringWithFormat:@"%ld\n", (long)unclean] writeToFile:countFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
         NSString *m = [NSString stringWithContentsOfFile:marker encoding:NSUTF8StringEncoding error:nil] ?: @"";
         banner = [NSString stringWithFormat:@"=== PREVIOUS RUN ENDED WITHOUT A SIGNAL OR EXCEPTION ===\n"
                   "(the system probably killed it; memory is the usual cause)\n%@\n", m];
@@ -164,8 +171,12 @@ void HorizonInstallCrashReporter(NSString *root) {
         NSString *s = [NSString stringWithFormat:@"last seen: %s\nbreadcrumb: %s\n", gMemory, gBreadcrumb];
         [s writeToFile:marker atomically:NO encoding:NSUTF8StringEncoding error:nil];
     }];
+    // A run that lasted fifteen seconds was not a crash loop, whatever ends it: the count starts over.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        [fm removeItemAtPath:countFile error:nil];
+    });
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil queue:nil
-        usingBlock:^(NSNotification *n) { [fm removeItemAtPath:marker error:nil]; }];
+        usingBlock:^(NSNotification *n) { [fm removeItemAtPath:marker error:nil]; [fm removeItemAtPath:countFile error:nil]; }];
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil
         usingBlock:^(NSNotification *n) { [@"" writeToFile:marker atomically:YES encoding:NSUTF8StringEncoding error:nil]; }];
 }

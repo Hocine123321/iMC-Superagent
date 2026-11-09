@@ -177,6 +177,19 @@ pub(super) struct TouchState {
     pub(super) seen: bool,
     /// The finger that went down on Back, and is not a pointer: it fires when it lifts on Back.
     back_finger: Option<FingerId>,
+    /// iMC Settings > Calibrate touch is running: the taps so far. While it is, every touch is
+    /// a sample and nothing behind it hears of the finger.
+    pub(super) calibrating: Option<Calibrating>,
+}
+
+/// A calibration run: the targets are tapped in order, and each tap is kept as the point the
+/// window reported against the point the target is at.
+#[derive(Default)]
+pub(super) struct Calibrating {
+    /// `(reported, intended)` in surface pixels, one per target tapped.
+    pub(super) samples: Vec<((f32, f32), (f32, f32))>,
+    /// The run finished but could not be used: shown until the next tap starts it over.
+    pub(super) failed: bool,
 }
 
 impl Default for TouchState {
@@ -189,6 +202,7 @@ impl Default for TouchState {
             sprint_held: false,
             seen: false,
             back_finger: None,
+            calibrating: None,
         }
     }
 }
@@ -214,6 +228,13 @@ impl Game<'_> {
         // too depends on its size: see `to_surface`.
         let (safe_origin, safe_size) = self.touch_safe_area();
         let raw = (touch.location.x as f32, touch.location.y as f32);
+        // Calibrate touch: while it runs, a finger is a sample and nothing else hears of it.
+        if self.touch.calibrating.is_some() {
+            self.touch_calibration_event(touch.phase, raw, size);
+            return;
+        }
+        // The correction the player fitted from their own taps, before anything reads the touch.
+        let raw = self.settings.touch_calibration.apply(raw);
         let moved = to_surface(raw, safe_origin, safe_size, size);
         // iMC Settings' Touch shift: the player's own correction for what is left over.
         let (sx, sy) = self.settings.imc.touch_shift();
@@ -305,7 +326,7 @@ impl Game<'_> {
 
     /// The window's safe area, in physical pixels: its corner and its size. `(0, 0)` and the
     /// window's size on a desktop, the notch and corner insets on a phone.
-    fn touch_safe_area(&self) -> ((f32, f32), (f32, f32)) {
+    pub(super) fn touch_safe_area(&self) -> ((f32, f32), (f32, f32)) {
         let Some(window) = self.window.as_ref() else {
             return ((0.0, 0.0), (0.0, 0.0));
         };
@@ -402,20 +423,27 @@ impl Game<'_> {
     /// (chests, furnaces, crafting), creative, chat and the other text screens, signs and books.
     /// The screens with their own Back or Done button are not on this list.
     fn touch_back_wanted(&self) -> bool {
-        self.touch.seen
-            && self.settings.imc.controls
-            && self.title.is_none()
-            && !self.prompt_open()
-            && (self.sign_edit.is_some()
-                || self.book.is_some()
-                || matches!(
-                    self.screen,
-                    Screen::Inventory
-                        | Screen::Creative
-                        | Screen::Chat
-                        | Screen::CommandBlock
-                        | Screen::BlockEditor
-                ))
+        if !self.touch.seen || !self.settings.imc.controls || self.prompt_open() {
+            return false;
+        }
+        // The title screen: every page but the first one (Add Server, Direct Connection, a
+        // world's Edit, Create World, Realms, ...) leaves by Escape, which a phone has no key
+        // for, and some of those pages are only reachable with the keyboard covering their own
+        // buttons. The options over the title are such a page too.
+        if let Some(title) = self.title.as_ref() {
+            return self.screen == Screen::Options
+                || !matches!(title.mode, horizon_client::title::Mode::Main);
+        }
+        self.sign_edit.is_some()
+            || self.book.is_some()
+            || matches!(
+                self.screen,
+                Screen::Inventory
+                    | Screen::Creative
+                    | Screen::Chat
+                    | Screen::CommandBlock
+                    | Screen::BlockEditor
+            )
     }
 
     /// Back's finger: a press on the button is kept from the pointer, and fires on lift. Returns
@@ -610,6 +638,10 @@ impl Game<'_> {
     /// The on-screen buttons and the steering stick, over the world. Nothing before the first
     /// touch, so a desktop run never shows them.
     pub(super) fn draw_touch_controls(&self, batch: &mut HudBatch) {
+        if self.touch.calibrating.is_some() {
+            self.draw_touch_calibration(batch);
+            return;
+        }
         if self.touch_back_wanted() {
             let [x, y, w, h] = back::rect((batch.width, batch.height));
             let atlas = &self.gui.atlas;

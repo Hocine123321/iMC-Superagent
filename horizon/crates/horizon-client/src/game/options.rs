@@ -474,6 +474,7 @@ impl Game<'_> {
                 Event::Credits => self.open_win_screen(false, super::win::Finish::Options),
                 Event::HudEditor => self.open_hud_editor(true),
                 Event::TouchEditor => self.open_touch_editor(true),
+                Event::TouchCalibrate => self.open_touch_calibration(),
                 // AccessibilityOptionsScreen's link button: ConfirmLinkScreen
                 // back to the options screen.
                 Event::AccessibilityHelp => {

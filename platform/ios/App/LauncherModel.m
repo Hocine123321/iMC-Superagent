@@ -106,9 +106,19 @@
     // The previous run's report, read before this run's crash reporter replaces it.
     NSString *crash = [NSString stringWithContentsOfFile:[_root stringByAppendingPathComponent:@"crash.txt"]
                                                 encoding:NSUTF8StringEncoding error:nil] ?: @"";
-    if ([crash containsString:@"=== FATAL SIGNAL"] || [crash containsString:@"=== UNCAUGHT"]
-        || [crash containsString:@"=== PREVIOUS RUN ENDED"]) return NO;
-    if ([fm fileExistsAtPath:[_root stringByAppendingPathComponent:@".running"]]) return NO;
+    // A real crash brings the launcher back, so the report can be read and shared.
+    if ([crash containsString:@"=== FATAL SIGNAL"] || [crash containsString:@"=== UNCAUGHT"]) return NO;
+    // A run that just ended (stopped from a debugger, swiped away, killed by the system) is not a
+    // crash: an iPhone app is almost never closed "cleanly", so refusing here made the feature
+    // fail on most launches. Three such ends in a row look like a kill loop, which brings the
+    // launcher back too. (Two would catch your quick open-look-stop tests.) The crash reporter
+    // keeps the count (`unclean-ends`) and ends it after a run of fifteen seconds.
+    NSString *count = [NSString stringWithContentsOfFile:[_root stringByAppendingPathComponent:@"unclean-ends"]
+                                                encoding:NSUTF8StringEncoding error:nil];
+    // The marker of the run that just ended is counted by the crash reporter, which has not run
+    // yet in this launch: it will make the count one higher, so three means "the fourth in a row".
+    BOOL markerLeft = [fm fileExistsAtPath:[_root stringByAppendingPathComponent:@".running"]];
+    if (count.integerValue + (markerLeft ? 1 : 0) >= 3) return NO;
     return [self checkFiles:nil] == HZFilesReady;
 }
 
