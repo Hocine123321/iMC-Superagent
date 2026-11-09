@@ -170,8 +170,9 @@ jobs:
           path: platform/ios/Horizon-unsigned.ipa
           retention-days: 7
       # Every successful device build on main is published under Releases, so the IPA is one tap
-      # away on the phone and does not expire like a workflow artifact (7 days). One release per
-      # build, tagged by run number and commit; the newest 15 are kept.
+      # away on the phone and does not expire like a workflow artifact (7 days). Releases are named
+      # "iMC Horizon v7": the number counts published releases (not workflow runs, which also count
+      # failures), and the commit and run are in the notes. The newest 15 are kept.
       - name: Publish the IPA to Releases
         if: matrix.sdk == 'iphoneos' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
@@ -180,15 +181,19 @@ jobs:
         working-directory: platform/ios
         run: |
           SHORT=$(git rev-parse --short HEAD)
-          TAG="build-${RUN}-${SHORT}"
           SUBJECT=$(git log -1 --pretty=%s)
-          NOTES=$(printf 'Unsigned IPA for iPhone (sideload with AltStore, Sideloadly or similar).\n\nCommit %s: %s\n\nBuilt by workflow run %s.' "$SHORT" "$SUBJECT" "$RUN")
+          # Next version: one more than the highest vN already published (the older build-N-sha
+          # releases do not count).
+          LAST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+            --jq '[.[].tagName | select(test("^v[0-9]+$")) | ltrimstr("v") | tonumber] | max // 0')
+          TAG="v$((LAST + 1))"
+          NOTES=$(printf 'Unsigned IPA for iPhone (sideload with AltStore, Sideloadly or similar).\n\nChange: %s\n\nCommit %s, workflow run %s.' "$SUBJECT" "$SHORT" "$RUN")
           cp Horizon-unsigned.ipa "iMC-Horizon-${TAG}.ipa"
           gh release create "$TAG" "iMC-Horizon-${TAG}.ipa" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "iMC Horizon ${TAG}" --notes "$NOTES" --prerelease
           echo "published $TAG"
-          # Keep the newest 15 build releases.
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[15:] | .[].tagName' \
+          # Keep the newest 15 releases named vN.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+            --jq '[.[] | select(.tagName | test("^v[0-9]+$"))] | sort_by(.tagName | ltrimstr("v") | tonumber) | reverse | .[15:] | .[].tagName' \
             | while read -r OLD; do echo "pruning $OLD"; gh release delete "$OLD" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; done
