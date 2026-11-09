@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 #import "Diagnostics.h"
 #import "CrashReporter.h"
+#import "FirstRun.h"
 #include <crt_externs.h>   // _NSGetArgc / _NSGetArgv (iOS 13 SDK and later)
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,14 @@ int main(int argc, char *argv[]) {
         // Writes Documents/Horizon/diagnostics.txt: device, entitlements, JIT state, runtime present.
         // Read-only checks, run before the engine; see Diagnostics.m.
         HorizonWriteDiagnostics(root);
+
+        // No prepared game files yet: say how to put them on the phone, instead of the engine's
+        // own screen (which sends the player to a desktop launcher). The engine is not started, so
+        // UIApplicationMain runs here, once; copying the files and reopening the app is the way on.
+        if (!HorizonResourcesPresent(resources)) {
+            horizon_ios_breadcrumb("main: no resources, showing the first-run screen");
+            return HorizonRunFirstRunScreen(argc, argv, resources);
+        }
 
         // The engine's game folder (saves, servers.dat, packs, mods) is its working directory,
         // which the desktop launcher sets. An iOS app starts in "/", which is read-only.

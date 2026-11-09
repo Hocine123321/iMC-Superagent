@@ -63,22 +63,18 @@ pub use entity_batch::{
 };
 pub use view::{View, ViewSet};
 
-/// Names the step the game has reached, so a crash report from a phone says where it stopped.
-/// The iOS app's Objective-C shell keeps it (`platform/ios/App/CrashReporter.m`); elsewhere it does
-/// nothing.
+/// Where the app reports the step it has reached. Set once by the iOS bridge
+/// (`platform/ios-bridge`) to the shell's crash reporter; nothing elsewhere sets it. This crate
+/// forbids `unsafe`, so the call into the shell lives in the bridge and is handed over as a plain
+/// function.
+pub static BREADCRUMB: std::sync::OnceLock<fn(&str)> = std::sync::OnceLock::new();
+
+/// Names the step the game has reached, so a crash report from a phone says where it stopped
+/// (`platform/ios/App/CrashReporter.m` keeps it). Nothing happens when no app has asked for it.
 pub fn breadcrumb(step: &str) {
-    #[cfg(target_os = "ios")]
-    {
-        unsafe extern "C" {
-            fn horizon_ios_breadcrumb(step: *const std::ffi::c_char);
-        }
-        if let Ok(step) = std::ffi::CString::new(step) {
-            // SAFETY: the shell copies the text before it returns.
-            unsafe { horizon_ios_breadcrumb(step.as_ptr()) };
-        }
+    if let Some(report) = BREADCRUMB.get() {
+        report(step);
     }
-    #[cfg(not(target_os = "ios"))]
-    let _ = step;
 }
 
 /// Window.getAppropriateLineWidth, in framebuffer pixels.

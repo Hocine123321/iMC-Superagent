@@ -26,5 +26,20 @@ static MOD_API_LEVEL: [u8; 27] = horizon_mods::api_level::MARK;
 #[unsafe(no_mangle)]
 pub extern "C" fn horizon_ios_main() {
     std::hint::black_box(&MOD_API_LEVEL);
+    let _ = horizon_client::gfx::BREADCRUMB.set(breadcrumb);
     horizon_client::entry::main();
+}
+
+unsafe extern "C" {
+    /// The shell's crash reporter (`platform/ios/App/CrashReporter.m`): remembers the step and
+    /// writes it to crash.txt, so a crash report says how far the game got.
+    fn horizon_ios_breadcrumb(step: *const std::ffi::c_char);
+}
+
+/// The step the game has reached, handed to the shell.
+fn breadcrumb(step: &str) {
+    if let Ok(step) = std::ffi::CString::new(step) {
+        // SAFETY: the shell copies the text before it returns, and `step` lives until then.
+        unsafe { horizon_ios_breadcrumb(step.as_ptr()) };
+    }
 }
