@@ -392,7 +392,10 @@ impl Loading {
         let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));
         let game_at = Instant::now();
         let game_step = startup::step("handoff.start_game");
-        let Some(mut game) = start_game(
+        // Boxed in a frame of its own, as splitscreen does (`players.rs`): the `Game` start_game
+        // returns by value is gone when this returns, so this frame only holds a pointer while
+        // `start_game` runs (docs/IOS_CRASH_STACK.md).
+        let started = start_boxed(
             res,
             loaded.pack,
             gui,
@@ -405,12 +408,34 @@ impl Loading {
             Some(self.settings.clone()),
             loaded.game_cpu,
             loaded.entity_models,
-        )?
-        else {
+        )?;
+        let Some(game) = started else {
             return Ok(None);
         };
         drop(game_step);
-        let game_ms = game_at.elapsed().as_millis();
+        horizon_client::gfx::breadcrumb("finish: game started");
+        self.finish_started(
+            game,
+            window,
+            renderer,
+            handoff_at,
+            renderer_ms,
+            game_at.elapsed().as_millis(),
+        )
+    }
+    /// The last part of `finish`: the world renderer and the window go into the game, and the
+    /// game becomes the application. Not part of `finish_game`, so that `start_game` runs without
+    /// this frame beneath it.
+    #[inline(never)]
+    fn finish_started(
+        &mut self,
+        mut game: Box<Game<'static>>,
+        window: Arc<Window>,
+        renderer: Renderer,
+        handoff_at: Instant,
+        renderer_ms: u128,
+        game_ms: u128,
+    ) -> Result<Option<Box<split::Split<'static>>>> {
         game.window = Some(window);
         game.renderer = Some(renderer);
         game.world_renderer_ready = true;
@@ -431,10 +456,50 @@ impl Loading {
             renderer_ms,
             game_ms
         );
-        // Boxed here, so the caller (`about_to_wait`, which runs on every event) holds a pointer
-        // and not a `Split`-sized temporary: that cost 276 KB of the main thread's 1 MB on iOS.
-        Ok(Some(Box::new(split::Split::new(game))))
+        Ok(Some(boxed_split(game)))
     }
+}
+
+/// `start_game`, with the `Game` it returns by value put in a box in a frame that is gone when
+/// this returns. Never inlined: that is the point.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn start_boxed(
+    res: &'static Arc<Resources>,
+    pack: PackResources,
+    gui: UiResources,
+    options: Options,
+    pack_error: Option<String>,
+    audio: Audio,
+    vanilla_root: PathBuf,
+    started: Instant,
+    rest_loader: Option<WorldRestLoader>,
+    settings: Option<Settings>,
+    prepared: Option<GameCpuResources>,
+    entity_models: Option<Arc<horizon_client::mobs::EntityModelDocument>>,
+) -> Result<Option<Box<Game<'static>>>> {
+    Ok(start_game(
+        res,
+        pack,
+        gui,
+        options,
+        pack_error,
+        audio,
+        vanilla_root,
+        started,
+        rest_loader,
+        settings,
+        prepared,
+        entity_models,
+    )?
+    .map(Box::new))
+}
+
+/// A `Split` around a boxed `Game`, built in a frame that is gone when this returns: `Split::new`
+/// takes the `Game` by value, and neither it nor the `Split` should sit in the caller's frame.
+#[inline(never)]
+fn boxed_split(game: Box<Game<'static>>) -> Box<split::Split<'static>> {
+    Box::new(split::Split::new(*game))
 }
 
 /// What `finish` hands to `finish_game`: the values it made or took before the world renderer.
