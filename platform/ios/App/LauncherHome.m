@@ -9,6 +9,7 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 @interface HZLauncherHomeController ()
 @property (strong) UILabel *statusTitle, *statusDetail, *versionLabel;
 @property (strong) UIButton *playButton, *filesButton, *diagButton;
+@property (strong) UISwitch *directSwitch;
 @property (strong) UIView *statusDot;
 @property (strong) UIActivityIndicatorView *spinner;
 @end
@@ -84,7 +85,25 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     UIStackView *secondary = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesButton, self.diagButton]];
     secondary.spacing = 12; secondary.distribution = UIStackViewDistributionFillEqually;
 
-    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, secondary]];
+    // Skip this screen on the next opens: straight into the game when the files are ready.
+    UILabel *directLabel = [UILabel new];
+    directLabel.text = @"Open straight into the game";
+    directLabel.font = [UIFont systemFontOfSize:15];
+    directLabel.textColor = UIColor.whiteColor;
+    directLabel.numberOfLines = 0;
+    self.directSwitch = [UISwitch new];
+    self.directSwitch.onTintColor = Accent();
+    self.directSwitch.on = [HZLauncherModel shared].opensGameDirectly;
+    [self.directSwitch addTarget:self action:@selector(directChanged:) forControlEvents:UIControlEventValueChanged];
+    UIStackView *direct = [[UIStackView alloc] initWithArrangedSubviews:@[directLabel, self.directSwitch]];
+    direct.spacing = 12; direct.alignment = UIStackViewAlignmentCenter;
+    UILabel *directNote = [UILabel new];
+    directNote.text = @"Skips this screen when the game files are ready. This screen comes back after a crash, or when a file named open-launcher is in the Horizon folder.";
+    directNote.font = [UIFont systemFontOfSize:12];
+    directNote.textColor = [UIColor colorWithWhite:0.55 alpha:1];
+    directNote.numberOfLines = 0;
+
+    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, secondary, direct, directNote]];
     right.axis = UILayoutConstraintAxisVertical; right.spacing = 18;
 
     // Landscape (the app is landscape-only): the name on the left, the controls on the right.
@@ -138,6 +157,10 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     BOOL ready = state == HZFilesReady;
     self.playButton.enabled = ready;
     self.playButton.alpha = ready ? 1 : 0.45;
+}
+
+- (void)directChanged:(UISwitch *)sender {
+    [HZLauncherModel shared].opensGameDirectly = sender.on;
 }
 
 // Play: the game is a different run of the app. Leave the flag, say what happens, and exit

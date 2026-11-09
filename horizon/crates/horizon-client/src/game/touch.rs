@@ -214,6 +214,34 @@ impl Game<'_> {
         }
         let id = touch.id;
         let rects = self.touch_rects(size);
+        if touch.phase == TouchPhase::Started && !rects.is_empty() {
+            // In the world the buttons are hit by rectangle, not by the engine's pointer, so the
+            // log says where the finger was against the nearest button: how far left or right,
+            // above or below its centre. A test reads the offset straight off these lines.
+            let near = rects
+                .iter()
+                .enumerate()
+                .take(PADS.len())
+                .map(|(i, r)| (i, (at.0 - (r.x + r.w / 2.0), at.1 - (r.y + r.h / 2.0)), r))
+                .min_by(|a, b| {
+                    let d = |v: (f32, f32)| v.0 * v.0 + v.1 * v.1;
+                    d(a.1).total_cmp(&d(b.1))
+                });
+            if let Some((i, (dx, dy), r)) = near {
+                log::info!(
+                    "touch button: finger ({:.0}, {:.0}) nearest {} centre offset ({dx:+.0}, {dy:+.0}) \
+                     rect {:.0}x{:.0} at ({:.0}, {:.0}) hit {}",
+                    at.0,
+                    at.1,
+                    PADS[i].label,
+                    r.w,
+                    r.h,
+                    r.x,
+                    r.y,
+                    r.contains(at),
+                );
+            }
+        }
         let actions = match touch.phase {
             TouchPhase::Started => {
                 let (hit, actions) = self.touch.logic.down(id, at, now, &rects);
@@ -343,10 +371,16 @@ impl Game<'_> {
             return Vec::new();
         }
         let margin = self.settings.imc.safe_margin_scale();
+        // iMC Settings' Button shift: where the buttons answer, not where they are drawn.
+        let (bx, by) = self.settings.imc.button_shift();
         let mut rects: Vec<Rect> = PADS.iter().map(|p| p.rect(size, margin)).collect();
         // The nine hotbar slots follow the pads: an index of `PADS.len()` or more is a slot.
         if let Some(scale) = self.gui_scale().map(|b| b.scale) {
             rects.extend(hotbar_slots(size, scale, HOTBAR_LIFT));
+        }
+        for r in &mut rects {
+            r.x += bx;
+            r.y += by;
         }
         rects
     }

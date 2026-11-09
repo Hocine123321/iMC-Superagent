@@ -29,6 +29,15 @@ typedef NS_ENUM(NSInteger, HZFilesState) {
 - (BOOL)setStartGameFlag;
 - (BOOL)consumeStartGameFlag;
 
+// "Open straight into the game": a setting kept in <root>/launcher.txt, which main.m reads before
+// the engine starts (the engine's own settings live in home/ and are read much later).
+@property (nonatomic) BOOL opensGameDirectly;
+// Whether this open should skip the launcher and start the game. Call it before the crash
+// reporter is installed, because that rewrites the evidence this reads. False when the setting is
+// off, the files are not usable, the file <root>/open-launcher exists (delete it to go back), or
+// the previous run crashed (the launcher opens once so Diagnostics is one tap away).
+- (BOOL)shouldSkipLauncher;
+
 // Moves the contents of a picked folder into resources, replacing what is there. Completion runs
 // on the main thread with nil on success.
 - (void)importFolderAtURL:(NSURL *)source

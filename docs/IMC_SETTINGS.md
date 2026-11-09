@@ -26,6 +26,8 @@ belong to the iOS app and not to Minecraft. It follows the same pattern as the P
 | Screen margin | None, Small, Normal, Large | Normal | Multiplies the button layout's safe margins (8% sides, 4% top, 7% bottom) by 0, 0.5, 1 and 1.5. |
 | Auto sprint | On, Off | **Off** | Pushing the stick forward to its edge holds Run (starts at 95% of full tilt, stops below 80%). Backward and sideways never sprint. A thumb that is steering cannot also hold the Run button. |
 | Touch shift X, Y | -16, -8, 0, +8, +16 px | 0 | Moves every touch by that many screen pixels, after the safe-area correction. For an offset that is left on this phone (see below). |
+| Menu touch | Precise, Normal, Careful, Very careful, Firm | Normal | How far a finger may drift on a menu and still be a tap: 0.5, 1, 1.75, 2.5 and 3.5 times the screen's own slop (1% of the shorter side, 11.7 px on an iPhone 12). Higher stops accidental presses and slider moves. |
+| Button shift X, Y | -16, -8, 0, +8, +16 px | 0 | Moves where the **on-screen buttons answer**, not how they are drawn and not menus. For the in-game offset (see below). Negative X moves the hit area left, negative Y up. |
 | Reset to defaults | button | | Puts every setting back, Auto Performance included. |
 
 **The defaults are the values touch had before this page existed**, so nothing changes until the
@@ -161,6 +163,27 @@ Written 2026-11-09, **compiled on CI only, never run on a phone**; the pure logi
 - **Tap tolerance scales with the screen** (1% of the shorter side, never under 8 px; 11.7 px on
   an iPhone 12, close to the fixed 12 it replaces).
 
+## Menu touch (2026-11-09, third round)
+
+Written 2026-11-09, **tests only, never run on a phone**. A menu used to press the instant a finger
+landed, so a brush or a scroll that began on a button or slider activated it, and a list could be
+moved only with two fingers. One finger in a menu now decides by what it does (`touch.rs`, `Gesture`):
+
+- **Lands:** only the pointer moves (hover). Nothing is pressed.
+- **Lifts without going past the Menu touch distance:** a tap. The press and release come together
+  where it lifted, so a shaky thumb is still one click.
+- **Goes past the distance, mostly sideways:** a drag. The button is pressed where the finger
+  *landed* and the pointer follows, which moves a slider's knob. Released on lift.
+- **Goes past the distance, mostly up or down:** a scroll. The list follows the finger (a line per 40
+  px) and **nothing is pressed**, so it cannot hit a button it started on.
+- **Held still:** after the hold time plus 0.15 s, a right click, as before. Only while undecided.
+- The choice is made once per touch. A second finger is still the two-finger scroll.
+
+The split by direction needs no knowledge of what is under the finger, so the engine is untouched.
+Its cost: a vertical drag that starts on a slider scrolls instead of moving it, and a slider is
+moved by dragging sideways. A slider track that is itself dragged vertically (none known) would not
+work.
+
 ## Not done
 
 - The page is reachable from the game's Options only. Opening it from the launcher's Home screen is
@@ -233,8 +256,30 @@ I could not run the phone, so I did not guess a third change. Two things were ad
 The log line is cheap (one line per finger down, none per move) but should be removed once the
 cause is fixed.
 
+## The in-game offset (2026-11-09, third report)
+
+The owner reported menus are now right but **the on-screen buttons in the game must be pressed a
+little left and up of where they are drawn**. Measured, not guessed:
+
+- The buttons are hit by rectangle in `touch_rects` and drawn by `draw_touch_controls`, from the
+  same fractions. Hit uses the surface in pixels; drawn uses the GUI-unit size, which
+  `HudBatch::new` rounds **up** (`ceil(window / scale)`). Worked through for three real screen
+  sizes the two differ by **0 to 2 px**, nowhere near a visible error, so this is not the cause.
+- Menus and the world take the same finger position (`touch_event`), so the position is not it.
+
+So the cause is **still unknown**. Two things were added, as for the menu offset:
+
+1. **Button shift X and Y** (iMC Settings > Screen) move the hit rectangles only. Press where the
+   button is *drawn*; if it does not answer, shift the hit area toward where you had to press.
+2. **A log line on every press while playing**: `touch button: finger (x, y) nearest <button>
+   centre offset (dx, dy) rect WxH at (x, y) hit true|false`. Press the middle of a few buttons and
+   send `latest.log`: the average `dx, dy` is the shift to set, and it says whether the cause is
+   constant.
+
 ## Still to check on the phone
 
+0. Menus: tap, slide a slider sideways, scroll a list with one finger, and try to press by accident.
+   Raise Menu touch if it still happens.
 1. That a finger now lands exactly under itself, in menus and in the world.
 2. That the drawn buttons line up with where they react. They are laid out in the surface's own
    pixels, so they should; if they are off while menus are right, this is the place to look.

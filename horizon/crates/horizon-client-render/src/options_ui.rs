@@ -2837,9 +2837,17 @@ impl OptionsUi {
                     Some(imc(Item::AutoSprint)),
                 ));
                 // Which of the engine's settings an iPhone has no use for.
-                rows.push(Row::Buttons(imc(Item::GreyUnused), None));
+                rows.push(Row::Buttons(
+                    imc(Item::GreyUnused),
+                    Some(imc(Item::MenuTouch)),
+                ));
                 // Where a finger lands. Only needed if the touch is off on this phone.
                 rows.push(Row::Buttons(imc(Item::ShiftX), Some(imc(Item::ShiftY))));
+                // Where the on-screen buttons answer, for a phone where they sit off the finger.
+                rows.push(Row::Buttons(
+                    imc(Item::ButtonShiftX),
+                    Some(imc(Item::ButtonShiftY)),
+                ));
                 // Performance: the switch, how early it reacts, then what it may give up.
                 rows.push(Row::Header("horizon.imc.header.performance"));
                 rows.push(Row::Buttons(

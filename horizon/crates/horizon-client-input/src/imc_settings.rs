@@ -10,7 +10,7 @@
 //! public `layout`, `feel` and `double_tap_jump` of [`crate::touch::Touch`].
 
 use crate::auto_performance::{Config as AutoConfig, Sensitivity};
-use crate::touch::Touch;
+use crate::touch::{Touch, menu_slop_for};
 
 /// The file, next to `options.txt`.
 pub const FILE: &str = "horizon-imc.txt";
@@ -32,6 +32,11 @@ pub enum Item {
     DoubleTapJump,
     /// Greys out every setting that means nothing on an iPhone.
     GreyUnused,
+    /// How far a finger may wander in a menu and still be a tap.
+    MenuTouch,
+    /// Moves where the on-screen buttons are hit, sideways and up or down.
+    ButtonShiftX,
+    ButtonShiftY,
     /// Sprint while the stick is pushed forward to its edge.
     AutoSprint,
     /// Moves every touch sideways by a few pixels, to cancel an offset on this phone.
@@ -55,7 +60,7 @@ pub enum Item {
 }
 
 impl Item {
-    pub const ALL: [Item; 17] = [
+    pub const ALL: [Item; 20] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
@@ -63,6 +68,9 @@ impl Item {
         Item::HoldTime,
         Item::DoubleTapJump,
         Item::GreyUnused,
+        Item::MenuTouch,
+        Item::ButtonShiftX,
+        Item::ButtonShiftY,
         Item::AutoSprint,
         Item::ShiftX,
         Item::ShiftY,
@@ -85,6 +93,9 @@ impl Item {
             Item::HoldTime => "holdTime",
             Item::DoubleTapJump => "doubleTapJump",
             Item::GreyUnused => "greyUnused",
+            Item::MenuTouch => "menuTouch",
+            Item::ButtonShiftX => "buttonShiftX",
+            Item::ButtonShiftY => "buttonShiftY",
             Item::AutoSprint => "autoSprint",
             Item::ShiftX => "shiftX",
             Item::ShiftY => "shiftY",
@@ -108,6 +119,9 @@ impl Item {
             Item::HoldTime => "Hold to mine",
             Item::DoubleTapJump => "Double tap to jump",
             Item::GreyUnused => "Grey out unused settings",
+            Item::MenuTouch => "Menu touch",
+            Item::ButtonShiftX => "Button shift X",
+            Item::ButtonShiftY => "Button shift Y",
             Item::AutoSprint => "Auto sprint",
             Item::ShiftX => "Touch shift X",
             Item::ShiftY => "Touch shift Y",
@@ -164,6 +178,15 @@ impl Item {
             Item::GreyUnused => {
                 "Greys out every setting that does nothing on an iPhone, such as keyboard binds, the mouse and the window, and says why when you point at it. What is left is what you can tune."
             }
+            Item::MenuTouch => {
+                "How far a finger can drift on a menu and still count as a tap. Higher means fewer accidental presses and slider moves, but a drag has to start further. Dragging sideways moves a slider, dragging up or down scrolls."
+            }
+            Item::ButtonShiftX => {
+                "Moves where the on-screen buttons answer, sideways, without moving how they are drawn. Negative moves it left. If you have to press left of a button, use a negative value."
+            }
+            Item::ButtonShiftY => {
+                "Moves where the on-screen buttons answer, up or down. Negative moves it up. If you have to press above a button, use a negative value."
+            }
             Item::ShiftX => {
                 "Moves every touch sideways, in screen pixels. Positive moves it right. If your finger lands to the right of where it acts, use a negative value."
             }
@@ -219,6 +242,9 @@ fn shift_name(i: u8) -> &'static str {
 const LOOK_NAMES: [&str; 5] = ["Slowest", "Slow", "Normal", "Fast", "Fastest"];
 const SIZE_NAMES: [&str; 4] = ["Small", "Normal", "Large", "Largest"];
 const ZONE_NAMES: [&str; 4] = ["Narrow", "Normal", "Wide", "Widest"];
+/// How far a menu finger may drift and still be a tap, as a multiple of the screen's own slop.
+const MENU_SLOPS: [f32; 5] = [0.5, 1.0, 1.75, 2.5, 3.5];
+const MENU_NAMES: [&str; 5] = ["Precise", "Normal", "Careful", "Very careful", "Firm"];
 const HOLD_NAMES: [&str; 4] = ["Very short", "Short", "Normal", "Long"];
 const MARGIN_NAMES: [&str; 4] = ["None", "Small", "Normal", "Large"];
 /// The lowest render distances Auto Performance can be held to, in chunks.
@@ -247,9 +273,14 @@ pub struct ImcSettings {
     pub auto_sprint: bool,
     /// Settings that mean nothing on an iPhone are greyed out (`unused_on_ios`).
     pub grey_unused: bool,
+    /// Index into [`MENU_SLOPS`].
+    pub menu_touch: u8,
     /// Index into [`SHIFTS`] for x and y.
     pub shift_x: u8,
     pub shift_y: u8,
+    /// Index into [`SHIFTS`]: where the on-screen buttons answer.
+    pub button_shift_x: u8,
+    pub button_shift_y: u8,
     /// Auto Performance (`auto_performance`).
     pub auto: AutoConfig,
 }
@@ -267,8 +298,11 @@ impl Default for ImcSettings {
             safe_margin: 2,
             auto_sprint: false,
             grey_unused: false,
+            menu_touch: 1,
             shift_x: NO_SHIFT,
             shift_y: NO_SHIFT,
+            button_shift_x: NO_SHIFT,
+            button_shift_y: NO_SHIFT,
             auto: AutoConfig::default(),
         }
     }
@@ -306,6 +340,9 @@ impl ImcSettings {
                         s.grey_unused = v;
                     }
                 }
+                "menuTouch" => s.menu_touch = step(MENU_SLOPS.len()).unwrap_or(s.menu_touch),
+                "buttonShiftX" => s.button_shift_x = step(SHIFTS.len()).unwrap_or(s.button_shift_x),
+                "buttonShiftY" => s.button_shift_y = step(SHIFTS.len()).unwrap_or(s.button_shift_y),
                 "shiftX" => s.shift_x = step(SHIFTS.len()).unwrap_or(s.shift_x),
                 "shiftY" => s.shift_y = step(SHIFTS.len()).unwrap_or(s.shift_y),
                 "autoSprint" => {
@@ -352,7 +389,7 @@ impl ImcSettings {
     /// The file's text.
     pub fn serialize(&self) -> String {
         format!(
-            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nshiftX:{}\nshiftY:{}\n\
+            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
              autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\n",
             self.controls,
             self.look_speed,
@@ -363,6 +400,9 @@ impl ImcSettings {
             self.safe_margin,
             self.auto_sprint,
             self.grey_unused,
+            self.menu_touch,
+            self.button_shift_x,
+            self.button_shift_y,
             self.shift_x,
             self.shift_y,
             self.auto.enabled,
@@ -388,6 +428,9 @@ impl ImcSettings {
             Item::SafeMargin => name(&MARGIN_NAMES, self.safe_margin),
             Item::AutoSprint => on_off(self.auto_sprint),
             Item::GreyUnused => on_off(self.grey_unused),
+            Item::MenuTouch => name(&MENU_NAMES, self.menu_touch),
+            Item::ButtonShiftX => shift_name(self.button_shift_x),
+            Item::ButtonShiftY => shift_name(self.button_shift_y),
             Item::ShiftX => shift_name(self.shift_x),
             Item::ShiftY => shift_name(self.shift_y),
             Item::AutoPerformance => on_off(self.auto.enabled),
@@ -436,6 +479,9 @@ impl ImcSettings {
             Item::SafeMargin => turn(&mut self.safe_margin, SAFE_MARGINS.len()),
             Item::AutoSprint => self.auto_sprint = !self.auto_sprint,
             Item::GreyUnused => self.grey_unused = !self.grey_unused,
+            Item::MenuTouch => turn(&mut self.menu_touch, MENU_SLOPS.len()),
+            Item::ButtonShiftX => turn(&mut self.button_shift_x, SHIFTS.len()),
+            Item::ButtonShiftY => turn(&mut self.button_shift_y, SHIFTS.len()),
             Item::ShiftX => turn(&mut self.shift_x, SHIFTS.len()),
             Item::ShiftY => turn(&mut self.shift_y, SHIFTS.len()),
             Item::AutoPerformance => self.auto.enabled = !self.auto.enabled,
@@ -483,6 +529,18 @@ impl ImcSettings {
         (at(self.shift_x), at(self.shift_y))
     }
 
+    /// Where the on-screen buttons answer, `(x, y)` in physical pixels, added to their hit
+    /// rectangles and not to how they are drawn.
+    pub fn button_shift(&self) -> (f32, f32) {
+        let at = |i: u8| f32::from(SHIFTS[usize::from(i).min(SHIFTS.len() - 1)]);
+        (at(self.button_shift_x), at(self.button_shift_y))
+    }
+
+    /// The multiple of the screen's own slop a menu finger may drift (Menu touch).
+    pub fn menu_slop_scale(&self) -> f32 {
+        MENU_SLOPS[usize::from(self.menu_touch).min(MENU_SLOPS.len() - 1)]
+    }
+
     pub fn safe_margin_scale(&self) -> f32 {
         SAFE_MARGINS[usize::from(self.safe_margin).min(SAFE_MARGINS.len() - 1)]
     }
@@ -499,6 +557,7 @@ impl ImcSettings {
         touch.feel.tap_secs = hold;
         touch.feel.long_press_secs = hold + 0.15;
         touch.double_tap_jump = self.double_tap_jump;
+        touch.feel.menu_slop_px = menu_slop_for(touch.screen()) * self.menu_slop_scale();
     }
 }
 
@@ -877,5 +936,35 @@ mod tests {
         assert_eq!(ImcSettings::parse(&s.serialize()), s);
         s.reset();
         assert!(!s.grey_unused);
+    }
+
+    #[test]
+    fn menu_touch_scales_the_menu_slop_and_defaults_to_the_screens_own() {
+        let mut t = Touch::new((2532.0, 1170.0));
+        let mut s = ImcSettings::default();
+        s.apply(&mut t);
+        let normal = t.feel.menu_slop_px;
+        assert!((normal - menu_slop_for((2532.0, 1170.0))).abs() < 1e-4);
+        s.menu_touch = 4;
+        s.apply(&mut t);
+        assert!(t.feel.menu_slop_px > normal * 3.0);
+        s.menu_touch = 0;
+        s.apply(&mut t);
+        assert!(t.feel.menu_slop_px < normal);
+    }
+
+    #[test]
+    fn button_shift_is_none_by_default_and_round_trips() {
+        let mut s = ImcSettings::default();
+        assert_eq!(s.button_shift(), (0.0, 0.0));
+        s.cycle(Item::ButtonShiftX, true);
+        s.cycle(Item::ButtonShiftY, false);
+        assert_ne!(s.button_shift(), (0.0, 0.0));
+        let back = ImcSettings::parse(&s.serialize());
+        assert_eq!(back, s);
+        assert_eq!(back.button_shift(), s.button_shift());
+        s.reset();
+        assert_eq!(s.button_shift(), (0.0, 0.0));
+        assert_eq!(s.menu_touch, 1);
     }
 }

@@ -30,6 +30,10 @@ int main(int argc, char *argv[]) {
         [fm createDirectoryAtPath:resources withIntermediateDirectories:YES attributes:nil error:nil];
         [fm createDirectoryAtPath:home withIntermediateDirectories:YES attributes:nil error:nil];
 
+        // "Open straight into the game" is decided first: it reads the last run's crash report,
+        // which the crash reporter below replaces.
+        BOOL skipLauncher = [[HZLauncherModel shared] shouldSkipLauncher];
+
         // Before anything else can fail: a native crash writes Documents/Horizon/crash.txt.
         HorizonInstallCrashReporter(root);
         horizon_ios_breadcrumb("main: crash reporter installed");
@@ -42,7 +46,7 @@ int main(int argc, char *argv[]) {
         // cannot start after UIApplicationMain), so Play leaves a one-shot flag and the next open
         // starts the game. Without the flag, or without usable game files, the launcher opens.
         // The check is the engine's own, so a folder the engine would refuse never reaches it.
-        BOOL startGame = [[HZLauncherModel shared] consumeStartGameFlag];
+        BOOL startGame = [[HZLauncherModel shared] consumeStartGameFlag] || skipLauncher;
         NSString *why = nil;
         if (!startGame || [[HZLauncherModel shared] checkFiles:&why] != HZFilesReady) {
             horizon_ios_breadcrumb(startGame ? "main: start flag set but the files are not usable, launcher"

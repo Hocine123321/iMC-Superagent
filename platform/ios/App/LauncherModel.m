@@ -84,6 +84,34 @@
     return [@"" writeToFile:[self flagPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+- (NSString *)settingsPath { return [_root stringByAppendingPathComponent:@"launcher.txt"]; }
+
+- (BOOL)opensGameDirectly {
+    NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
+    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
+        if ([line hasPrefix:@"openGame:"]) return [[line substringFromIndex:9] hasPrefix:@"1"];
+    }
+    return NO;
+}
+
+- (void)setOpensGameDirectly:(BOOL)on {
+    NSString *text = [NSString stringWithFormat:@"openGame:%d\n", on ? 1 : 0];
+    [text writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+- (BOOL)shouldSkipLauncher {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![self opensGameDirectly]) return NO;
+    if ([fm fileExistsAtPath:[_root stringByAppendingPathComponent:@"open-launcher"]]) return NO;
+    // The previous run's report, read before this run's crash reporter replaces it.
+    NSString *crash = [NSString stringWithContentsOfFile:[_root stringByAppendingPathComponent:@"crash.txt"]
+                                                encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    if ([crash containsString:@"=== FATAL SIGNAL"] || [crash containsString:@"=== UNCAUGHT"]
+        || [crash containsString:@"=== PREVIOUS RUN ENDED"]) return NO;
+    if ([fm fileExistsAtPath:[_root stringByAppendingPathComponent:@".running"]]) return NO;
+    return [self checkFiles:nil] == HZFilesReady;
+}
+
 - (BOOL)consumeStartGameFlag {
     NSFileManager *fm = [NSFileManager defaultManager];
     if (![fm fileExistsAtPath:[self flagPath]]) return NO;

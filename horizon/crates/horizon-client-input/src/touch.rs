@@ -39,6 +39,9 @@ pub struct Feel {
     /// A finger that moves less than this many pixels is still "a tap or a hold". The game sets
     /// it from the screen (`slop_for`) so it is the same distance under the thumb on every phone.
     pub slop_px: f32,
+    /// In a menu, how far a finger may wander and still be a tap, in pixels. Set from the screen
+    /// (`menu_slop_for`) and scaled by iMC Settings' Menu touch.
+    pub menu_slop_px: f32,
     /// A tap is a press shorter than this.
     pub tap_secs: f64,
     /// A press held still this long is a long press.
@@ -54,6 +57,7 @@ impl Default for Feel {
     fn default() -> Self {
         Feel {
             slop_px: 12.0,
+            menu_slop_px: 12.0,
             tap_secs: 0.25,
             long_press_secs: 0.40,
             // GUESS, to be tuned on the phone: 0.1 degrees a pixel turns the view about 250
@@ -68,6 +72,10 @@ impl Default for Feel {
 /// landscape (1170 px high) that is 11.7 px, close to the fixed 12 px it replaces; on a screen with
 /// more pixels it grows with them, so it stays the same distance under the thumb. A GUESS to
 /// tune on the phone.
+pub fn menu_slop_for(screen: (f32, f32)) -> f32 {
+    slop_for(screen)
+}
+
 pub fn slop_for(screen: (f32, f32)) -> f32 {
     (screen.0.min(screen.1) * 0.01).max(8.0)
 }
@@ -110,6 +118,22 @@ struct Finger {
     /// Moved past the slop at some point.
     dragged: bool,
     role: Role,
+    /// Menu mode, one finger: what the touch has turned into (`Gesture`).
+    gesture: Gesture,
+}
+
+/// What a lone menu finger is doing. It starts `Undecided` and nothing is pressed: a finger that
+/// lifts still is a tap, one that wanders a little (a shaky thumb) is still a tap, and one that
+/// goes past `Feel::menu_slop_px` turns into a drag or a scroll for the rest of that touch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Gesture {
+    /// Not yet known; the pointer follows the finger but the button is not down.
+    Undecided,
+    /// Mostly sideways: the button went down where the finger landed and the pointer follows it
+    /// (a slider's knob, a scrollbar).
+    Drag,
+    /// Mostly up or down: the list moves with the finger and nothing is pressed.
+    Scroll,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,6 +216,11 @@ impl Touch {
         self.feel.slop_px = slop_for(screen);
     }
 
+    /// The screen size touch last heard of.
+    pub fn screen(&self) -> (f32, f32) {
+        self.screen
+    }
+
     pub fn mode(&self) -> Mode {
         self.mode
     }
@@ -250,7 +279,12 @@ impl Touch {
         if self.right_down.take().is_some() {
             out.push(Action::PointerRight(false));
         }
-        if self.fingers.values().any(|f| f.role == Role::Pointer) {
+        // Only a dragging finger holds the button down; a tap or a scroll never pressed it.
+        if self
+            .fingers
+            .values()
+            .any(|f| f.role == Role::Pointer && f.gesture == Gesture::Drag)
+        {
             out.push(Action::PointerLeft(false));
         }
         self.fingers.clear();
@@ -280,8 +314,8 @@ impl Touch {
                 self.last_scroll_y = Some(at.1);
                 Role::ScrollPair
             } else {
+                // Only the pointer moves: nothing is pressed until the touch says what it is.
                 self.out.push(Action::PointerTo { x: at.0, y: at.1 });
-                self.out.push(Action::PointerLeft(true));
                 Role::Pointer
             }
         } else if let Some(i) = buttons.iter().position(|r| r.contains(at)) {
@@ -305,6 +339,7 @@ impl Touch {
                 since: now,
                 dragged: false,
                 role,
+                gesture: Gesture::Undecided,
             },
         );
         (hit, std::mem::take(&mut self.out))
@@ -347,7 +382,32 @@ impl Touch {
                 self.world_hold(id, &f, now);
             }
             Role::Pointer => {
-                self.out.push(Action::PointerTo { x: at.0, y: at.1 });
+                if f.gesture == Gesture::Undecided {
+                    let (tx, ty) = (at.0 - f.start.0, at.1 - f.start.1);
+                    if (tx * tx + ty * ty).sqrt() > self.feel.menu_slop_px {
+                        if tx.abs() >= ty.abs() {
+                            // Sideways: grab what is under the finger's start and follow.
+                            f.gesture = Gesture::Drag;
+                            self.out.push(Action::PointerTo {
+                                x: f.start.0,
+                                y: f.start.1,
+                            });
+                            self.out.push(Action::PointerLeft(true));
+                            self.out.push(Action::PointerTo { x: at.0, y: at.1 });
+                        } else {
+                            // Up or down: the list follows the finger, from where it landed.
+                            f.gesture = Gesture::Scroll;
+                            self.last_scroll_y = Some(f.start.1);
+                            self.scroll_to(at.1);
+                        }
+                    } else {
+                        self.out.push(Action::PointerTo { x: at.0, y: at.1 });
+                    }
+                } else if f.gesture == Gesture::Drag {
+                    self.out.push(Action::PointerTo { x: at.0, y: at.1 });
+                } else {
+                    self.scroll_to(at.1);
+                }
                 self.pointer_hold(id, &f, now);
             }
             Role::ScrollPair => {
@@ -363,6 +423,18 @@ impl Touch {
         }
         self.fingers.insert(id, f);
         std::mem::take(&mut self.out)
+    }
+
+    /// Scrolls by the finger's travel since the last scroll, a line for every 40 pixels, with
+    /// the list following the finger (dragging up moves the content up, so the view goes down).
+    fn scroll_to(&mut self, y: f32) {
+        if let Some(last) = self.last_scroll_y {
+            let lines = (last - y) / 40.0;
+            if lines.abs() >= 0.25 {
+                self.out.push(Action::Scroll { lines: -lines });
+                self.last_scroll_y = Some(y);
+            }
+        }
     }
 
     /// Time passing with no finger event: a held finger becomes a mine or a long press. Call it
@@ -383,9 +455,11 @@ impl Touch {
 
     /// A menu finger held still turns its press into a right click (the inventory's split).
     fn pointer_hold(&mut self, id: FingerId, f: &Finger, now: f64) {
-        if !f.dragged && self.right_down.is_none() && now - f.since >= self.feel.long_press_secs {
+        if f.gesture == Gesture::Undecided
+            && self.right_down.is_none()
+            && now - f.since >= self.feel.long_press_secs
+        {
             self.right_down = Some(id);
-            self.out.push(Action::PointerLeft(false));
             self.out.push(Action::PointerRight(true));
         }
     }
@@ -435,11 +509,26 @@ impl Touch {
                     self.right_down = None;
                     self.out.push(Action::PointerRight(false));
                 } else {
-                    self.out.push(Action::PointerTo {
-                        x: f.at.0,
-                        y: f.at.1,
-                    });
-                    self.out.push(Action::PointerLeft(false));
+                    match f.gesture {
+                        // A tap: the press and the release together, where the finger lifted.
+                        Gesture::Undecided => {
+                            self.out.push(Action::PointerTo {
+                                x: f.at.0,
+                                y: f.at.1,
+                            });
+                            self.out.push(Action::PointerLeft(true));
+                            self.out.push(Action::PointerLeft(false));
+                        }
+                        Gesture::Drag => {
+                            self.out.push(Action::PointerTo {
+                                x: f.at.0,
+                                y: f.at.1,
+                            });
+                            self.out.push(Action::PointerLeft(false));
+                        }
+                        // The list was only moved: nothing was pressed.
+                        Gesture::Scroll => {}
+                    }
                 }
                 self.last_scroll_y = None;
             }
@@ -752,52 +841,141 @@ mod tests {
         assert!(t.set_mode(Mode::Menu).is_empty());
     }
 
-    #[test]
-    fn in_a_menu_one_finger_is_the_mouse() {
+    fn menu() -> Touch {
         let mut t = touch();
         t.set_mode(Mode::Menu);
+        t.feel.menu_slop_px = 12.0;
+        t
+    }
+
+    #[test]
+    fn in_a_menu_a_landing_finger_only_moves_the_pointer() {
+        let mut t = menu();
         let (_, out) = t.down(1, (500.0, 400.0), 0.0, &[]);
-        assert_eq!(
-            out,
-            vec![
-                Action::PointerTo { x: 500.0, y: 400.0 },
-                Action::PointerLeft(true)
-            ]
-        );
-        assert_eq!(
-            t.moved(1, (520.0, 410.0), 0.05),
-            vec![Action::PointerTo { x: 520.0, y: 410.0 }]
-        );
+        assert_eq!(out, vec![Action::PointerTo { x: 500.0, y: 400.0 }]);
+    }
+
+    #[test]
+    fn in_a_menu_a_tap_presses_and_releases_on_lift() {
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
         assert_eq!(
             t.up(1, 0.1),
             vec![
-                Action::PointerTo { x: 520.0, y: 410.0 },
+                Action::PointerTo { x: 500.0, y: 400.0 },
+                Action::PointerLeft(true),
                 Action::PointerLeft(false)
             ]
         );
     }
 
     #[test]
+    fn in_a_menu_a_shaky_thumb_is_still_a_tap() {
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        // Wanders 8 px sideways and 6 down: inside the 12 px of slop, nothing but the pointer.
+        assert_eq!(
+            t.moved(1, (508.0, 406.0), 0.05),
+            vec![Action::PointerTo { x: 508.0, y: 406.0 }]
+        );
+        let out = t.up(1, 0.1);
+        assert_eq!(out.last(), Some(&Action::PointerLeft(false)));
+        assert!(out.contains(&Action::PointerLeft(true)), "still one click");
+    }
+
+    #[test]
+    fn in_a_menu_a_sideways_drag_grabs_where_it_started() {
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        // Past the slop, mostly sideways: press at the start, then follow (a slider's knob).
+        assert_eq!(
+            t.moved(1, (530.0, 404.0), 0.05),
+            vec![
+                Action::PointerTo { x: 500.0, y: 400.0 },
+                Action::PointerLeft(true),
+                Action::PointerTo { x: 530.0, y: 404.0 }
+            ]
+        );
+        assert_eq!(
+            t.moved(1, (560.0, 410.0), 0.08),
+            vec![Action::PointerTo { x: 560.0, y: 410.0 }]
+        );
+        assert_eq!(
+            t.up(1, 0.1),
+            vec![
+                Action::PointerTo { x: 560.0, y: 410.0 },
+                Action::PointerLeft(false)
+            ]
+        );
+    }
+
+    #[test]
+    fn in_a_menu_a_vertical_drag_scrolls_and_never_presses() {
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        // Up 80 px: the first move past the slop scrolls the list down, a line per 40 px.
+        let out = t.moved(1, (502.0, 320.0), 0.05);
+        match out.as_slice() {
+            [Action::Scroll { lines }] => assert!((*lines + 2.0).abs() < 1e-3, "{lines}"),
+            other => panic!("expected one scroll, got {other:?}"),
+        }
+        assert!(!out.contains(&Action::PointerLeft(true)));
+        // Sideways wobble after it was decided stays a scroll: still nothing pressed.
+        let out = t.moved(1, (600.0, 320.0), 0.08);
+        assert!(out.is_empty(), "{out:?}");
+        // Lifting a scroll presses nothing.
+        assert!(t.up(1, 0.2).is_empty());
+    }
+
+    #[test]
+    fn in_a_menu_scrolling_back_down_scrolls_the_other_way() {
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        t.moved(1, (500.0, 320.0), 0.05);
+        match t.moved(1, (500.0, 360.0), 0.1).as_slice() {
+            [Action::Scroll { lines }] => assert!(*lines > 0.0, "{lines}"),
+            other => panic!("expected a scroll, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_a_menu_a_slider_drag_that_starts_a_little_vertical_still_drags() {
+        // The decision is by the larger axis once past the slop, so a mostly sideways move with
+        // some drift is a drag.
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        let out = t.moved(1, (540.0, 415.0), 0.05);
+        assert!(out.contains(&Action::PointerLeft(true)), "{out:?}");
+    }
+
+    #[test]
     fn in_a_menu_a_long_press_is_a_right_click() {
-        let mut t = touch();
-        t.set_mode(Mode::Menu);
+        let mut t = menu();
         t.down(1, (500.0, 400.0), 0.0, &[]);
         assert!(t.tick(0.2).is_empty());
-        assert_eq!(
-            t.tick(0.5),
-            vec![Action::PointerLeft(false), Action::PointerRight(true)]
-        );
+        assert_eq!(t.tick(0.5), vec![Action::PointerRight(true)]);
         assert!(t.tick(0.9).is_empty(), "only once");
         assert_eq!(t.up(1, 1.0), vec![Action::PointerRight(false)]);
     }
 
     #[test]
     fn in_a_menu_a_moved_finger_is_never_a_long_press() {
-        let mut t = touch();
-        t.set_mode(Mode::Menu);
+        let mut t = menu();
         t.down(1, (500.0, 400.0), 0.0, &[]);
         t.moved(1, (600.0, 400.0), 0.1);
         assert!(t.tick(1.0).is_empty());
+    }
+
+    #[test]
+    fn the_menu_slop_is_the_players_to_set() {
+        let mut t = menu();
+        t.feel.menu_slop_px = 60.0;
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        // 40 px is inside 60 px of slop: still only the pointer.
+        assert_eq!(
+            t.moved(1, (540.0, 400.0), 0.05),
+            vec![Action::PointerTo { x: 540.0, y: 400.0 }]
+        );
     }
 
     #[test]
@@ -817,12 +995,21 @@ mod tests {
     }
 
     #[test]
-    fn a_cancelled_menu_press_releases_the_button() {
-        let mut t = touch();
-        t.set_mode(Mode::Menu);
+    fn a_cancelled_menu_drag_releases_the_button() {
+        let mut t = menu();
         t.down(1, (500.0, 400.0), 0.0, &[]);
-        let out = t.cancel_all();
-        assert_eq!(out, vec![Action::PointerLeft(false)]);
+        t.moved(1, (540.0, 400.0), 0.05);
+        assert_eq!(t.cancel_all(), vec![Action::PointerLeft(false)]);
+    }
+
+    #[test]
+    fn a_cancelled_menu_tap_or_scroll_releases_nothing() {
+        let mut t = menu();
+        t.down(1, (500.0, 400.0), 0.0, &[]);
+        assert!(t.cancel_all().is_empty());
+        t.down(2, (500.0, 400.0), 0.0, &[]);
+        t.moved(2, (500.0, 330.0), 0.05);
+        assert!(t.cancel_all().is_empty());
     }
 
     #[test]
