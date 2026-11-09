@@ -3984,14 +3984,15 @@ index 0000000..74fce05
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-render/src/lib.rs b/horizon/crates/horizon-client-render/src/lib.rs
-index 51d4311..5deab77 100644
+index 51d4311..e909c56 100644
 --- a/horizon/crates/horizon-client-render/src/lib.rs
 +++ b/horizon/crates/horizon-client-render/src/lib.rs
-@@ -52,6 +52,7 @@ pub mod gfx;
+@@ -52,6 +52,8 @@ pub mod gfx;
  pub mod graphics;
  pub mod graphics_style;
  pub mod graphics_ui;
 +pub mod ios_unused;
++pub mod mobile_preset;
  pub mod hdr_calibration;
  pub mod hud;
  pub mod hud_layout;
@@ -4009,8 +4010,145 @@ index 870f961..3e3b73a 100644
          if let Some(h) = &home {
              return h.join("Library/Application Support");
          }
+diff --git a/horizon/crates/horizon-client-render/src/mobile_preset.rs b/horizon/crates/horizon-client-render/src/mobile_preset.rs
+new file mode 100644
+index 0000000..1008d06
+--- /dev/null
++++ b/horizon/crates/horizon-client-render/src/mobile_preset.rs
+@@ -0,0 +1,131 @@
++//! The "Mobile" preset (iMC Settings > Mobile preset): the engine's own Performance preset, plus
++//! what only a phone needs. Like the PvP preset it only changes values; every one stays adjustable
++//! afterwards, one by one.
++//!
++//! What it sets, and why:
++//! - everything the Performance preset sets (render distance 8, simulation distance 6, no
++//!   clouds, minimal particles, no entity shadows, no biome blend, no mipmaps), since a phone has
++//!   a fraction of a desktop's memory and heat budget;
++//! - **battery mode** on: it caps frames at 60 in a world and 30 in menus, and halves the
++//!   automatic worker count (`Graphics::battery_limit`);
++//! - **max FPS 60** and **vsync on**: a phone screen shows no more, and a frame it cannot show is
++//!   heat for nothing;
++//! - resolution scale 100, LOD off, no upscaling, no HDR, no frame generation: all already the
++//!   defaults, set here so the preset also undoes a change made earlier;
++//! - view bobbing off: the view swaying on a small, held screen makes some people ill.
++//!
++//! What it leaves alone, on purpose: smooth lighting (cheap, a large visual gain), the texture
++//! budget and leaf culling (no phone data yet: milestone M6 measures them), the shader pack
++//! (the port keeps shader packs off), and the iMC Settings page, whose Auto Performance block
++//! keeps its own caps.
++
++use crate::graphics::{self, FrameGeneration, Preset, Upscaling};
++use crate::settings::Settings;
++
++/// The frame cap the preset sets.
++pub const MAX_FPS: u32 = 60;
++
++/// Turns the Mobile preset on.
++pub fn apply(s: &mut Settings) {
++    graphics::apply_preset(Preset::Performance, s);
++    s.max_fps = MAX_FPS;
++    s.vsync = true;
++    s.view_bobbing = false;
++    let g = &mut s.horizon;
++    g.battery = true;
++    g.resolution_scale = 100;
++    g.lod_distance = 0;
++    g.upscaling = Upscaling::Native;
++    g.frame_generation = FrameGeneration::Off;
++    g.hdr = false;
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn mobile() -> Settings {
++        let mut s = Settings::default();
++        apply(&mut s);
++        s
++    }
++
++    #[test]
++    fn it_starts_from_the_performance_preset() {
++        let s = mobile();
++        assert_eq!(s.render_distance, 8);
++        assert_eq!(s.simulation_distance, 6);
++        assert_eq!(s.clouds, "false");
++        assert_eq!(s.particles, 2);
++        assert!(!s.entity_shadows);
++        assert_eq!(s.mipmap_levels, 0);
++        assert_eq!(s.horizon.preset, Preset::Performance);
++    }
++
++    #[test]
++    fn it_adds_what_a_phone_needs() {
++        let s = mobile();
++        assert!(s.horizon.battery);
++        assert_eq!(s.max_fps, 60);
++        assert!(s.vsync);
++        assert!(!s.view_bobbing);
++    }
++
++    #[test]
++    fn it_undoes_a_heavy_choice_made_before() {
++        let mut s = Settings::default();
++        s.horizon.resolution_scale = 150;
++        s.horizon.lod_distance = 512;
++        s.horizon.upscaling = Upscaling::Quality;
++        s.horizon.frame_generation = FrameGeneration::Fsr31;
++        s.horizon.hdr = true;
++        s.render_distance = 32;
++        s.max_fps = 260;
++        apply(&mut s);
++        assert_eq!(s.horizon.resolution_scale, 100);
++        assert_eq!(s.horizon.lod_distance, 0);
++        assert_eq!(s.horizon.upscaling, Upscaling::Native);
++        assert_eq!(s.horizon.frame_generation, FrameGeneration::Off);
++        assert!(!s.horizon.hdr);
++        assert_eq!(s.render_distance, 8);
++        assert_eq!(s.max_fps, 60);
++    }
++
++    #[test]
++    fn it_leaves_alone_what_it_has_no_data_for() {
++        let mut s = Settings::default();
++        s.smooth_lighting = true;
++        s.horizon.texture_budget_mib = 1536;
++        s.horizon.shader_pack = "somepack".into();
++        s.fov = 95.0;
++        s.sensitivity = 0.8;
++        s.gui_scale = 3;
++        apply(&mut s);
++        assert!(s.smooth_lighting);
++        assert_eq!(s.horizon.texture_budget_mib, 1536);
++        assert_eq!(s.horizon.shader_pack, "somepack");
++        assert_eq!(s.fov, 95.0);
++        assert_eq!(s.sensitivity, 0.8);
++        assert_eq!(s.gui_scale, 3);
++    }
++
++    #[test]
++    fn it_leaves_the_imc_settings_alone() {
++        let mut s = Settings::default();
++        s.imc.auto_sprint = true;
++        s.imc.grey_unused = true;
++        let before = s.imc.clone();
++        apply(&mut s);
++        assert_eq!(s.imc, before);
++    }
++
++    #[test]
++    fn applying_twice_changes_nothing_more() {
++        let once = mobile();
++        let mut twice = mobile();
++        apply(&mut twice);
++        assert_eq!(once.render_distance, twice.render_distance);
++        assert_eq!(once.max_fps, twice.max_fps);
++        assert_eq!(once.horizon.battery, twice.horizon.battery);
++    }
++}
 diff --git a/horizon/crates/horizon-client-render/src/options_ui.rs b/horizon/crates/horizon-client-render/src/options_ui.rs
-index 8ee09de..e0f5321 100644
+index 8ee09de..df57413 100644
 --- a/horizon/crates/horizon-client-render/src/options_ui.rs
 +++ b/horizon/crates/horizon-client-render/src/options_ui.rs
 @@ -1329,6 +1329,8 @@ pub enum Page {
@@ -4033,16 +4171,18 @@ index 8ee09de..e0f5321 100644
      Key(&'static str),
      ResetKey(&'static str),
      ResetKeys,
-@@ -1360,6 +1366,8 @@ enum Act {
+@@ -1360,6 +1366,10 @@ enum Act {
      PvpPreset,
      /// PvP & HUD's Edit HUD button.
      HudEditor,
 +    /// iMC Settings' Edit touch controls button.
 +    TouchEditor,
++    /// iMC Settings' Mobile preset button (`mobile_preset::apply`).
++    MobilePreset,
      /// The installed native mod's settings page.
      ModSettings(usize),
      /// A native mod's key (mod, key) waits for a key; a button of its page.
-@@ -1519,6 +1527,8 @@ pub enum Event {
+@@ -1519,6 +1529,8 @@ pub enum Event {
      Credits,
      /// PvP & HUD's Edit HUD: open the HUD editor over the game.
      HudEditor,
@@ -4051,7 +4191,7 @@ index 8ee09de..e0f5321 100644
      /// Copy how an agent connects (the AI Agent page).
      CopyAgentDetails,
      /// The AI Agent page's recording button: start or stop.
-@@ -1651,6 +1661,8 @@ pub struct OptionsUi {
+@@ -1651,6 +1663,8 @@ pub struct OptionsUi {
      pub studio: crate::studio_ui::StudioUi,
      /// The AI Agent page's status lines (set by the game while it shows).
      pub agent_status: Vec<String>,
@@ -4060,7 +4200,7 @@ index 8ee09de..e0f5321 100644
      /// A repro recording is running: the AI Agent page's button says stop.
      pub agent_recording: bool,
      /// The Music page's groups (set by the game when it opens the page).
-@@ -1727,6 +1739,7 @@ impl Default for OptionsUi {
+@@ -1727,6 +1741,7 @@ impl Default for OptionsUi {
              split_setup: Default::default(),
              studio: Default::default(),
              agent_status: Vec::new(),
@@ -4068,7 +4208,7 @@ index 8ee09de..e0f5321 100644
              agent_recording: false,
              music_groups: Vec::new(),
              focus: None,
-@@ -1755,6 +1768,42 @@ fn button(x: f32, y: f32, w: f32, label: Text, act: Act) -> Widget {
+@@ -1755,6 +1770,42 @@ fn button(x: f32, y: f32, w: f32, label: Text, act: Act) -> Widget {
          row: 0,
      }
  }
@@ -4111,7 +4251,7 @@ index 8ee09de..e0f5321 100644
  fn inactive(mut w: Widget) -> Widget {
      if let WKind::Button { active, .. } = &mut w.kind {
          *active = false;
-@@ -1831,6 +1880,7 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
+@@ -1831,6 +1882,7 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
          Page::Controller => "horizon.pages.controller.tooltip",
          Page::Extras => "horizon.pages.extras.tooltip",
          Page::Pvp => "horizon.pages.pvp.tooltip",
@@ -4119,7 +4259,7 @@ index 8ee09de..e0f5321 100644
          Page::Agent => "horizon.pages.agent.tooltip",
          Page::SplitProfiles => "horizon.pages.split_profiles.tooltip",
          Page::ShaderPacks => "horizon.pages.shader_packs.tooltip",
-@@ -1854,6 +1904,10 @@ enum Row {
+@@ -1854,6 +1906,10 @@ enum Row {
  /// A widget's tooltip (`setTooltip`), unwrapped: drawn while hovered, and
  /// its narration's hint.
  fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
@@ -4130,7 +4270,7 @@ index 8ee09de..e0f5321 100644
      let WKind::Button { act, .. } = &wd.kind else {
          let WKind::Slider { opt, .. } = &wd.kind else {
              return None;
-@@ -1865,6 +1919,10 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
+@@ -1865,6 +1921,10 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
      if let Act::Extra(item) = act {
          tip = Some(Text::literal(item.description_text()));
      }
@@ -4141,15 +4281,16 @@ index 8ee09de..e0f5321 100644
      if let Act::Push(page) = act
          && let Some(text) = horizon_page_tooltip(*page)
      {
-@@ -1876,6 +1934,7 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
+@@ -1876,6 +1936,8 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
          Act::Push(Page::Accessibility) => Some("options.accessibility.tooltip".into()),
          Act::PvpPreset => Some("horizon.pvp.preset.tooltip".into()),
          Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
 +        Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
++        Act::MobilePreset => Some("horizon.imc.mobile.tooltip".into()),
          _ => None,
      };
      if let Some(key) = key.filter(|key| lang::has(key)) {
-@@ -2386,6 +2445,7 @@ impl OptionsUi {
+@@ -2386,6 +2448,7 @@ impl OptionsUi {
              Page::Controller | Page::PadBinds => "horizon.pages.controller",
              Page::Extras => "horizon.pages.extras",
              Page::Pvp => "horizon.pages.pvp",
@@ -4157,7 +4298,7 @@ index 8ee09de..e0f5321 100644
              Page::Credits => "credits_and_attribution.screen.title",
              Page::Horizon => "horizon.pages.settings",
              Page::Studio => "horizon.pages.studio",
-@@ -2717,6 +2777,7 @@ impl OptionsUi {
+@@ -2717,6 +2780,7 @@ impl OptionsUi {
                          ),
                          Some(open("horizon.pages.open.studio", Page::Studio)),
                      ),
@@ -4165,7 +4306,7 @@ index 8ee09de..e0f5321 100644
                      // No AI hides the AI Agent page and everything AI.
                      Row::Buttons(
                          self.extra_button(s, crate::extras::Item::DiscordPresence),
-@@ -2735,6 +2796,104 @@ impl OptionsUi {
+@@ -2735,6 +2799,108 @@ impl OptionsUi {
                  )
                  .collect()
              }
@@ -4262,15 +4403,19 @@ index 8ee09de..e0f5321 100644
 +                let edit = button(0.0, 0.0, 150.0, tr("horizon.imc.editor"), Act::TouchEditor);
 +                let edit = if self.in_world { edit } else { inactive(edit) };
 +                rows.push(Row::Buttons(
-+                    edit,
-+                    Some(button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset)),
++                    button(0.0, 0.0, 150.0, tr("horizon.imc.mobile"), Act::MobilePreset),
++                    Some(edit),
++                ));
++                rows.push(Row::Buttons(
++                    button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
++                    None,
 +                ));
 +                rows
 +            }
              Page::Agent => {
                  let mut rows = vec![Row::Buttons(
                      self.extra_button(s, crate::extras::Item::AgentControl),
-@@ -3508,6 +3667,10 @@ impl OptionsUi {
+@@ -3508,6 +3674,10 @@ impl OptionsUi {
              {
                  *active = self.in_world && self.minecart_improvements;
              }
@@ -4281,7 +4426,7 @@ index 8ee09de..e0f5321 100644
          }
          self.row_bands = rows
              .bands
-@@ -4226,6 +4389,14 @@ impl OptionsUi {
+@@ -4226,6 +4396,14 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -4296,15 +4441,19 @@ index 8ee09de..e0f5321 100644
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -4282,6 +4453,7 @@ impl OptionsUi {
+@@ -4282,6 +4460,11 @@ impl OptionsUi {
                              events.push(Event::Changed);
                          }
                          Act::HudEditor => events.push(Event::HudEditor),
 +                        Act::TouchEditor => events.push(Event::TouchEditor),
++                        Act::MobilePreset => {
++                            crate::mobile_preset::apply(s);
++                            events.push(Event::Changed);
++                        }
                          Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                          Act::Credits => events.push(Event::Credits),
                          Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
-@@ -5162,6 +5334,14 @@ impl OptionsUi {
+@@ -5162,6 +5345,14 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -4319,15 +4468,27 @@ index 8ee09de..e0f5321 100644
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -5220,6 +5400,7 @@ impl OptionsUi {
+@@ -5220,6 +5411,11 @@ impl OptionsUi {
                              events.push(Event::Changed);
                          }
                          Act::HudEditor => events.push(Event::HudEditor),
 +                        Act::TouchEditor => events.push(Event::TouchEditor),
++                        Act::MobilePreset => {
++                            crate::mobile_preset::apply(s);
++                            events.push(Event::Changed);
++                        }
                          Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                          Act::Credits => events.push(Event::Credits),
                          Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
-@@ -7560,8 +7741,8 @@ mod tests {
+@@ -7495,6 +7691,7 @@ mod tests {
+                         Act::Cycle(opt) => format!("{opt:?}"),
+                         Act::Extra(e) => format!("extra:{e:?}"),
+                         Act::PvpPreset => "pvp-preset".to_owned(),
++                        Act::MobilePreset => "mobile-preset".to_owned(),
+                         Act::Push(to) => {
+                             ways_in
+                                 .entry(format!("{to:?}"))
+@@ -7560,8 +7757,8 @@ mod tests {
                      Opt::GraphicsBackend => "graphics-api".to_owned(),
                      o => format!("{o:?}"),
                  };
@@ -4338,7 +4499,7 @@ index 8ee09de..e0f5321 100644
                      continue;
                  }
                  assert!(
-@@ -7640,6 +7821,7 @@ mod tests {
+@@ -7640,6 +7837,7 @@ mod tests {
                  Page::Pvp,
                  Page::SplitSetup,
                  Page::Studio,
@@ -4346,7 +4507,7 @@ index 8ee09de..e0f5321 100644
                  Page::Agent,
              ]
          );
-@@ -7671,6 +7853,32 @@ mod tests {
+@@ -7671,6 +7869,32 @@ mod tests {
          assert!(pushes(&mut ui).contains(&Page::Controller));
      }
  
@@ -4477,10 +4638,10 @@ index 2ead838..7298b2d 100644
          }
      }
 diff --git a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-index 7466983..0726b26 100644
+index 7466983..ca7439f 100644
 --- a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
 +++ b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-@@ -720,6 +720,61 @@
+@@ -720,6 +720,63 @@
    "horizon.pages.pvp": "PvP & HUD",
    "horizon.pages.pvp.tooltip": "Crosshair, HUD and PvP settings, all off by default. Nothing here shows what vanilla doesn't.",
    "horizon.pages.open.pvp": "PvP & HUD...",
@@ -4490,6 +4651,8 @@ index 7466983..0726b26 100644
 +  "horizon.imc.header.controls": "Touch controls",
 +  "horizon.imc.header.screen": "Screen",
 +  "horizon.imc.reset": "Reset to defaults",
++  "horizon.imc.mobile": "Mobile preset",
++  "horizon.imc.mobile.tooltip": "One tap to settings that suit a phone: the Performance preset (render distance 8, simulation distance 6, no clouds, minimal particles), battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Every setting stays yours to change afterwards. The Auto Performance block below keeps its own limits.",
 +  "horizon.imc.editor": "Edit touch controls",
 +  "horizon.imc.editor.tooltip": "Drag the on-screen buttons where you want them, and set the size and opacity of each. Needs a world open: the buttons show over it.",
 +  "horizon.imc.touchControls": "On-screen buttons",

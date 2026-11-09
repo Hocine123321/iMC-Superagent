@@ -1368,6 +1368,8 @@ enum Act {
     HudEditor,
     /// iMC Settings' Edit touch controls button.
     TouchEditor,
+    /// iMC Settings' Mobile preset button (`mobile_preset::apply`).
+    MobilePreset,
     /// The installed native mod's settings page.
     ModSettings(usize),
     /// A native mod's key (mod, key) waits for a key; a button of its page.
@@ -1935,6 +1937,7 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::PvpPreset => Some("horizon.pvp.preset.tooltip".into()),
         Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
         Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
+        Act::MobilePreset => Some("horizon.imc.mobile.tooltip".into()),
         _ => None,
     };
     if let Some(key) = key.filter(|key| lang::has(key)) {
@@ -2889,8 +2892,12 @@ impl OptionsUi {
                 let edit = button(0.0, 0.0, 150.0, tr("horizon.imc.editor"), Act::TouchEditor);
                 let edit = if self.in_world { edit } else { inactive(edit) };
                 rows.push(Row::Buttons(
-                    edit,
-                    Some(button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset)),
+                    button(0.0, 0.0, 150.0, tr("horizon.imc.mobile"), Act::MobilePreset),
+                    Some(edit),
+                ));
+                rows.push(Row::Buttons(
+                    button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
+                    None,
                 ));
                 rows
             }
@@ -4454,6 +4461,10 @@ impl OptionsUi {
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
                         Act::TouchEditor => events.push(Event::TouchEditor),
+                        Act::MobilePreset => {
+                            crate::mobile_preset::apply(s);
+                            events.push(Event::Changed);
+                        }
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
@@ -5401,6 +5412,10 @@ impl OptionsUi {
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
                         Act::TouchEditor => events.push(Event::TouchEditor),
+                        Act::MobilePreset => {
+                            crate::mobile_preset::apply(s);
+                            events.push(Event::Changed);
+                        }
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
@@ -7676,6 +7691,7 @@ mod tests {
                         Act::Cycle(opt) => format!("{opt:?}"),
                         Act::Extra(e) => format!("extra:{e:?}"),
                         Act::PvpPreset => "pvp-preset".to_owned(),
+                        Act::MobilePreset => "mobile-preset".to_owned(),
                         Act::Push(to) => {
                             ways_in
                                 .entry(format!("{to:?}"))

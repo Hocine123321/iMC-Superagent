@@ -7,8 +7,8 @@ what `horizon/` holds now, why each exists, and how to put it back.
 ## How this stays true
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
-  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **50 files,
-  +5698 / -77: 11 new files, 39 modified, none deleted.** Only 77 upstream lines are removed or
+  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **51 files,
+  +5848 / -77: 12 new files, 39 modified, none deleted.** Only 77 upstream lines are removed or
   rewritten in total; everything else is added.
 - **`docs/horizon-changes.patch` is the exact diff** (generated, not hand-written). When this prose
   and the patch disagree, the patch is right. Replay it onto a new upstream with
@@ -28,7 +28,7 @@ could not be built without it) and some of it (the iMC Settings page, Auto Perfo
 goes beyond a touch fix. They are listed here as the facts they are, not as approved. **Each entry
 carries a risk, so you can decide what to keep when you rebase.**
 
-Entries are grouped by what they are for, not by file. Every one of the 50 files appears once, in
+Entries are grouped by what they are for, not by file. Every one of the 51 files appears once, in
 the index at the end.
 
 ---
@@ -166,11 +166,12 @@ the large `options_ui.rs`, and every upstream change to that file can conflict).
 |---|---|---|
 | `crates/horizon-client-input/src/imc_settings.rs` | 970 | `Item` (20 settings), `ImcSettings` (parse/serialize `horizon-imc.txt`, `cycle`, `reset`, `apply` into `Touch`), the heavy-setting `Cost` notices. Defaults equal what touch had before settings existed. |
 | `crates/horizon-client-render/src/ios_unused.rs` | 266 | The classifier behind "Grey out unused settings": keyboard, mouse, window and desktop-only options, by stable name. |
+| `crates/horizon-client-render/src/mobile_preset.rs` | 135 | The **Mobile preset** button's function: the engine's Performance preset plus battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Only sets values; 6 tests. |
 
 ### D2. Hooks into existing files
 | File | Change |
 |---|---|
-| `crates/horizon-client-render/src/lib.rs` | `pub mod ios_unused;` |
+| `crates/horizon-client-render/src/lib.rs` | `pub mod ios_unused;`, `pub mod mobile_preset;` |
 | `crates/horizon-client-render/src/settings.rs` | `pub imc: ImcSettings` on `Settings`, its default in three constructors, loaded from `horizon-imc.txt` beside `options.txt`, cloned, and saved (only when changed or the file exists). |
 | `crates/horizon-client-render/src/graphics_ui.rs` | In `Item::blocked`: when `s.imc.grey_unused`, return the reason from `ios_unused::opt / graphics / extra`. |
 | `crates/horizon-client-render/src/options_ui.rs` | **17 hunks: 16 pure insertions (4 of them in `mod tests`) and the one-line A1 change.** `Page::Imc` and its entry button; `Act::Imc(Item)`, `Act::ImcReset`; a perf-status field; the button builder for iMC items (36 lines); tooltips (`horizon_page_tooltip`, `tooltip_text`); the page's rows (95 lines: header, Buttons rows, Auto Performance block, heavy-setting notices); click handling; the grey-out check for `Opt`/`Act` buttons; and tests (every item has a button, a click cycles and saves). |
@@ -228,8 +229,8 @@ Three things that were wrong on the phone, fixed together because they share fil
 |---|---|
 | `horizon-client-input/src/lib.rs` | `pub mod touch_layout;` |
 | `horizon-client-render/src/settings.rs` | `touch_layout: ControlLayout` on `Settings`: default in two constructors, cloned in `with_option`, loaded from `horizon-touch-layout.txt` (both `match` arms), saved only when changed or the file exists. |
-| `horizon-client-render/src/options_ui.rs` | `Act::TouchEditor` and `Event::TouchEditor`; the *Edit touch controls* button next to Reset on the iMC page (greyed outside a world: the editor needs the view); its tooltip; the two click handlers. |
-| `assets/horizon/lang/en_us.json` | `horizon.imc.editor` and `horizon.imc.editor.tooltip` (2 keys). |
+| `horizon-client-render/src/options_ui.rs` | `Act::TouchEditor` and `Event::TouchEditor`; the *Edit touch controls* button on the iMC page (greyed outside a world: the editor needs the view); its tooltip; the two click handlers. Also `Act::MobilePreset` (the *Mobile preset* button beside it, working anywhere), its tooltip, two click handlers and one arm in the test that names every `Act`. |
+| `assets/horizon/lang/en_us.json` | `horizon.imc.editor` and `horizon.imc.editor.tooltip`, `horizon.imc.mobile` and `horizon.imc.mobile.tooltip` (4 keys). |
 | `game.rs` | `Screen::TouchEditor` (+ its name), `mod touch_editor;`, the `ime_hidden` and `touch_editor` fields, the draw arm, and the editor's three pointer hooks (drag, press, release) beside the HUD editor's. |
 | `game/touch.rs` | **Back button** (`touch_back_*`): drawn over the inventory, creative, chat, command block, block editor, signs and books, which a phone cannot close by key. A finger that goes down on it is kept from the pointer and fires on lift; the first tap puts the phone's keyboard away, the next leaves like Escape. **Layout:** `pad_rect` places every button (hit test and drawing both use it), `faded` for opacity. Helpers exported for the editor. 5 tests. |
 | `game/ime.rs` | `sync_ime` honours `ime_hidden`, so Back can put the keyboard away while the text box keeps its text. |
@@ -242,7 +243,7 @@ and `touch.rs` hunks by their anchors.
 
 ---
 
-## F. Index: all 50 files
+## F. Index: all 51 files
 
 `A` = new file, `M` = modified. Section in brackets.
 
@@ -263,6 +264,7 @@ M horizon/crates/horizon-client-render/src/graphics.rs            [A1]
 M horizon/crates/horizon-client-render/src/graphics_ui.rs         [A1, D2]
 A horizon/crates/horizon-client-render/src/ios_unused.rs          [D1]
 M horizon/crates/horizon-client-render/src/lib.rs                 [D2]
+A horizon/crates/horizon-client-render/src/mobile_preset.rs       [D1]
 M horizon/crates/horizon-client-render/src/logging.rs             [A1]
 M horizon/crates/horizon-client-render/src/options_ui.rs          [A1, D2, I2]
 M horizon/crates/horizon-client-render/src/settings.rs            [D2, I2]
@@ -302,7 +304,7 @@ A horizon/platform/ios-bridge/src/lib.rs                          [A5]
 ## G. Rebase checklist
 
 1. Import the new upstream beside the old one; do **not** overwrite `horizon/` first.
-2. Copy the eleven new files (C1, D1, E1, A5, I1): they are self-contained.
+2. Copy the twelve new files (C1, D1, E1, A5, I1): they are self-contained.
 3. Do section A (mechanical), then B (by intent, measure the stack), then the hooks in C2, D2, E2.
 4. `cargo test -p horizon-client-input` (touch, settings and Auto Performance logic) needs no
    engine build. The render and client crates build on CI only.

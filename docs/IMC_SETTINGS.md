@@ -28,7 +28,8 @@ belong to the iOS app and not to Minecraft. It follows the same pattern as the P
 | Touch shift X, Y | -16, -8, 0, +8, +16 px | 0 | Moves every touch by that many screen pixels, after the safe-area correction. For an offset that is left on this phone (see below). |
 | Menu touch | Precise, Normal, Careful, Very careful, Firm | Normal | How far a finger may drift on a menu and still be a tap: 0.5, 1, 1.75, 2.5 and 3.5 times the screen's own slop (1% of the shorter side, 11.7 px on an iPhone 12). Higher stops accidental presses and slider moves. |
 | Button shift X, Y | -16, -8, 0, +8, +16 px | 0 | Moves where the **on-screen buttons answer**, not how they are drawn and not menus. For the in-game offset (see below). Negative X moves the hit area left, negative Y up. |
-| Reset to defaults | button | | Puts every setting back, Auto Performance included. |
+| Mobile preset | button | | One tap to settings that suit a phone. Sets the engine's Performance preset (render distance 8, simulation distance 6, no clouds, minimal particles, no entity shadows, no biome blend, no mipmaps) and adds battery mode, max FPS 60 with vsync, no view bobbing, and resolution 100%, no LOD, no upscaling, no HDR, no frame generation. Leaves alone smooth lighting, FOV, sensitivity, GUI scale, the texture budget, the shader pack and every iMC setting. Every value stays adjustable afterwards. Works from the title screen too. |
+| Reset to defaults | button | | Puts every setting back, Auto Performance included. (It resets the iMC settings only, not what the Mobile preset changed.) |
 
 **The defaults are the values touch had before this page existed**, so nothing changes until the
 player changes something. A test pins this (`the_defaults_are_the_values_touch_had_before_it_had_settings`).
@@ -136,7 +137,8 @@ something differs from the defaults (the same rule `horizon-extras.txt` follows)
 | The governor: when to cut what (pure, 14 tests) | `horizon/crates/horizon-client-input/src/auto_performance.rs` |
 | The 5 s memory check and where the caps are applied | `horizon/crates/horizon-client/src/game/auto_performance.rs` |
 | `Settings.imc`: loaded and saved with the other Horizon files | `horizon/crates/horizon-client-render/src/settings.rs` |
-| The page, its buttons, `Act::Imc` and `Act::ImcReset` | `horizon/crates/horizon-client-render/src/options_ui.rs` |
+| The page, its buttons, `Act::Imc`, `Act::ImcReset` and `Act::MobilePreset` | `horizon/crates/horizon-client-render/src/options_ui.rs` |
+| The Mobile preset's values (pure, 6 tests) | `horizon/crates/horizon-client-render/src/mobile_preset.rs` |
 | Applies the values to the fingers; hides the buttons; scales the margins | `horizon/crates/horizon-client/src/game/touch.rs` |
 | English text (`horizon.imc.*`, `horizon.pages.imc*`) | `horizon/crates/horizon-client/assets/horizon/lang/en_us.json` |
 
@@ -303,6 +305,9 @@ engine's own on-screen keyboard from opening over the phone's.
 00. New this round: open the inventory in a world. Is there a Back button top left, and does it close
     it? Open chat: with the keyboard up it should say Done; Done hides the keyboard, then Back leaves.
     No controller symbols or hints should appear anywhere while you only use your fingers.
+02. iMC Settings > Mobile preset: tap it, then look at Options > Video Settings. Render distance should
+    read 8, max FPS 60, vsync on. Play for ten minutes and compare how warm the phone gets with a build
+    that has not used the preset. Tell me if 8 chunks feels too short: it is a guess until M6 measures.
 01. iMC Settings > Edit touch controls: drag a button, change its size and fade, Done. Leave the
     world and come back: the arrangement is kept. Cancel restores. Reset all returns the original.
 0. Menus: tap, slide a slider sideways, scroll a list with one finger, and try to press by accident.
