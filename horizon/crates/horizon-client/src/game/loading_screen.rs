@@ -306,7 +306,7 @@ impl Loading {
     // Not inlined: its locals are about 600 KB, and the event loop's per-iteration handler
     // (`about_to_wait`) would otherwise hold them while the title screen is built.
     #[inline(never)]
-    pub(super) fn finish(&mut self, loaded: Loaded) -> Result<Option<split::Split<'static>>> {
+    pub(super) fn finish(&mut self, loaded: Loaded) -> Result<Option<Box<split::Split<'static>>>> {
         horizon_client::gfx::breadcrumb("finish: starting the game");
         let handoff_at = Instant::now();
         let mut options = self.options.take().ok_or("loading already finished")?;
@@ -395,7 +395,9 @@ impl Loading {
             renderer_ms,
             game_ms
         );
-        Ok(Some(split::Split::new(game)))
+        // Boxed here, so the caller (`about_to_wait`, which runs on every event) holds a pointer
+        // and not a `Split`-sized temporary: that cost 276 KB of the main thread's 1 MB on iOS.
+        Ok(Some(Box::new(split::Split::new(game))))
     }
 }
 
@@ -459,7 +461,7 @@ impl ApplicationHandler for App {
                     None => Step::Waiting,
                     Some(Err(e)) => Step::Failed(e.into()),
                     Some(Ok(loaded)) => match loading.finish(loaded) {
-                        Ok(Some(game)) => Step::Ready(Box::new(game)),
+                        Ok(Some(game)) => Step::Ready(game),
                         Ok(None) => Step::Done,
                         Err(e) => Step::Failed(e),
                     },
