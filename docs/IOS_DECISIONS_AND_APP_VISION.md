@@ -84,7 +84,7 @@ on the phone from your own Minecraft account.
 | M3 / M3b | Load the game files, reach the title screen, and the native launcher (home, import/check/delete, diagnostics, Play) | **Built and published** (v2 to v4); launcher layout and the folder picker untested on a phone |
 | M4 | Pause, resume and memory warnings | **Built**, untested on a phone |
 | M5 | Touch controls, playable singleplayer | **Built; first phone test found the touch offset** (right and a little down), fix and **iMC Settings** page written 2026-11-09 and waiting for a CI build (`IMC_SETTINGS.md`). Since then: Mobile preset, touch controls editor, Back button. All untested on a phone. |
-| M6 / M7 | Measure on the phone, then tune memory and heat | PLANNED |
+| M6 / M7 | Measure on the phone, then tune memory and heat | **M6 started:** a local session log (memory, heat, battery) is built, untested on a phone (`SESSION_LOG.md`). Benchmarks and frame times are PLANNED. M7 PLANNED. |
 | M8b | Download and prepare on the phone | PLANNED, depends on M8a |
 | M9 | Microsoft sign-in and ownership check | PLANNED, needs Mojang's approval of an app registration |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |

@@ -305,11 +305,13 @@ engine's own on-screen keyboard from opening over the phone's.
 00. New this round: open the inventory in a world. Is there a Back button top left, and does it close
     it? Open chat: with the keyboard up it should say Done; Done hides the keyboard, then Back leaves.
     No controller symbols or hints should appear anywhere while you only use your fingers.
+01. iMC Settings > Edit touch controls: drag a button, change its size and fade, Done. Leave the
+    world and come back: the arrangement is kept. Cancel restores. Reset all returns the original.
 02. iMC Settings > Mobile preset: tap it, then look at Options > Video Settings. Render distance should
     read 8, max FPS 60, vsync on. Play for ten minutes and compare how warm the phone gets with a build
     that has not used the preset. Tell me if 8 chunks feels too short: it is a guess until M6 measures.
-01. iMC Settings > Edit touch controls: drag a button, change its size and fade, Done. Leave the
-    world and come back: the arrangement is kept. Cancel restores. Reset all returns the original.
+03. After any session: Diagnostics > Share now offers session-log.csv. It should have a line every
+    5 seconds with your phone's model in the header (see SESSION_LOG.md).
 0. Menus: tap, slide a slider sideways, scroll a list with one finger, and try to press by accident.
    Raise Menu touch if it still happens.
 1. That a finger now lands exactly under itself, in menus and in the world.

@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 #import "Diagnostics.h"
 #import "CrashReporter.h"
+#import "SessionLog.h"
 #import "Launcher.h"
 #import "LauncherModel.h"
 #include <crt_externs.h>   // _NSGetArgc / _NSGetArgv (iOS 13 SDK and later)
@@ -37,6 +38,10 @@ int main(int argc, char *argv[]) {
         // Before anything else can fail: a native crash writes Documents/Horizon/crash.txt.
         HorizonInstallCrashReporter(root);
         horizon_ios_breadcrumb("main: crash reporter installed");
+
+        // A timeline of memory, heat and battery in Documents/Horizon/session-log.csv, for the
+        // benchmark work (M6, M7). Local only; the launcher's Share button hands it over.
+        HorizonStartSessionLog(root);
 
         // Writes Documents/Horizon/diagnostics.txt: device, entitlements, JIT state, runtime present.
         // Read-only checks, run before the engine; see Diagnostics.m.

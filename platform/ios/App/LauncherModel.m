@@ -247,6 +247,8 @@
                           [_root stringByAppendingPathComponent:@"crash-previous.txt"],
                           [self newestFileIn:[_home stringByAppendingPathComponent:@"crash-reports"] extension:nil] ?: @"",
                           [_root stringByAppendingPathComponent:@"diagnostics.txt"],
+                          [_root stringByAppendingPathComponent:@"session-log.csv"],
+                          [_root stringByAppendingPathComponent:@"session-log-previous.csv"],
                           [self newestLog] ?: @""]) {
         if (p.length && [fm fileExistsAtPath:p]) [out addObject:[NSURL fileURLWithPath:p]];
     }

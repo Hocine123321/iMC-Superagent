@@ -295,6 +295,8 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 - Compare against the Mac desktop Metal result from M0 as a sanity ratio, not as a target.
 - Amethyst comparison only if you want it, on the same device and world, clearly labelled as indicative.
 
+**Started 2026-11-09.** The shell now writes a local timeline (`session-log.csv`: memory footprint, memory still available, thermal state, Low Power Mode, battery level and state, foreground) every 5 seconds (`SESSION_LOG.md`). It covers the "extend the report" line for everything iOS gives to the shell. Still open: the `--benchmark` scenarios on the phone, frame times, and GPU bytes by category (these need engine hooks).
+
 **Risks.** Thermal throttling makes runs non-comparable; control by starting each run at a recorded thermal state and room temperature, and by recording rather than hiding it. Performance mode differences with the device plugged in.
 
 **Success test.** Three repeated runs per scenario agree within a spread you define after seeing the first set; reports stored in the repository root `benchmarks/ios/` (not upstream's `horizon/benchmarks/`) with the device metadata.
