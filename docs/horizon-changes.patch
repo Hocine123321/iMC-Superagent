@@ -567,6 +567,82 @@ index 0000000..59755b9
 +        assert!(!g.tick(&c, wanted, Some(1), 0.0).any());
 +    }
 +}
+diff --git a/horizon/crates/horizon-client-input/src/gamepad.rs b/horizon/crates/horizon-client-input/src/gamepad.rs
+index 29560c8..fcffcdb 100644
+--- a/horizon/crates/horizon-client-input/src/gamepad.rs
++++ b/horizon/crates/horizon-client-input/src/gamepad.rs
+@@ -158,6 +158,18 @@ impl PadState {
+             self.buttons &= !button.bit();
+         }
+     }
++    /// `set`, but a trigger is also pulled all the way. The edge detector reads a trigger from its
++    /// analog value, never from its button bit, so a bit alone (what a finger or a script holds)
++    /// is dropped and the trigger's action (attack, use) never fires.
++    pub fn set_pressed(&mut self, button: Button, down: bool) {
++        self.set(button, down);
++        let value = if down { 1.0 } else { 0.0 };
++        match button {
++            Button::LeftTrigger => self.triggers[0] = value,
++            Button::RightTrigger => self.triggers[1] = value,
++            _ => {}
++        }
++    }
+     pub fn held(&self, button: Button) -> bool {
+         self.buttons & button.bit() != 0
+     }
+@@ -2532,3 +2544,52 @@ bind_key.hotbar.2:north
+         assert_eq!(GlyphStyle::of_device(Some(0x0f0d), None), GlyphStyle::Xbox);
+     }
+ }
++
++#[cfg(test)]
++mod touch_triggers {
++    use super::*;
++
++    fn edges_for(button: Button, down: bool) -> Vec<(Button, bool)> {
++        let mut touched = PadState::default();
++        touched.set_pressed(button, down);
++        Edges::default().update(&PadState::default().merge(&touched), 0.5)
++    }
++
++    #[test]
++    fn a_finger_on_the_attack_button_presses_the_right_trigger() {
++        assert_eq!(edges_for(Button::RightTrigger, true), [(Button::RightTrigger, true)]);
++    }
++
++    #[test]
++    fn a_finger_on_the_use_button_presses_the_left_trigger() {
++        assert_eq!(edges_for(Button::LeftTrigger, true), [(Button::LeftTrigger, true)]);
++    }
++
++    #[test]
++    fn lifting_the_finger_releases_the_trigger() {
++        let mut touched = PadState::default();
++        let mut edges = Edges::default();
++        touched.set_pressed(Button::RightTrigger, true);
++        edges.update(&PadState::default().merge(&touched), 0.5);
++        touched.set_pressed(Button::RightTrigger, false);
++        assert_eq!(
++            edges.update(&PadState::default().merge(&touched), 0.5),
++            [(Button::RightTrigger, false)]
++        );
++    }
++
++    #[test]
++    fn an_ordinary_button_still_works_the_same() {
++        assert_eq!(edges_for(Button::South, true), [(Button::South, true)]);
++    }
++
++    #[test]
++    fn it_holds_at_any_trigger_threshold_the_player_sets() {
++        for threshold in [0.1, 0.5, 0.9, 1.0] {
++            let mut touched = PadState::default();
++            touched.set_pressed(Button::RightTrigger, true);
++            let out = Edges::default().update(&PadState::default().merge(&touched), threshold);
++            assert_eq!(out, [(Button::RightTrigger, true)], "threshold {threshold}");
++        }
++    }
++}
 diff --git a/horizon/crates/horizon-client-input/src/imc_settings.rs b/horizon/crates/horizon-client-input/src/imc_settings.rs
 new file mode 100644
 index 0000000..df72ced
@@ -6328,7 +6404,7 @@ index 7466983..07f9ec0 100644
    "horizon.pvp.crosshair": "Custom crosshair",
    "horizon.pvp.crosshair_shape": "Shape",
 diff --git a/horizon/crates/horizon-client/src/game.rs b/horizon/crates/horizon-client/src/game.rs
-index b6efe77..5ff8711 100644
+index b6efe77..03b6bb8 100644
 --- a/horizon/crates/horizon-client/src/game.rs
 +++ b/horizon/crates/horizon-client/src/game.rs
 @@ -169,6 +169,8 @@ mod growth;
@@ -6445,7 +6521,24 @@ index b6efe77..5ff8711 100644
                          Screen::ConfirmLink if pressed && button == MouseButton::Left => {
                              self.confirm_link_click()
                          }
-@@ -15918,11 +15952,16 @@ impl Game<'_> {
+@@ -15515,6 +15549,16 @@ impl Game<'_> {
+                         } else {
+                             self.keys.remove(&key);
+                         }
++                    } else if event.state == ElementState::Pressed {
++                        // A key with no physical code (a hardware keyboard on iOS can send one).
++                        // Enter and the editing keys are recovered in `follow_named_keymap`; this
++                        // is for anything else, so a test on a phone shows what arrived.
++                        log::info!(
++                            "Horizon: chat key with no physical code: logical {:?}, text {:?}",
++                            event.logical_key,
++                            event.text
++                        );
++                        self.chat_unplaced_key(event.text.as_deref());
+                     }
+                 }
+                 WindowEvent::KeyboardInput { event, .. } if self.sign_edit.is_some() => {
+@@ -15918,11 +15962,16 @@ impl Game<'_> {
                      self.pause = self.pauses_game();
                      if let Some(server) = &self.integrated {
                          server.set_paused(self.pause);
@@ -6467,7 +6560,7 @@ index b6efe77..5ff8711 100644
                          server.set_legacy_rules(self.settings.extras.pvp.combat.rules);
                      }
                      self.clock.end_frame(self.pause);
-@@ -16063,6 +16102,24 @@ impl<'a> Game<'a> {
+@@ -16063,6 +16112,24 @@ impl<'a> Game<'a> {
          audio: Audio,
          prepared: Option<GameCpuResources>,
      ) -> Result<Self> {
@@ -6492,7 +6585,7 @@ index b6efe77..5ff8711 100644
          let root = options.resources.clone();
          let registry = pack.assets.registry;
          // Until a world is opened the streamer is idle.
-@@ -16095,7 +16152,7 @@ impl<'a> Game<'a> {
+@@ -16095,7 +16162,7 @@ impl<'a> Game<'a> {
              &gui.atlas.sprites,
              &gui.atlas.translucent,
          );
@@ -6501,7 +6594,7 @@ index b6efe77..5ff8711 100644
              world_biomes: None,
              world_biomes_base: None,
              res: res.clone(),
-@@ -16188,6 +16245,8 @@ impl<'a> Game<'a> {
+@@ -16188,6 +16255,8 @@ impl<'a> Game<'a> {
              split_auth: None,
              focused: true,
              ime_allowed: false,
@@ -6510,7 +6603,7 @@ index b6efe77..5ff8711 100644
              ime_area: None,
              focus_lost: None,
              modifiers: winit::keyboard::ModifiersState::empty(),
-@@ -16318,6 +16377,9 @@ impl<'a> Game<'a> {
+@@ -16318,6 +16387,9 @@ impl<'a> Game<'a> {
              autosaving: false,
              // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
              ticks_until_autosave: 6000,
@@ -6520,7 +6613,7 @@ index b6efe77..5ff8711 100644
              applied_modifiers: Vec::new(),
              experience: Experience::default(),
              orbs: Default::default(),
-@@ -16631,7 +16693,7 @@ impl<'a> Game<'a> {
+@@ -16631,7 +16703,7 @@ impl<'a> Game<'a> {
              camera_type: Default::default(),
              fangs: Default::default(),
              player_model: None,
@@ -6529,7 +6622,7 @@ index b6efe77..5ff8711 100644
          if game.native_window() {
              game.native_client_start();
          }
-@@ -17211,6 +17273,21 @@ pub fn run_with() -> Result<()> {
+@@ -17211,6 +17283,21 @@ pub fn run_with() -> Result<()> {
      if !synchronous_startup(&options) {
          return run_loading(options, early_settings, vanilla_root, None, started);
      }
@@ -6551,7 +6644,7 @@ index b6efe77..5ff8711 100644
      let mut pack_error = None;
      options.resources = packs::startup_root(&vanilla_root, &early_settings.resource_packs, &[])
          .unwrap_or_else(|e| {
-@@ -17265,7 +17342,7 @@ pub fn run_with() -> Result<()> {
+@@ -17265,7 +17352,7 @@ pub fn run_with() -> Result<()> {
              );
              game.settings.save(&Game::options_path());
          }
@@ -6684,6 +6777,37 @@ index 0000000..2d1d8aa
 +        ))
 +    }
 +}
+diff --git a/horizon/crates/horizon-client/src/game/chat.rs b/horizon/crates/horizon-client/src/game/chat.rs
+index 5c8e511..d7d9097 100644
+--- a/horizon/crates/horizon-client/src/game/chat.rs
++++ b/horizon/crates/horizon-client/src/game/chat.rs
+@@ -1162,6 +1162,26 @@ impl Game<'_> {
+         };
+         self.chat_key_code(key, event.text.as_deref());
+     }
++    /// A key with no physical code reached the chat: type its text, if it has any. The caller logs
++    /// what arrived.
++    pub(super) fn chat_unplaced_key(&mut self, text: Option<&str>) {
++        let Some(text) = text.filter(|t| !t.is_empty()) else {
++            return;
++        };
++        if !self.types_text() {
++            return;
++        }
++        let Some(mut screen) = self.ui.chat_screen.take() else {
++            return;
++        };
++        let m = Measure(&self.gui.atlas.font);
++        let c = Commands {
++            dispatcher: chat_tree(&self.remote),
++            registries: &self.ui.registries,
++        };
++        screen.type_text(&m, &c, text);
++        self.ui.chat_screen = Some(screen);
++    }
+     /// A key (and the text it typed) while the chat screen is open.
+     pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) {
+         // The live modifiers, not `self.keys`: every ModifiersChanged runs
 diff --git a/horizon/crates/horizon-client/src/game/control.rs b/horizon/crates/horizon-client/src/game/control.rs
 index 27e13eb..535979d 100644
 --- a/horizon/crates/horizon-client/src/game/control.rs
@@ -6741,6 +6865,85 @@ index 7d2b6fa..adb3cc2 100644
          if want != self.ime_allowed
              && let Some(window) = &self.window
          {
+diff --git a/horizon/crates/horizon-client/src/game/key_codes.rs b/horizon/crates/horizon-client/src/game/key_codes.rs
+index 1d0ead6..b8a9faf 100644
+--- a/horizon/crates/horizon-client/src/game/key_codes.rs
++++ b/horizon/crates/horizon-client/src/game/key_codes.rs
+@@ -46,12 +46,74 @@ pub(super) fn follow_named_keymap(
+             NamedKey::F33 => KeyCode::F33,
+             NamedKey::F34 => KeyCode::F34,
+             NamedKey::F35 => KeyCode::F35,
++            // The editing and navigation keys. A hardware keyboard on iOS can deliver these with
++            // no identified physical key, which `chat_key` and the text fields drop, so Enter sent
++            // nothing. They are taken from the logical key only while the physical one is missing,
++            // so a keymap that remaps them on a desktop is not overridden.
++            NamedKey::Enter if unidentified(physical_key) => KeyCode::Enter,
++            NamedKey::Backspace if unidentified(physical_key) => KeyCode::Backspace,
++            NamedKey::Tab if unidentified(physical_key) => KeyCode::Tab,
++            NamedKey::Delete if unidentified(physical_key) => KeyCode::Delete,
++            NamedKey::ArrowUp if unidentified(physical_key) => KeyCode::ArrowUp,
++            NamedKey::ArrowDown if unidentified(physical_key) => KeyCode::ArrowDown,
++            NamedKey::ArrowLeft if unidentified(physical_key) => KeyCode::ArrowLeft,
++            NamedKey::ArrowRight if unidentified(physical_key) => KeyCode::ArrowRight,
++            NamedKey::Home if unidentified(physical_key) => KeyCode::Home,
++            NamedKey::End if unidentified(physical_key) => KeyCode::End,
++            NamedKey::PageUp if unidentified(physical_key) => KeyCode::PageUp,
++            NamedKey::PageDown if unidentified(physical_key) => KeyCode::PageDown,
+             _ => return,
+         };
+         *physical_key = PhysicalKey::Code(code);
+     }
+ }
+ 
++/// The platform gave no physical key for this event.
++fn unidentified(physical_key: &PhysicalKey) -> bool {
++    matches!(physical_key, PhysicalKey::Unidentified(_))
++}
++
++#[cfg(test)]
++mod named_key_tests {
++    use super::*;
++    use winit::keyboard::{Key, NamedKey, NativeKeyCode};
++
++    fn follow(named: NamedKey, physical: PhysicalKey) -> PhysicalKey {
++        let mut physical = physical;
++        follow_named_keymap(&Key::Named(named), &mut physical);
++        physical
++    }
++
++    #[test]
++    fn an_enter_with_no_physical_key_becomes_enter() {
++        let none = PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
++        assert_eq!(follow(NamedKey::Enter, none), PhysicalKey::Code(KeyCode::Enter));
++    }
++
++    #[test]
++    fn the_editing_keys_are_recovered_the_same_way() {
++        let none = || PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
++        for (named, code) in [
++            (NamedKey::Backspace, KeyCode::Backspace),
++            (NamedKey::Tab, KeyCode::Tab),
++            (NamedKey::Delete, KeyCode::Delete),
++            (NamedKey::ArrowUp, KeyCode::ArrowUp),
++            (NamedKey::ArrowDown, KeyCode::ArrowDown),
++            (NamedKey::ArrowLeft, KeyCode::ArrowLeft),
++            (NamedKey::ArrowRight, KeyCode::ArrowRight),
++        ] {
++            assert_eq!(follow(named, none()), PhysicalKey::Code(code));
++        }
++    }
++
++    #[test]
++    fn a_known_physical_key_is_never_overridden() {
++        // The numpad Enter stays the numpad Enter.
++        let numpad = PhysicalKey::Code(KeyCode::NumpadEnter);
++        assert_eq!(follow(NamedKey::Enter, numpad), numpad);
++    }
++}
++
+ /// The modifier `modifiers` stands for, as GLFW words it in the native mods'
+ /// input hooks: `GLFW_MOD_SHIFT` 1, `GLFW_MOD_CONTROL` 2, `GLFW_MOD_ALT` 4,
+ /// `GLFW_MOD_SUPER` 8 — the word a NeoForge listener reads off its event
 diff --git a/horizon/crates/horizon-client/src/game/lifecycle.rs b/horizon/crates/horizon-client/src/game/lifecycle.rs
 new file mode 100644
 index 0000000..1b72e1c
@@ -7139,7 +7342,7 @@ index 07086e5..389f6db 100644
                  s.horizon.taa,
                  s.horizon.upscaling.ratio(),
 diff --git a/horizon/crates/horizon-client/src/game/pad.rs b/horizon/crates/horizon-client/src/game/pad.rs
-index 0474470..9aae7ad 100644
+index 0474470..2344b6c 100644
 --- a/horizon/crates/horizon-client/src/game/pad.rs
 +++ b/horizon/crates/horizon-client/src/game/pad.rs
 @@ -40,6 +40,10 @@ pub(super) struct Pads {
@@ -7158,7 +7361,7 @@ index 0474470..9aae7ad 100644
      /// A replay's pad button, in place of `pad`'s line.
      pub(super) fn inject_button(&mut self, button: Button, down: bool) {
 -        self.injected.set(button, down);
-+        self.touched.set(button, down);
++        self.touched.set_pressed(button, down);
 +    }
 +    /// Touch's steering stick, on the virtual controller's left stick.
 +    pub(super) fn set_injected_left(&mut self, stick: [f32; 2]) {

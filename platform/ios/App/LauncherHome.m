@@ -2,13 +2,14 @@
 #import "LauncherModel.h"
 #import "LauncherFiles.h"
 #import "LauncherDiagnostics.h"
+#import "LauncherAccount.h"
 #import "CrashReporter.h"
 
 static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1]; }
 
 @interface HZLauncherHomeController ()
 @property (strong) UILabel *statusTitle, *statusDetail, *versionLabel;
-@property (strong) UIButton *playButton, *filesButton, *diagButton;
+@property (strong) UIButton *playButton, *filesButton, *diagButton, *accountButton;
 @property (strong) UISwitch *directSwitch;
 @property (strong) UIView *statusDot;
 @property (strong) UIActivityIndicatorView *spinner;
@@ -78,11 +79,13 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     self.playButton = [self buttonWithTitle:@"Play" filled:YES action:@selector(play)];
     self.filesButton = [self buttonWithTitle:@"Game files" filled:NO action:@selector(openFiles)];
     self.diagButton = [self buttonWithTitle:@"Diagnostics" filled:NO action:@selector(openDiagnostics)];
+    self.accountButton = [self buttonWithTitle:@"Account" filled:NO action:@selector(openAccount)];
+    [self.accountButton.heightAnchor constraintEqualToConstant:48].active = YES;
     [self.playButton.heightAnchor constraintEqualToConstant:64].active = YES;
     [self.filesButton.heightAnchor constraintEqualToConstant:48].active = YES;
     [self.diagButton.heightAnchor constraintEqualToConstant:48].active = YES;
 
-    UIStackView *secondary = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesButton, self.diagButton]];
+    UIStackView *secondary = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesButton, self.accountButton, self.diagButton]];
     secondary.spacing = 12; secondary.distribution = UIStackViewDistributionFillEqually;
 
     // Skip this screen on the next opens: straight into the game when the files are ready.
@@ -188,6 +191,9 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
 - (void)openFiles {
     [self.navigationController pushViewController:[HZLauncherFilesController new] animated:YES];
+}
+- (void)openAccount {
+    [self.navigationController pushViewController:[HZLauncherAccountController new] animated:YES];
 }
 - (void)openDiagnostics {
     [self.navigationController pushViewController:[HZLauncherDiagnosticsController new] animated:YES];

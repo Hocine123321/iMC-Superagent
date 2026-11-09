@@ -86,7 +86,7 @@ on the phone from your own Minecraft account.
 | M5 | Touch controls, playable singleplayer | **Built; first phone test found the touch offset** (right and a little down), fix and **iMC Settings** page written 2026-11-09 and waiting for a CI build (`IMC_SETTINGS.md`). Since then: Mobile preset, touch controls editor, Back button. All untested on a phone. |
 | M6 / M7 | Measure on the phone, then tune memory and heat | **M6 started:** a local session log (memory, heat, battery) is built, untested on a phone (`SESSION_LOG.md`). Benchmarks and frame times are PLANNED. M7 PLANNED. |
 | M8b | Download and prepare on the phone | PLANNED, depends on M8a |
-| M9 | Microsoft sign-in and ownership check | PLANNED, needs Mojang's approval of an app registration |
+| M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
 
 **The honest summary:** the engine runs on iOS and the app has a launcher, touch controls and a settings page. What is not yet shown is a game you can play: no run has got past the title screen on the phone, and whether Java can run on the phone at all is open.
