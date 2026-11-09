@@ -158,6 +158,7 @@ impl Game<'_> {
             return;
         }
         self.touch_frame(event_loop);
+        self.auto_performance_frame();
         horizon_client::spans::time("pads", || self.poll_pads(event_loop));
         self.pause_if_inactive();
         if self.options.frames.is_some() && self.started.elapsed() > self.options.timeout {

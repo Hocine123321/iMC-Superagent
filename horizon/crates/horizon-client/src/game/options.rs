@@ -354,6 +354,7 @@ impl Game<'_> {
                     self.sync_pregen_option();
                     self.sync_agent_control();
                     self.ui.options.agent_status = self.agent_status_lines();
+                    self.ui.options.perf_status = self.auto_performance_status();
                 }
                 Event::SliderDrag => {
                     self.apply_settings();
@@ -542,6 +543,8 @@ impl Game<'_> {
             self.reload_packs();
         }
         self.apply_fullscreen();
+        // Auto Performance's cap, worked out before `renderer` is borrowed.
+        let resolution_scale = self.capped_resolution_scale();
         let s = &self.settings;
         if let Some(r) = self.renderer.as_mut() {
             r.gamma = s.gamma;
@@ -556,7 +559,7 @@ impl Game<'_> {
                 s.file.int("maxAnisotropyBit"),
             );
             r.set_world_post(
-                s.horizon.resolution_scale as f32 / 100.0,
+                resolution_scale as f32 / 100.0,
                 s.horizon.fxaa,
                 s.horizon.taa,
                 s.horizon.upscaling.ratio(),

@@ -4,6 +4,7 @@
 //! (`horizon_client::keybinds`, ...).
 #![forbid(unsafe_code)]
 pub mod actions;
+pub mod auto_performance;
 pub mod clipboard;
 pub mod gamepad;
 pub mod gameplay_guide;

@@ -30,8 +30,10 @@ impl Game<'_> {
         // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
         let abilities = self.chat_abilities();
         self.ui.chat.set_abilities(&self.gui.atlas.font, abilities);
-        let render_distance_changed = self.streaming.radius != self.settings.render_distance;
-        self.streaming.radius = self.settings.render_distance;
+        // Auto Performance holds the radius to its cap; the saved setting stays the player's.
+        let radius = self.capped_render_distance();
+        let render_distance_changed = self.streaming.radius != radius;
+        self.streaming.radius = radius;
         // Options.renderDistance, biomeBlendRadius, ambientOcclusion,
         // cutoutLeaves and the leaf-culling mode: LevelExtractor.allChanged
         // when they change.
@@ -80,9 +82,13 @@ impl Game<'_> {
     pub(super) fn far_terrain_choice(&self) -> (u32, bool) {
         let g = &self.settings.horizon;
         let reduced = g.far_detail == horizon_client::graphics::FarDetail::Reduced;
+        let wanted = horizon_client_input::auto_performance::capped(
+            g.lod_distance,
+            self.auto_performance.caps.lod_distance,
+        );
         let distance = match self.server_far_terrain() {
-            Some(offer) => g.lod_distance.min(offer.distance),
-            None => g.lod_distance,
+            Some(offer) => wanted.min(offer.distance),
+            None => wanted,
         };
         (distance, reduced)
     }

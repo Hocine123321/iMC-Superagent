@@ -1480,7 +1480,7 @@ impl Game<'_> {
         });
         if self.standalone_server() {
             self.streaming.radius = if guest.is_some() {
-                self.settings.render_distance
+                self.capped_render_distance()
             } else {
                 -1
             };

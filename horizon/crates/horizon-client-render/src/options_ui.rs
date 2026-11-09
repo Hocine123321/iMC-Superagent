@@ -1657,6 +1657,8 @@ pub struct OptionsUi {
     pub studio: crate::studio_ui::StudioUi,
     /// The AI Agent page's status lines (set by the game while it shows).
     pub agent_status: Vec<String>,
+    /// iMC Settings' Auto Performance line: what it holds back right now (set by the game).
+    pub perf_status: Option<String>,
     /// A repro recording is running: the AI Agent page's button says stop.
     pub agent_recording: bool,
     /// The Music page's groups (set by the game when it opens the page).
@@ -1733,6 +1735,7 @@ impl Default for OptionsUi {
             split_setup: Default::default(),
             studio: Default::default(),
             agent_status: Vec::new(),
+            perf_status: None,
             agent_recording: false,
             music_groups: Vec::new(),
             focus: None,
@@ -2749,14 +2752,35 @@ impl OptionsUi {
                 .collect()
             }
             Page::Imc => {
-                use horizon_client_input::imc_settings::Item;
+                use horizon_client_input::imc_settings::{HEAVY, Item};
                 let imc = |item: Item| {
+                    let on_off = |v: &str| match v {
+                        "On" => lang::get_or("options.on", "ON"),
+                        "Off" => lang::get_or("options.off", "OFF"),
+                        other => other.to_owned(),
+                    };
                     let value = Text::option_name_value(
                         Text::literal(lang::get_or(&item.caption_key(), item.caption())),
-                        Text::literal(lang::get_or(s.imc.value(item), s.imc.value(item))),
+                        Text::literal(on_off(s.imc.value(item))),
                     )
                     .plain();
-                    button(0.0, 0.0, 150.0, Text::literal(value), Act::Imc(item))
+                    let widget = button(0.0, 0.0, 150.0, Text::literal(value), Act::Imc(item));
+                    // A setting of Auto Performance does nothing while it is off.
+                    if s.imc.is_active(item) {
+                        widget
+                    } else {
+                        inactive(widget)
+                    }
+                };
+                // A grey line under a group: the cost of what is on, in the player's language.
+                // One line is about 64 characters wide, so a longer notice runs onto the next.
+                let notes = |text: String| -> Vec<Row> {
+                    wrap(&text, 64).into_iter().map(Row::Note).collect()
+                };
+                let cost = |item: Item| -> Vec<Row> {
+                    item.cost()
+                        .map(|c| notes(lang::get_or(&item.cost_key(), c)))
+                        .unwrap_or_default()
                 };
                 let mut rows = vec![Row::Header("horizon.imc.header.controls")];
                 // Two to a row, as the other Horizon pages lay out their switches.
@@ -2768,15 +2792,42 @@ impl OptionsUi {
                     rows.push(Row::Buttons(imc(pair[0]), Some(imc(pair[1]))));
                 }
                 rows.push(Row::Header("horizon.imc.header.screen"));
+                rows.push(Row::Buttons(imc(Item::SafeMargin), None));
+                // Performance: the switch, how early it reacts, then what it may give up.
+                rows.push(Row::Header("horizon.imc.header.performance"));
                 rows.push(Row::Buttons(
-                    imc(Item::SafeMargin),
-                    Some(button(
-                        0.0,
-                        0.0,
-                        150.0,
-                        tr("horizon.imc.reset"),
-                        Act::ImcReset,
-                    )),
+                    imc(Item::AutoPerformance),
+                    Some(imc(Item::AutoSensitivity)),
+                ));
+                rows.extend(cost(Item::AutoPerformance));
+                // What it is doing right now, so the player can see it work.
+                for line in self.perf_status.iter() {
+                    rows.extend(notes(line.clone()));
+                }
+                rows.push(Row::Buttons(
+                    imc(Item::AutoRenderDistance),
+                    Some(imc(Item::AutoMinDistance)),
+                ));
+                rows.extend(cost(Item::AutoRenderDistance));
+                rows.push(Row::Buttons(
+                    imc(Item::AutoFarTerrain),
+                    Some(imc(Item::AutoResolution)),
+                ));
+                rows.extend(cost(Item::AutoFarTerrain));
+                rows.extend(cost(Item::AutoResolution));
+                // The engine's own settings that cost the most on a phone, so the player knows
+                // what they are changing on the Video and Graphics pages.
+                rows.push(Row::Header("horizon.imc.header.heavy"));
+                for h in HEAVY {
+                    rows.extend(notes(format!(
+                        "{}: {}",
+                        lang::get_or(h.name_key, h.name),
+                        lang::get_or(&format!("horizon.imc.heavy.{}", h.name_key), h.notice),
+                    )));
+                }
+                rows.push(Row::Buttons(
+                    button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
+                    None,
                 ));
                 rows
             }

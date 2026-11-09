@@ -9,6 +9,7 @@
 //! The settings drive the touch controls through [`ImcSettings::apply`], which writes into the
 //! public `layout`, `feel` and `double_tap_jump` of [`crate::touch::Touch`].
 
+use crate::auto_performance::{Config as AutoConfig, Sensitivity};
 use crate::touch::Touch;
 
 /// The file, next to `options.txt`.
@@ -31,10 +32,22 @@ pub enum Item {
     DoubleTapJump,
     /// The edges a notch or rounded corner hides: where the buttons stop.
     SafeMargin,
+    /// Gives memory back when the phone runs short (`auto_performance`).
+    AutoPerformance,
+    /// How early Auto Performance acts.
+    AutoSensitivity,
+    /// The render distance Auto Performance never goes below.
+    AutoMinDistance,
+    /// Auto Performance may cut far terrain.
+    AutoFarTerrain,
+    /// Auto Performance may lower the render distance.
+    AutoRenderDistance,
+    /// Auto Performance may lower the resolution.
+    AutoResolution,
 }
 
 impl Item {
-    pub const ALL: [Item; 7] = [
+    pub const ALL: [Item; 13] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
@@ -42,6 +55,12 @@ impl Item {
         Item::HoldTime,
         Item::DoubleTapJump,
         Item::SafeMargin,
+        Item::AutoPerformance,
+        Item::AutoSensitivity,
+        Item::AutoMinDistance,
+        Item::AutoFarTerrain,
+        Item::AutoRenderDistance,
+        Item::AutoResolution,
     ];
 
     /// The line's key in `horizon-imc.txt`.
@@ -54,6 +73,12 @@ impl Item {
             Item::HoldTime => "holdTime",
             Item::DoubleTapJump => "doubleTapJump",
             Item::SafeMargin => "safeMargin",
+            Item::AutoPerformance => "autoPerformance",
+            Item::AutoSensitivity => "autoSensitivity",
+            Item::AutoMinDistance => "autoMinDistance",
+            Item::AutoFarTerrain => "autoFarTerrain",
+            Item::AutoRenderDistance => "autoRenderDistance",
+            Item::AutoResolution => "autoResolution",
         }
     }
 
@@ -67,6 +92,12 @@ impl Item {
             Item::HoldTime => "Hold to mine",
             Item::DoubleTapJump => "Double tap to jump",
             Item::SafeMargin => "Screen margin",
+            Item::AutoPerformance => "Auto Performance",
+            Item::AutoSensitivity => "Reacts",
+            Item::AutoMinDistance => "Lowest distance",
+            Item::AutoFarTerrain => "Cut far terrain",
+            Item::AutoRenderDistance => "Lower render distance",
+            Item::AutoResolution => "Lower resolution",
         }
     }
 
@@ -80,6 +111,27 @@ impl Item {
         format!("horizon.imc.{}.tooltip", self.key())
     }
 
+    /// A short grey line under the setting when it is on and costs memory or speed: what the
+    /// player is trading. `None` for a setting that costs neither. English; the language key is
+    /// `horizon.imc.<key>.cost`.
+    pub fn cost(self) -> Option<&'static str> {
+        match self {
+            Item::AutoRenderDistance => Some("Biggest saving: fewer chunks loaded and drawn."),
+            Item::AutoFarTerrain => Some("Cuts far terrain first: it only shows on the horizon."),
+            Item::AutoResolution => Some("Softens every pixel. Last resort."),
+            Item::AutoSensitivity => Some("Early reacts sooner and holds back more often."),
+            Item::AutoPerformance => {
+                Some("Checks memory every 5 s. Your own settings are never changed.")
+            }
+            _ => None,
+        }
+    }
+
+    /// The language key of the cost line.
+    pub fn cost_key(self) -> String {
+        format!("horizon.imc.{}.cost", self.key())
+    }
+
     /// The English tooltip.
     pub fn description(self) -> &'static str {
         match self {
@@ -91,6 +143,24 @@ impl Item {
             Item::DoubleTapJump => "Tap the world twice quickly to jump.",
             Item::SafeMargin => {
                 "Keeps the buttons away from the notch, the corners and the home bar."
+            }
+            Item::AutoPerformance => {
+                "Watches the memory iOS still lets the game use, every 5 seconds. When it runs short the game gives some back by capping far terrain, then render distance. Your own settings are never changed: the caps lift again when memory recovers."
+            }
+            Item::AutoSensitivity => {
+                "How early Auto Performance acts. Early: while there is still room, for a phone running other apps. Relaxed: only close to the limit."
+            }
+            Item::AutoMinDistance => {
+                "Auto Performance never lowers the render distance below this many chunks."
+            }
+            Item::AutoFarTerrain => {
+                "Auto Performance may shorten or turn off far terrain first. It is only seen on the horizon, so it costs the least picture."
+            }
+            Item::AutoRenderDistance => {
+                "Auto Performance may lower the render distance, two chunks at a time, down to the lowest distance. The biggest saving."
+            }
+            Item::AutoResolution => {
+                "Auto Performance may lower the world resolution as a last resort. Off by default: it softens every pixel."
             }
         }
     }
@@ -109,6 +179,16 @@ const SIZE_NAMES: [&str; 4] = ["Small", "Normal", "Large", "Largest"];
 const ZONE_NAMES: [&str; 4] = ["Narrow", "Normal", "Wide", "Widest"];
 const HOLD_NAMES: [&str; 4] = ["Very short", "Short", "Normal", "Long"];
 const MARGIN_NAMES: [&str; 4] = ["None", "Small", "Normal", "Large"];
+/// The lowest render distances Auto Performance can be held to, in chunks.
+const MIN_DISTANCES: [u32; 6] = [2, 4, 6, 8, 10, 12];
+const MIN_DISTANCE_NAMES: [&str; 6] = [
+    "2 chunks",
+    "4 chunks",
+    "6 chunks",
+    "8 chunks",
+    "10 chunks",
+    "12 chunks",
+];
 
 /// The settings. A stepped one is stored as the index of its choice, so the file reads
 /// `lookSpeed:2` and a value outside the list falls back to the default.
@@ -121,6 +201,8 @@ pub struct ImcSettings {
     pub hold_time: u8,
     pub double_tap_jump: bool,
     pub safe_margin: u8,
+    /// Auto Performance (`auto_performance`).
+    pub auto: AutoConfig,
 }
 
 impl Default for ImcSettings {
@@ -134,6 +216,7 @@ impl Default for ImcSettings {
             hold_time: 1,
             double_tap_jump: false,
             safe_margin: 2,
+            auto: AutoConfig::default(),
         }
     }
 }
@@ -165,6 +248,36 @@ impl ImcSettings {
                 "moveZone" => s.move_zone = step(MOVE_ZONES.len()).unwrap_or(s.move_zone),
                 "holdTime" => s.hold_time = step(HOLD_TIMES.len()).unwrap_or(s.hold_time),
                 "safeMargin" => s.safe_margin = step(SAFE_MARGINS.len()).unwrap_or(s.safe_margin),
+                "autoPerformance" => {
+                    if let Ok(v) = value.parse() {
+                        s.auto.enabled = v;
+                    }
+                }
+                "autoSensitivity" => {
+                    if let Some(i) = step(Sensitivity::ALL.len()) {
+                        s.auto.sensitivity = Sensitivity::ALL[usize::from(i)];
+                    }
+                }
+                "autoMinDistance" => {
+                    if let Some(i) = step(MIN_DISTANCES.len()) {
+                        s.auto.min_render_distance = MIN_DISTANCES[usize::from(i)];
+                    }
+                }
+                "autoFarTerrain" => {
+                    if let Ok(v) = value.parse() {
+                        s.auto.use_far_terrain = v;
+                    }
+                }
+                "autoRenderDistance" => {
+                    if let Ok(v) = value.parse() {
+                        s.auto.use_render_distance = v;
+                    }
+                }
+                "autoResolution" => {
+                    if let Ok(v) = value.parse() {
+                        s.auto.use_resolution = v;
+                    }
+                }
                 _ => {}
             }
         }
@@ -174,7 +287,8 @@ impl ImcSettings {
     /// The file's text.
     pub fn serialize(&self) -> String {
         format!(
-            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\n",
+            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\n\
+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\n",
             self.controls,
             self.look_speed,
             self.stick_size,
@@ -182,6 +296,12 @@ impl ImcSettings {
             self.hold_time,
             self.double_tap_jump,
             self.safe_margin,
+            self.auto.enabled,
+            self.auto_sensitivity_index(),
+            self.auto_min_distance_index(),
+            self.auto.use_far_terrain,
+            self.auto.use_render_distance,
+            self.auto.use_resolution,
         )
     }
 
@@ -197,7 +317,29 @@ impl ImcSettings {
             Item::MoveZone => name(&ZONE_NAMES, self.move_zone),
             Item::HoldTime => name(&HOLD_NAMES, self.hold_time),
             Item::SafeMargin => name(&MARGIN_NAMES, self.safe_margin),
+            Item::AutoPerformance => on_off(self.auto.enabled),
+            Item::AutoSensitivity => self.auto.sensitivity.name(),
+            Item::AutoMinDistance => name(&MIN_DISTANCE_NAMES, self.auto_min_distance_index()),
+            Item::AutoFarTerrain => on_off(self.auto.use_far_terrain),
+            Item::AutoRenderDistance => on_off(self.auto.use_render_distance),
+            Item::AutoResolution => on_off(self.auto.use_resolution),
         }
+    }
+
+    /// The index of the sensitivity among its choices, as the file stores it.
+    fn auto_sensitivity_index(&self) -> u8 {
+        Sensitivity::ALL
+            .iter()
+            .position(|s| *s == self.auto.sensitivity)
+            .unwrap_or(1) as u8
+    }
+
+    /// The index of the lowest distance among its choices (the nearest, if a value is not one).
+    fn auto_min_distance_index(&self) -> u8 {
+        MIN_DISTANCES
+            .iter()
+            .position(|d| *d == self.auto.min_render_distance)
+            .unwrap_or(2) as u8
     }
 
     /// A click on `item`'s button: the next choice, or the previous one for the right button.
@@ -219,6 +361,35 @@ impl ImcSettings {
             Item::MoveZone => turn(&mut self.move_zone, MOVE_ZONES.len()),
             Item::HoldTime => turn(&mut self.hold_time, HOLD_TIMES.len()),
             Item::SafeMargin => turn(&mut self.safe_margin, SAFE_MARGINS.len()),
+            Item::AutoPerformance => self.auto.enabled = !self.auto.enabled,
+            Item::AutoFarTerrain => self.auto.use_far_terrain = !self.auto.use_far_terrain,
+            Item::AutoRenderDistance => {
+                self.auto.use_render_distance = !self.auto.use_render_distance;
+            }
+            Item::AutoResolution => self.auto.use_resolution = !self.auto.use_resolution,
+            Item::AutoSensitivity => {
+                let mut i = self.auto_sensitivity_index();
+                turn(&mut i, Sensitivity::ALL.len());
+                self.auto.sensitivity = Sensitivity::ALL[usize::from(i)];
+            }
+            Item::AutoMinDistance => {
+                let mut i = self.auto_min_distance_index();
+                turn(&mut i, MIN_DISTANCES.len());
+                self.auto.min_render_distance = MIN_DISTANCES[usize::from(i)];
+            }
+        }
+    }
+
+    /// Whether `item` does anything right now: the settings of Auto Performance do nothing while
+    /// it is off, and the lowest distance does nothing while the render distance is left alone.
+    pub fn is_active(&self, item: Item) -> bool {
+        match item {
+            Item::AutoSensitivity
+            | Item::AutoFarTerrain
+            | Item::AutoRenderDistance
+            | Item::AutoResolution => self.auto.enabled,
+            Item::AutoMinDistance => self.auto.enabled && self.auto.use_render_distance,
+            _ => true,
         }
     }
 
@@ -247,6 +418,91 @@ impl ImcSettings {
         touch.double_tap_jump = self.double_tap_jump;
     }
 }
+
+/// What kind of cost a heavy engine setting has.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cost {
+    /// Holds memory for as long as it is on.
+    Memory,
+    /// Makes every frame take longer, which on a phone becomes heat and then throttling.
+    Speed,
+    /// Both.
+    Both,
+}
+
+impl Cost {
+    pub fn label(self) -> &'static str {
+        match self {
+            Cost::Memory => "memory",
+            Cost::Speed => "speed",
+            Cost::Both => "memory and speed",
+        }
+    }
+}
+
+/// An engine setting known to cost memory or speed, and the notice shown about it.
+///
+/// Only costs the engine's own documentation states, or that follow from what the setting does,
+/// are listed, and **no figure is quoted**: how many megabytes each costs on an iPhone has not
+/// been measured (`IOS_MEMORY_STRATEGY.md`, section 5), and a number made up here would be
+/// believed. The page shows the notice under the setting's group, in grey, so the player knows
+/// what they are changing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HeavySetting {
+    /// The language key of the setting's own name in the game (`options.*` or `horizon.*`).
+    pub name_key: &'static str,
+    /// The English name, when the key is missing.
+    pub name: &'static str,
+    pub cost: Cost,
+    /// The English notice: what it costs and why, in one short line.
+    pub notice: &'static str,
+}
+
+/// The settings that cost the most on a phone, most expensive first.
+pub const HEAVY: [HeavySetting; 7] = [
+    HeavySetting {
+        name_key: "options.renderDistance",
+        name: "Render distance",
+        cost: Cost::Both,
+        notice: "Every chunk loaded is meshed, held in memory and drawn. The biggest cost of all.",
+    },
+    HeavySetting {
+        name_key: "horizon.graphics.lod_distance",
+        name: "LOD distance",
+        cost: Cost::Both,
+        notice: "Far terrain tiles and their meshes stay loaded beyond the render distance.",
+    },
+    HeavySetting {
+        name_key: "horizon.graphics.resolution_scale",
+        name: "Resolution scale",
+        cost: Cost::Both,
+        notice: "Above 100% the render targets are larger, and every pixel costs more to draw.",
+    },
+    HeavySetting {
+        name_key: "options.simulationDistance",
+        name: "Simulation distance",
+        cost: Cost::Speed,
+        notice: "Mobs, crops and machines tick in every chunk in range, on the CPU.",
+    },
+    HeavySetting {
+        name_key: "options.mipmapLevels",
+        name: "Mipmap levels",
+        cost: Cost::Memory,
+        notice: "Each level keeps another smaller copy of every block texture.",
+    },
+    HeavySetting {
+        name_key: "options.biomeBlendRadius",
+        name: "Biome blend",
+        cost: Cost::Speed,
+        notice: "A wider blend makes the mesh workers sample more biomes for every block.",
+    },
+    HeavySetting {
+        name_key: "horizon.graphics.taa",
+        name: "Anti-aliasing (TAA)",
+        cost: Cost::Both,
+        notice: "Keeps a history of the last frame and blends into it every frame.",
+    },
+];
 
 #[cfg(test)]
 mod tests {
@@ -313,7 +569,7 @@ mod tests {
                     break;
                 }
             }
-            assert!(seen <= 5, "{item:?} took {seen} clicks to come round");
+            assert!(seen <= 6, "{item:?} took {seen} clicks to come round");
         }
     }
 
@@ -355,7 +611,7 @@ mod tests {
         assert_eq!(keys.len(), Item::ALL.len());
         let mut s = ImcSettings::default();
         for item in Item::ALL {
-            for _ in 0..6 {
+            for _ in 0..8 {
                 assert!(!s.value(item).is_empty());
                 s.cycle(item, false);
             }
@@ -382,5 +638,116 @@ mod tests {
             .safe_margin_scale(),
             0.0
         );
+    }
+
+    #[test]
+    fn auto_performance_is_off_by_default_and_round_trips() {
+        let d = ImcSettings::default();
+        assert!(!d.auto.enabled);
+        assert!(!d.auto.use_resolution, "resolution is opt-in");
+        let mut s = d.clone();
+        s.cycle(Item::AutoPerformance, false);
+        s.cycle(Item::AutoSensitivity, false);
+        s.cycle(Item::AutoMinDistance, false);
+        s.cycle(Item::AutoFarTerrain, false);
+        s.cycle(Item::AutoRenderDistance, false);
+        s.cycle(Item::AutoResolution, false);
+        assert!(s.auto.enabled && s.auto.use_resolution);
+        assert!(!s.auto.use_far_terrain && !s.auto.use_render_distance);
+        assert_eq!(s.auto.sensitivity, Sensitivity::Early);
+        assert_eq!(s.auto.min_render_distance, 8);
+        assert_eq!(ImcSettings::parse(&s.serialize()), s);
+    }
+
+    #[test]
+    fn an_old_file_without_auto_performance_still_reads() {
+        let s = ImcSettings::parse("lookSpeed:3\ndoubleTapJump:true\n");
+        assert_eq!(s.look_speed, 3);
+        assert_eq!(s.auto, AutoConfig::default());
+    }
+
+    #[test]
+    fn auto_performance_lines_out_of_range_keep_their_defaults() {
+        let s = ImcSettings::parse(
+            "autoSensitivity:9\nautoMinDistance:77\nautoPerformance:yes\nautoResolution:true\n",
+        );
+        assert_eq!(s.auto.sensitivity, AutoConfig::default().sensitivity);
+        assert_eq!(s.auto.min_render_distance, 6);
+        assert!(!s.auto.enabled);
+        assert!(
+            s.auto.use_resolution,
+            "the good line beside the bad ones is kept"
+        );
+    }
+
+    #[test]
+    fn the_auto_performance_settings_are_inert_while_it_is_off() {
+        let mut s = ImcSettings::default();
+        for item in [
+            Item::AutoSensitivity,
+            Item::AutoMinDistance,
+            Item::AutoFarTerrain,
+            Item::AutoRenderDistance,
+            Item::AutoResolution,
+        ] {
+            assert!(!s.is_active(item), "{item:?}");
+        }
+        s.cycle(Item::AutoPerformance, false);
+        assert!(s.is_active(Item::AutoSensitivity));
+        assert!(s.is_active(Item::AutoMinDistance));
+        s.cycle(Item::AutoRenderDistance, false);
+        assert!(
+            !s.is_active(Item::AutoMinDistance),
+            "nothing to hold a floor under"
+        );
+        // The touch settings are always live.
+        assert!(s.is_active(Item::LookSpeed));
+    }
+
+    #[test]
+    fn the_lowest_distance_choices_are_the_ones_the_governor_can_hold() {
+        let mut s = ImcSettings::default();
+        let mut seen = Vec::new();
+        for _ in 0..MIN_DISTANCES.len() {
+            seen.push(s.auto.min_render_distance);
+            s.cycle(Item::AutoMinDistance, false);
+        }
+        assert_eq!(s.auto.min_render_distance, 6, "it comes back round");
+        seen.sort_unstable();
+        assert_eq!(seen, MIN_DISTANCES);
+    }
+
+    #[test]
+    fn every_heavy_setting_has_a_short_notice_with_no_invented_figure() {
+        for h in HEAVY {
+            assert!(!h.name.is_empty() && !h.notice.is_empty());
+            assert!(
+                h.notice.len() <= 90,
+                "{} is too long for one grey line",
+                h.name
+            );
+            // Nothing on a phone has been measured yet, so no megabyte figure may appear.
+            assert!(
+                !h.notice.contains("MB") && !h.notice.contains("GB"),
+                "{}",
+                h.name
+            );
+            assert!(!h.cost.label().is_empty());
+        }
+        let mut keys: Vec<_> = HEAVY.iter().map(|h| h.name_key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), HEAVY.len());
+    }
+
+    #[test]
+    fn the_cost_lines_of_auto_performance_fit_one_line() {
+        for item in Item::ALL {
+            if let Some(c) = item.cost() {
+                assert!(c.len() <= 70, "{item:?}: {c}");
+            }
+        }
+        assert!(Item::AutoRenderDistance.cost().is_some());
+        assert!(Item::LookSpeed.cost().is_none());
     }
 }

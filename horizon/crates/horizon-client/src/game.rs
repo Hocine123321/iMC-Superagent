@@ -426,6 +426,7 @@ mod test_instances;
 mod text_displays;
 mod tick_profile;
 mod tick_script;
+mod auto_performance;
 mod touch;
 mod titles;
 mod tnt;
@@ -2690,6 +2691,8 @@ struct Game<'a> {
     touch: touch::TouchState,
     /// When the app last saved because it went inactive (`game/lifecycle.rs`).
     last_suspend_save: Option<Instant>,
+    /// Auto Performance: the memory watcher and the caps it sets (`game/auto_performance.rs`).
+    auto_performance: auto_performance::AutoPerformance,
     applied_modifiers: Vec<(String, String)>,
     experience: Experience,
     orbs: horizon_client::join_seq::JoinList<ExperienceOrb>,
@@ -15930,11 +15933,16 @@ impl Game<'_> {
                     self.pause = self.pauses_game();
                     if let Some(server) = &self.integrated {
                         server.set_paused(self.pause);
-                        server.set_distances(
-                            self.settings.render_distance,
-                            self.settings.simulation_distance,
-                            self.settings.entity_distance,
-                        );
+                        // Auto Performance's cap reaches the server too: in single player its
+                        // own copy of every loaded column is a large part of the memory. The
+                        // window's saved settings are not changed.
+                        let render = self.capped_render_distance();
+                        let simulation = if self.auto_performance.caps.render_distance.is_some() {
+                            self.settings.simulation_distance.min(render)
+                        } else {
+                            self.settings.simulation_distance
+                        };
+                        server.set_distances(render, simulation, self.settings.entity_distance);
                         server.set_legacy_rules(self.settings.extras.pvp.combat.rules);
                     }
                     self.clock.end_frame(self.pause);
@@ -16350,6 +16358,7 @@ impl<'a> Game<'a> {
             ticks_until_autosave: 6000,
             touch: Default::default(),
             last_suspend_save: None,
+            auto_performance: Default::default(),
             applied_modifiers: Vec::new(),
             experience: Experience::default(),
             orbs: Default::default(),
