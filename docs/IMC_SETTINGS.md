@@ -306,6 +306,15 @@ and **Key 2** press a key picked on the right of each: a click steps through non
 some letters. They stand in a column down the left edge under Pause, and *Edit touch controls* moves,
 resizes, fades or hides them like the others. They are saved in `horizon-imc-buttons.txt`.
 
+**The touch editor.** *Edit touch controls* opens the buttons over the world. Drag one to move it: it
+pulls to the screen's edges and middle, to a grid (*Grid on*), and to the edges of the other buttons,
+and a cyan line shows what it landed on. The *Size* and *Fade* bars set the picked button's size and
+opacity by dragging, in 5 % steps. A button that overlaps another or reaches into the margin the notch
+and home bar take gets a red frame, and the margin itself is outlined. The arrow tab on the right edge
+folds the panel away so the buttons have the whole screen. The layout list steps through *Default*,
+*Left-handed* and *Compact*, then your own; *Save* keeps the arrangement (as *Layout 1* and so on, or
+under the name shown), *Delete* forgets a saved one. They are kept in `horizon-touch-presets.txt`.
+
 **Back on the title menus.** Every title page but the first (Add Server, Direct Connection, Create
 World, a world's Edit, Realms) and Options opened from the title now have the Back button.
 

@@ -36,9 +36,9 @@ const DEGREES_PER_TURN_UNIT: f64 = 0.15;
 /// 5.6% at the sides and 5.1% at the bottom; this leaves some room over that, so the same layout
 /// also fits the phones with a larger notch. winit 0.30 does not report the safe area, so this is
 /// a constant, to be tuned on the phone.
-const SAFE_SIDE: f32 = 0.08;
-const SAFE_TOP: f32 = 0.04;
-const SAFE_BOTTOM: f32 = 0.07;
+pub(super) const SAFE_SIDE: f32 = 0.08;
+pub(super) const SAFE_TOP: f32 = 0.04;
+pub(super) const SAFE_BOTTOM: f32 = 0.07;
 
 /// An on-screen button: where it is, what it shows, and the controller button it presses.
 struct Pad {

@@ -188,6 +188,9 @@ pub fn valid_preset_name(name: &str) -> bool {
 /// The most layouts a player can keep.
 pub const MAX_SAVED: usize = 6;
 
+/// The file the saved layouts are kept in, beside `horizon-touch-layout.txt`.
+pub const FILE: &str = "horizon-touch-presets.txt";
+
 /// The player's saved layouts.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Presets {
@@ -195,6 +198,11 @@ pub struct Presets {
 }
 
 impl Presets {
+    /// Nothing saved, which is not written to the file.
+    pub fn is_default(&self) -> bool {
+        self.saved.is_empty()
+    }
+
     /// Keeps `layout` under `name`, replacing a layout of that name. Fails on a bad name or when
     /// all [`MAX_SAVED`] places are taken by other names.
     pub fn save(&mut self, name: &str, layout: &ControlLayout) -> bool {
@@ -543,8 +551,8 @@ pub mod panel2 {
     pub const OPEN_W: f32 = 150.0;
     /// The tab a folded panel leaves, wide enough for a thumb.
     pub const TAB_W: f32 = 26.0;
-    pub const ROW_H: f32 = 22.0;
-    pub const GAP: f32 = 4.0;
+    pub const ROW_H: f32 = 20.0;
+    pub const GAP: f32 = 3.0;
 
     /// The width the panel takes: the tab alone when folded.
     pub fn width(open: bool) -> f32 {
@@ -568,7 +576,7 @@ pub mod panel2 {
         let inner = OPEN_W - TAB_W - 2.0 * GAP;
         let half = (inner - GAP) / 2.0;
         // Below the heading and the picked button's name.
-        let mut y = GAP + 24.0;
+        let mut y = GAP + 18.0;
         // Rows: the two sliders, then pairs, so ten controls fit a small phone's height.
         for c in [Control::SizeSlider, Control::FadeSlider, Control::NextPreset] {
             out.push((c, [x, y, inner, ROW_H]));
@@ -747,6 +755,28 @@ pub mod panel2 {
         fn the_default_size_and_fade_are_reachable_exactly() {
             assert_eq!(scale_at(scale_fraction(1.0)), 1.0);
             assert_eq!(opacity_at(opacity_fraction(1.0)), 1.0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod iphone12 {
+    use super::panel2::*;
+
+    /// An iPhone 12 in landscape at GUI scale 2 is about 422 x 195 units: shorter than the
+    /// sizes tested above, and the one the owner plays on.
+    #[test]
+    fn the_open_panel_fits_an_iphone_12_in_landscape() {
+        let size = (422.0, 195.0);
+        let l = layout(size, true);
+        for (c, r) in &l {
+            assert!(r[0] >= 0.0 && r[1] >= 0.0, "{c:?}");
+            assert!(r[0] + r[2] <= size.0 + 0.01 && r[1] + r[3] <= size.1 + 0.01, "{c:?} {r:?}");
+        }
+        for (i, (ca, a)) in l.iter().enumerate() {
+            for (cb, b) in &l[i + 1..] {
+                assert!(!crate::touch_editor_tools::overlap(*a, *b), "{ca:?} and {cb:?}");
+            }
         }
     }
 }

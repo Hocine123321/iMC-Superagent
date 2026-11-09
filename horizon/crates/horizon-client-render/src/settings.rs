@@ -215,6 +215,8 @@ pub struct Settings {
     pub touch_calibration: horizon_client_input::touch_calibration::Calibration,
     /// The extra on-screen buttons that are on, and their keys (`horizon-imc-buttons.txt`).
     pub touch_extras: horizon_client_input::touch_extras::Extras,
+    /// The layouts the player kept in the touch editor (`horizon-touch-presets.txt`).
+    pub touch_presets: horizon_client_input::touch_editor_tools::Presets,
     /// The Horizon mods turned on (`horizon-mods.txt`), all off by default.
     pub mods: crate::mod_list::ModList,
     /// The packs in `shaderpacks/`, listed when the Shader Packs page opens; the pick is
@@ -307,6 +309,7 @@ impl Default for Settings {
             touch_layout: Default::default(),
             touch_calibration: Default::default(),
             touch_extras: Default::default(),
+            touch_presets: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
             shader_options: None,
@@ -402,6 +405,13 @@ impl Settings {
             })
             .map(|text| horizon_client_input::touch_extras::Extras::parse(&text))
             .unwrap_or_default();
+        let touch_presets = path
+            .parent()
+            .and_then(|dir| {
+                fs::read_to_string(dir.join(horizon_client_input::touch_editor_tools::FILE)).ok()
+            })
+            .map(|text| horizon_client_input::touch_editor_tools::Presets::parse(&text))
+            .unwrap_or_default();
         // The enabled mods are the game folder's, shared by its players (`--player-dir`).
         let mods = path
             .parent()
@@ -419,6 +429,7 @@ impl Settings {
                     touch_layout,
                     touch_calibration,
                     touch_extras,
+                    touch_presets,
                     mods,
                     ..Self::parse(&text)
                 }
@@ -431,6 +442,7 @@ impl Settings {
                 touch_layout,
                 touch_calibration,
                 touch_extras,
+                touch_presets,
                 mods,
                 ..Self::default()
             },
@@ -550,6 +562,7 @@ impl Settings {
             touch_layout: Default::default(),
             touch_calibration: Default::default(),
             touch_extras: Default::default(),
+            touch_presets: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
             shader_options: None,
@@ -719,6 +732,7 @@ impl Settings {
             touch_layout: self.touch_layout.clone(),
             touch_calibration: self.touch_calibration,
             touch_extras: self.touch_extras.clone(),
+            touch_presets: self.touch_presets.clone(),
             mods: self.mods.clone(),
             video_modes: self.video_modes.clone(),
             ..Self::from_file(file)
@@ -758,6 +772,10 @@ impl Settings {
             let extras_path = dir.join(horizon_client_input::touch_extras::FILE);
             if !self.touch_extras.is_default() || extras_path.exists() {
                 let _ = fs::write(extras_path, self.touch_extras.serialize());
+            }
+            let presets_path = dir.join(horizon_client_input::touch_editor_tools::FILE);
+            if !self.touch_presets.is_default() || presets_path.exists() {
+                let _ = fs::write(presets_path, self.touch_presets.serialize());
             }
             self.mods.save(&crate::logging::shared_dir(dir));
         }

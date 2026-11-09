@@ -298,22 +298,26 @@ hunks: every place that counted `PADS` now asks `pad_kinds()`.
 
 ---
 
-## L. Touch editor tools, pure half (2026-11-09)
+## L. Touch editor overhaul (2026-11-09)
 
-The rules for the editor overhaul, as pure data with no game state: snapping a dragged button,
-finding buttons that overlap or leave the safe area, named layouts, and a collapsible panel with
-sliders. The editor screen does not use them yet (the next change wires them in), so this adds no
-behaviour on its own.
+The touch controls editor now has sliders for size and fade, snapping with guide lines, a panel that
+folds to a tab, named layouts, and red frames on buttons that overlap or leave the safe area.
 
 ### L1. New file (copy as it is)
 | File | Lines | What it is |
 |---|---|---|
-| `crates/horizon-client-input/src/touch_editor_tools.rs` | 752 | `snap` (screen edges and middle, a grid, other buttons' edges; guide lines returned; never off screen), `problems` (overlaps and the safe area; hidden buttons ignored), `Presets` (Default, Left-handed, Compact built in, up to 6 saved, a `[name]` file format), `panel2` (the panel's places folded and open, fitting 320x240, and the size and fade slider maths in 5 % steps). 30 tests. |
+| `crates/horizon-client-input/src/touch_editor_tools.rs` | 782 | `snap` (screen edges and middle, a grid, other buttons' edges; guide lines returned; never off screen), `problems` (overlaps and the safe area; hidden buttons ignored), `Presets` (Default, Left-handed, Compact built in, up to 6 saved, a `[name]` file format, `horizon-touch-presets.txt`), `panel2` (the panel's places folded and open, fitting an iPhone 12 in landscape at 422 x 195 units, and the slider maths in 5 % steps). 31 tests. |
 
 ### L2. Hooks into existing files
 | File | Change |
 |---|---|
 | `horizon-client-input/src/lib.rs` | `pub mod touch_editor_tools;` |
+| `horizon-client-render/src/settings.rs` | `touch_presets` on `Settings`, loaded from and saved to `horizon-touch-presets.txt` beside the layout file (default in the constructors, cloned in `with_option`, written only when something is saved or the file exists). |
+| `game/touch.rs` | `SAFE_SIDE`, `SAFE_TOP` and `SAFE_BOTTOM` are `pub(super)` so the editor draws and checks the same safe area. |
+| `game/touch_editor.rs` | Rewritten around `panel2`: state gains `panel_open`, `snap_grid`, `slider`, `preset`, `guides`; a slider follows the finger while it is held; a dragged button is snapped (`tools::snap`) against the other shown buttons; every frame the buttons are checked (`tools::problems`) and a flagged one is framed red; the safe area is outlined. The four entry points in `game.rs` keep their names. The old `touch_layout::editor` module is no longer used by a screen and is left in place. |
+
+**Re-apply:** copy `touch_editor_tools.rs`, add the module line and the `touch_presets` field, make the
+three safe constants `pub(super)`, then replace `touch_editor.rs`.
 
 ---
 
