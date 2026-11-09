@@ -27,57 +27,104 @@ use winit::{
 /// `Entity.turn` turns this many degrees for each unit it is given.
 const DEGREES_PER_TURN_UNIT: f64 = 0.15;
 
-/// An on-screen button: where it is (in fractions of the screen), what it shows, and the
-/// controller button it presses.
+/// The screen's edges that a phone hides or rounds (the notch, the corners, the home bar), as
+/// fractions of the screen: left and right, top, bottom. An iPhone 12 in landscape needs about
+/// 5.6% at the sides and 5.1% at the bottom; this leaves some room over that, so the same layout
+/// also fits the phones with a larger notch. winit 0.30 does not report the safe area, so this is
+/// a constant, to be tuned on the phone.
+const SAFE_SIDE: f32 = 0.08;
+const SAFE_TOP: f32 = 0.04;
+const SAFE_BOTTOM: f32 = 0.07;
+
+/// An on-screen button: where it is, what it shows, and the controller button it presses.
 struct Pad {
-    /// Left edge, top edge, width and height as fractions of the screen's width and height.
-    at: [f32; 4],
+    /// Which edge it hangs from and how far in (fractions of the safe area), then its size
+    /// (fractions of the whole screen).
+    at: Anchor,
     label: &'static str,
     button: Button,
 }
 
-/// The playing buttons, on the right edge. The controller buttons are the default bindings
-/// (`gamepad::ACTIONS`); pressing the button rather than the action means a rebind applies.
+/// Where a button sits inside the safe area.
+#[derive(Clone, Copy)]
+enum Anchor {
+    /// Distance from the safe area's left or right edge, and from its top or bottom edge.
+    TopLeft(f32, f32, f32, f32),
+    TopRight(f32, f32, f32, f32),
+    BottomRight(f32, f32, f32, f32),
+}
+
+impl Pad {
+    /// The button as a rectangle in pixels on a screen of `size`.
+    fn rect(&self, size: (f32, f32)) -> Rect {
+        let (w, h) = size;
+        let (left, right) = (w * SAFE_SIDE, w * (1.0 - SAFE_SIDE));
+        let (top, bottom) = (h * SAFE_TOP, h * (1.0 - SAFE_BOTTOM));
+        let (x, y, bw, bh) = match self.at {
+            Anchor::TopLeft(dx, dy, bw, bh) => (left + dx * w, top + dy * h, bw * w, bh * h),
+            Anchor::TopRight(dx, dy, bw, bh) => {
+                (right - dx * w - bw * w, top + dy * h, bw * w, bh * h)
+            }
+            Anchor::BottomRight(dx, dy, bw, bh) => (
+                right - dx * w - bw * w,
+                bottom - dy * h - bh * h,
+                bw * w,
+                bh * h,
+            ),
+        };
+        Rect { x, y, w: bw, h: bh }
+    }
+}
+
+/// The playing buttons. The controller buttons are the defaults in `gamepad::ACTIONS`; pressing
+/// the button rather than the action means a rebind applies. Start is always pause.
 const PADS: &[Pad] = &[
+    // Right thumb: jump on the corner, sneak and sprint beside and above it, use above.
     Pad {
-        at: [0.88, 0.62, 0.09, 0.20],
+        at: Anchor::BottomRight(0.0, 0.02, 0.09, 0.20),
         label: "Jump",
         button: Button::South,
     },
     Pad {
-        at: [0.78, 0.74, 0.08, 0.17],
+        at: Anchor::BottomRight(0.10, 0.02, 0.08, 0.17),
         label: "Sneak",
         button: Button::RightStick,
     },
     Pad {
-        at: [0.88, 0.40, 0.09, 0.18],
+        at: Anchor::BottomRight(0.10, 0.21, 0.08, 0.17),
+        label: "Run",
+        button: Button::LeftStick,
+    },
+    Pad {
+        at: Anchor::BottomRight(0.0, 0.24, 0.09, 0.18),
         label: "Use",
         button: Button::LeftTrigger,
     },
+    // The top edge: pause, then the hotbar, then drop and inventory.
     Pad {
-        at: [0.01, 0.04, 0.07, 0.13],
+        at: Anchor::TopLeft(0.0, 0.0, 0.07, 0.13),
         label: "Pause",
         button: Button::Start,
     },
     Pad {
-        at: [0.90, 0.04, 0.08, 0.13],
-        label: "Inv",
-        button: Button::North,
-    },
-    Pad {
-        at: [0.80, 0.04, 0.08, 0.13],
-        label: "Drop",
-        button: Button::DPadDown,
-    },
-    Pad {
-        at: [0.30, 0.04, 0.06, 0.13],
+        at: Anchor::TopLeft(0.22, 0.0, 0.06, 0.13),
         label: "<",
         button: Button::LeftBumper,
     },
     Pad {
-        at: [0.64, 0.04, 0.06, 0.13],
+        at: Anchor::TopRight(0.22, 0.0, 0.06, 0.13),
         label: ">",
         button: Button::RightBumper,
+    },
+    Pad {
+        at: Anchor::TopRight(0.10, 0.0, 0.08, 0.13),
+        label: "Drop",
+        button: Button::DPadDown,
+    },
+    Pad {
+        at: Anchor::TopRight(0.0, 0.0, 0.09, 0.13),
+        label: "Inv",
+        button: Button::North,
     },
 ];
 
@@ -202,14 +249,7 @@ impl Game<'_> {
         if self.touch.logic.mode() != Mode::Playing || !self.touch_controls_visible() {
             return Vec::new();
         }
-        PADS.iter()
-            .map(|p| Rect {
-                x: p.at[0] * size.0,
-                y: p.at[1] * size.1,
-                w: p.at[2] * size.0,
-                h: p.at[3] * size.1,
-            })
-            .collect()
+        PADS.iter().map(|p| p.rect(size)).collect()
     }
 
     /// The on-screen buttons show while a world is being played.
@@ -306,7 +346,13 @@ impl Game<'_> {
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         for (i, p) in PADS.iter().enumerate() {
-            let (x, y, bw, bh) = (p.at[0] * w, p.at[1] * h, p.at[2] * w, p.at[3] * h);
+            // The same fractions as the hit test, on the GUI-unit size instead of pixels.
+            let Rect {
+                x,
+                y,
+                w: bw,
+                h: bh,
+            } = p.rect((w, h));
             let down = self.touch.holding.iter().any(|(_, held)| *held == i);
             let fill = if down { 0x90FF_FFFF } else { 0x5000_0000 };
             batch.fill(atlas, x, y, bw, bh, fill);
