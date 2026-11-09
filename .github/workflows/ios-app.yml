@@ -169,9 +169,11 @@ jobs:
       - name: Check the startup stack budget
         if: matrix.sdk == 'iphoneos'
         run: |
-          python3 -m pip install --quiet lief capstone
+          # Homebrew's Python refuses a plain pip install (PEP 668): a throwaway virtual environment.
+          python3 -m venv /tmp/stackcheck
+          /tmp/stackcheck/bin/pip install --quiet lief capstone
           APP=$(find platform/ios/build/dd -name Horizon.app -maxdepth 6 | head -1)
-          python3 tools/check_stack_budget.py "$APP/Horizon" 760
+          /tmp/stackcheck/bin/python tools/check_stack_budget.py "$APP/Horizon" 760
       - uses: actions/upload-artifact@v4
         if: matrix.sdk == 'iphoneos'
         with:
