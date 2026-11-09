@@ -298,6 +298,25 @@ hunks: every place that counted `PADS` now asks `pad_kinds()`.
 
 ---
 
+## L. Touch editor tools, pure half (2026-11-09)
+
+The rules for the editor overhaul, as pure data with no game state: snapping a dragged button,
+finding buttons that overlap or leave the safe area, named layouts, and a collapsible panel with
+sliders. The editor screen does not use them yet (the next change wires them in), so this adds no
+behaviour on its own.
+
+### L1. New file (copy as it is)
+| File | Lines | What it is |
+|---|---|---|
+| `crates/horizon-client-input/src/touch_editor_tools.rs` | 752 | `snap` (screen edges and middle, a grid, other buttons' edges; guide lines returned; never off screen), `problems` (overlaps and the safe area; hidden buttons ignored), `Presets` (Default, Left-handed, Compact built in, up to 6 saved, a `[name]` file format), `panel2` (the panel's places folded and open, fitting 320x240, and the size and fade slider maths in 5 % steps). 30 tests. |
+
+### L2. Hooks into existing files
+| File | Change |
+|---|---|
+| `horizon-client-input/src/lib.rs` | `pub mod touch_editor_tools;` |
+
+---
+
 ## F. Index: all 51 files
 
 `A` = new file, `M` = modified. Section in brackets.
@@ -312,6 +331,7 @@ M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
 M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
 A horizon/crates/horizon-client-input/src/touch.rs                [C1]
 A horizon/crates/horizon-client-input/src/touch_calibration.rs    [J1]
+A horizon/crates/horizon-client-input/src/touch_editor_tools.rs   [L1]
 A horizon/crates/horizon-client-input/src/touch_extras.rs         [K1]
 A horizon/crates/horizon-client-input/src/touch_layout.rs         [I1]
 M horizon/crates/horizon-client-input/src/window.rs               [A4]
