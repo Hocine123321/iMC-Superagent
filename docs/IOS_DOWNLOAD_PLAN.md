@@ -5,9 +5,12 @@ summary: What the app will fetch from Mojang for Minecraft 26.3, how that list i
 
 # Download plan (M8b, step 1)
 
-Status: **the plan is written and tested; nothing downloads yet.** `platform/ios/App/DownloadPlan.m`
-decides *which* files to fetch and *where* to put them. It has no network, no UIKit and no disk
-access. The code that fetches, the progress screen and preparation are not built.
+Status (2026-11-10): **the plan is written and tested, and the downloader and its screen are written
+(M8b step 2), but none of it has run on a phone.** `platform/ios/App/DownloadPlan.m` decides *which* files
+to fetch and *where* to put them (no network, no UIKit, no disk). `Downloader.m` fetches them,
+`DownloadStore.m` keeps the disk rules and `LauncherDownload.m` is the screen, reached from Home >
+**Download Minecraft**. CI compiles them; a phone has never run them. Preparing the files for the game
+(the Java part) is not built.
 
 It mirrors `horizon/launcher/src/mojang.rs` (the desktop download): the client jar, the libraries,
 the logging file, the asset index, then the asset objects, each with the size and sha1 Mojang lists,
@@ -80,14 +83,55 @@ Objective-C text.
 CI compiles `DownloadPlan.m` against the iOS SDK (the iOS shell check). **It has never run on a
 phone.**
 
+## The downloader (M8b, step 2): written 2026-11-10, not run
+
+| File | What it does |
+|---|---|
+| `Downloader.m` | Asks Mojang's manifest for the 26.3 version file, checks it against the manifest's sha1, reads the asset index it names (checked against its sha1), asks `DownloadPlan` for the files, adds the 62.3 MB server jar from the same version file, then fetches what is missing |
+| `DownloadStore.m` | The disk rules: is a file already here and whole, SHA-1 in chunks, write to `<name>.part` and rename only after size and SHA-1 match, delete leftover `.part` files |
+| `LauncherDownload.m` | The screen: the sign-in gate, a progress bar, bytes and file counts, Stop, and the developer override |
+
+**How it resumes.** A real file name only ever holds a whole, verified file. On the next run a file that is
+there with the listed size and SHA-1 is kept; a wrong one is deleted and fetched again; a `.part` is never
+trusted and is deleted. So stopping, a crash, or the phone running out of battery loses at most the files in
+flight (six at a time), and starting again carries on.
+
+**Other rules.**
+- Six files at once (5,147 small sounds one at a time would take hours); a failed file is retried up to four
+  times with 2, 4, 8 second waits for network trouble and 408, 425, 429 and 5xx answers. A 404 or a wrong
+  hash after four tries stops the whole run with the file's name.
+- A free-space check before fetching: the bytes still to fetch plus 100 MB. It says the numbers if short.
+- Every address must be https on a Mojang host, including the manifest's address for the version file; the
+  folder every path lands in is resolved, so a link planted inside the game folder cannot lead a write out.
+- Nothing is logged but file names; no account token is used (the endpoints are public).
+- Where it writes: `Documents/Horizon/minecraft/`, in the official launcher's layout
+  (`versions/26.3/26.3.jar`, `versions/26.3/26.3.json`, `versions/26.3/26.3-server.jar`, `libraries/...`,
+  `assets/indexes/34.json`, `assets/objects/<2 hex>/<sha1>`, `assets/log_configs/...`).
+
+**The gate.** The screen calls `HZMayDownload` with a fresh ownership check. No account blocks it with a
+message; a fresh "no" blocks it; offline, a past "yes" stands (but the download itself needs the network, so
+it then fails with a plain message). **Developer override:** create a file named `developer-download` in the
+Horizon folder (Files app) to skip the check, so this can be tried before Mojang approves the app's sign-in.
+The screen says when the override is on. It is meant for the owner's own phone.
+
+**Verified.** `python3 platform/ios/tests/downloader_check.py` (48 offline checks: retry and backoff rules,
+the manifest lookup and its refusals, path containment including a planted symlink, the resume decision for
+a missing, short, wrong-hash, whole and folder-in-the-way file, install refusing bad size and hash and leaving
+a good file alone, partial-file cleanup, chunked SHA-1). `--live` adds Mojang's real manifest, version file
+and asset index checksums (all match) and the server jar. It is a Python copy of the logic and checks the
+rules, not the Objective-C text. **No Objective-C was compiled here;** CI is the only compile check.
+
 ## Not done
 
-- **The fetch itself**: a URLSession downloader that checks size and sha1 and writes whole files.
-  The desktop keeps files already there and whole, so an interrupted download resumes; this needs
-  the same.
-- **The progress screen** and the call to the sign-in gate (`HZMayDownload`).
-- **The server jar** and the **Java runtime** (`java-runtime-epsilon`, Java 25): separate downloads.
-  Whether the phone can run Java at all is M8a and is not settled.
-- **Preparation** (`horizon-prepare`) after the download.
-- **Disk space check** before starting. 610 MB (673 MB with the server) should be compared with free
-  space first.
+- **A run on a phone**: nothing here has downloaded a byte on a real device. Things only a phone shows:
+  whether six connections is right on cellular, how long 5,215 files take, whether the screen stays awake
+  and the download survives a lock-screen, and what iOS does when the app is sent to the background (a
+  foreground `URLSession` is paused by iOS shortly after; the next run resumes it, but a background
+  session is not used yet).
+- **Background downloading** (`NSURLSessionConfiguration.backgroundSessionConfiguration`): not built. The app
+  must stay open.
+- **The Java runtime** (`java-runtime-epsilon`, Java 25) as a separate download, and **preparation**:
+  whether the phone can run Java at all is M8a and is not settled.
+- **A check of the whole folder at the end** against the plan (the per-file checks cover each file; a
+  final "everything the plan lists is present" sweep is not written).
+- **Deleting the downloaded copy** after preparation to save space (decision for M8b step 3).

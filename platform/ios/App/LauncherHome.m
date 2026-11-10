@@ -3,6 +3,7 @@
 #import "LauncherFiles.h"
 #import "LauncherDiagnostics.h"
 #import "LauncherAccount.h"
+#import "LauncherDownload.h"
 #import "AccountClient.h"
 #import "AccountStore.h"
 #import "CrashReporter.h"
@@ -11,7 +12,7 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
 @interface HZLauncherHomeController ()
 @property (strong) UILabel *statusTitle, *statusDetail, *versionLabel;
-@property (strong) UIButton *playButton, *filesButton, *diagButton, *accountButton;
+@property (strong) UIButton *playButton, *filesButton, *downloadButton, *diagButton, *accountButton;
 @property (strong) UISwitch *directSwitch;
 @property (strong) UIView *statusDot;
 @property (strong) UIActivityIndicatorView *spinner;
@@ -86,15 +87,18 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
     self.playButton = [self buttonWithTitle:@"Play" filled:YES action:@selector(play)];
     self.filesButton = [self buttonWithTitle:@"Game files" filled:NO action:@selector(openFiles)];
+    self.downloadButton = [self buttonWithTitle:@"Download Minecraft" filled:NO action:@selector(openDownload)];
     self.diagButton = [self buttonWithTitle:@"Diagnostics" filled:NO action:@selector(openDiagnostics)];
     self.accountButton = [self buttonWithTitle:@"Account" filled:NO action:@selector(openAccount)];
     [self.accountButton.heightAnchor constraintEqualToConstant:48].active = YES;
     [self.playButton.heightAnchor constraintEqualToConstant:64].active = YES;
     [self.filesButton.heightAnchor constraintEqualToConstant:48].active = YES;
     [self.diagButton.heightAnchor constraintEqualToConstant:48].active = YES;
+    [self.downloadButton.heightAnchor constraintEqualToConstant:48].active = YES;
 
     UIStackView *secondary = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesButton, self.accountButton, self.diagButton]];
     secondary.spacing = 12; secondary.distribution = UIStackViewDistributionFillEqually;
+    // Getting the game onto the phone is the first thing a new install needs: its own full-width row.
 
     // Skip this screen on the next opens: straight into the game when the files are ready.
     UILabel *directLabel = [UILabel new];
@@ -114,7 +118,7 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     directNote.textColor = [UIColor colorWithWhite:0.55 alpha:1];
     directNote.numberOfLines = 0;
 
-    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, secondary, direct, directNote]];
+    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, self.downloadButton, secondary, direct, directNote]];
     right.axis = UILayoutConstraintAxisVertical; right.spacing = 18;
 
     // Landscape (the app is landscape-only): the name on the left, the controls on the right.
@@ -203,6 +207,9 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
 - (void)openFiles {
     [self.navigationController pushViewController:[HZLauncherFilesController new] animated:YES];
+}
+- (void)openDownload {
+    [self.navigationController pushViewController:[HZLauncherDownloadController new] animated:YES];
 }
 - (void)openAccount {
     [self.navigationController pushViewController:[HZLauncherAccountController new] animated:YES];
