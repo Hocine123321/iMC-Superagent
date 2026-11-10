@@ -148,8 +148,8 @@
         [scroll.leadingAnchor constraintEqualToAnchor:g.leadingAnchor], [scroll.trailingAnchor constraintEqualToAnchor:g.trailingAnchor],
         [self.stack.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:12],
         [self.stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-32],
-        [self.stack.leadingAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.leadingAnchor constant:40],
-        [self.stack.trailingAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.trailingAnchor constant:-40]]];
+        [self.stack.leadingAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.leadingAnchor constant:24],
+        [self.stack.trailingAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.trailingAnchor constant:-24]]];
 }
 
 - (void)appearanceChanged:(HZGlassSegmented *)c { [HZTheme setAppearance:(HZAppearance)c.selectedSegmentIndex]; }

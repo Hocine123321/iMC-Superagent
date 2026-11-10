@@ -160,8 +160,8 @@ system's own controls turn into glass without any code, and the custom ones coul
 | Files | What they do |
 |---|---|
 | `main.m`, `GameSession` | Entry point and the Play / flag logic; the signed-in profile handed to the engine |
-| `Launcher`, `LauncherModel` | The navigation shell, and the shared model (game folder, checks, diagnostics list) |
-| `LauncherHome`, `LauncherSettings`, `LauncherPrefs`, `LauncherTheme`, `GlassControls` | Home, the Settings page, the saved choices, colours and buttons, and the plain controls (the file name is from the glass version) |
+| `Launcher`, `LauncherModel`, `Swift/*` | The window and the SwiftUI shell (tabs, Play tab, Settings list, hosting of the UIKit screens), and the shared model (game folder, checks, diagnostics list) |
+| `LauncherSettings`, `LauncherPrefs`, `LauncherTheme`, `GlassControls` | The Settings page, the saved choices, colours and buttons, and the plain controls (the file name is from the glass version) |
 | `LauncherFiles`, `LauncherDownload`, `DownloadPlan`, `Downloader`, `DownloadStore` | Game files, and downloading Minecraft (`IOS_DOWNLOAD_PLAN.md`) |
 | `LauncherAccount`, `AccountClient`, `AccountModel`, `AccountStore` | Sign-in (`IOS_SIGN_IN.md`) |
 | `LauncherFileManager`, `FileBrowser` | The file manager and its rules |

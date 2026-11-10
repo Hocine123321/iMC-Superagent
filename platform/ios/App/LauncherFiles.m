@@ -55,16 +55,10 @@
     left.axis = UILayoutConstraintAxisVertical; left.spacing = 10;
     UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[self.importButton, self.checkButton, self.deleteButton]];
     right.axis = UILayoutConstraintAxisVertical; right.spacing = 12;
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[left, right]];
-    row.spacing = 36; row.alignment = UIStackViewAlignmentCenter; row.distribution = UIStackViewDistributionFillEqually;
-    row.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:row];
-    UILayoutGuide *g = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [row.centerYAnchor constraintEqualToAnchor:g.centerYAnchor],
-        [row.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:40],
-        [row.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
-    ]];
+    // Portrait: the text, then the buttons under it, in a column that scrolls.
+    UIStackView *column = [[UIStackView alloc] initWithArrangedSubviews:@[left, right]];
+    column.axis = UILayoutConstraintAxisVertical; column.spacing = 24;
+    [HZTheme scrollColumn:column onScreen:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self refresh]; }

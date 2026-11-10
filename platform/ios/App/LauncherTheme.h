@@ -69,6 +69,10 @@ extern NSNotificationName const HZThemeChanged;
 
 // Dress a screen pushed on the navigation stack (background colour, bar).
 + (void)styleScreen:(UIViewController *)vc;
+// Puts `column` (usually a vertical stack) on the screen the way a portrait page reads: at the top, 24 pt side
+// margins, inside a scroll view that fills the safe area so a long page (or a large text size) scrolls instead of
+// being cut off. The screens written for the landscape launcher centred two columns and did not scroll.
++ (UIScrollView *)scrollColumn:(UIView *)column onScreen:(UIViewController *)vc;
 + (void)styleNavigationBar:(UINavigationBar *)bar;
 @end
 

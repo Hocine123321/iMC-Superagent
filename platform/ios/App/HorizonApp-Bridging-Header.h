@@ -5,7 +5,6 @@
 #import "AccountStore.h"
 #import "AccountModel.h"
 #import "CrashReporter.h"
-#import "LauncherHome.h"
 #import "LauncherDownload.h"
 #import "LauncherMarketplace.h"
 #import "LauncherSettings.h"

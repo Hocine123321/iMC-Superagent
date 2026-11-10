@@ -196,4 +196,27 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
     vc.view.backgroundColor = [self background];
 }
 
++ (UIScrollView *)scrollColumn:(UIView *)column onScreen:(UIViewController *)vc {
+    UIScrollView *scroll = [UIScrollView new];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.alwaysBounceVertical = YES;
+    scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    column.translatesAutoresizingMaskIntoConstraints = NO;
+    [scroll addSubview:column];
+    [vc.view addSubview:scroll];
+    UILayoutGuide *g = vc.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.topAnchor constraintEqualToAnchor:g.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:vc.view.bottomAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:g.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:g.trailingAnchor],
+        // The width is the frame's, so labels wrap; the height is the content's, so it scrolls.
+        [column.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:20],
+        [column.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-32],
+        [column.leadingAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.leadingAnchor constant:24],
+        [column.trailingAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.trailingAnchor constant:-24],
+    ]];
+    return scroll;
+}
+
 @end

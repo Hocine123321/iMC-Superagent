@@ -62,16 +62,10 @@ static NSString *const kVersion = @"26.3";
     left.axis = UILayoutConstraintAxisVertical; left.spacing = 10;
     UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[self.startButton, self.stopButton]];
     right.axis = UILayoutConstraintAxisVertical; right.spacing = 12;
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[left, right]];
-    row.spacing = 40; row.alignment = UIStackViewAlignmentCenter; row.distribution = UIStackViewDistributionFillEqually;
-    row.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:row];
-    UILayoutGuide *g = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [row.centerYAnchor constraintEqualToAnchor:g.centerYAnchor],
-        [row.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:40],
-        [row.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
-    ]];
+    // Portrait: the text, then the buttons under it, in a column that scrolls.
+    UIStackView *column = [[UIStackView alloc] initWithArrangedSubviews:@[left, right]];
+    column.axis = UILayoutConstraintAxisVertical; column.spacing = 24;
+    [HZTheme scrollColumn:column onScreen:self];
     [self showIdle];
 }
 

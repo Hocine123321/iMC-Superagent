@@ -55,14 +55,7 @@
     head.spacing = 10; head.alignment = UIStackViewAlignmentCenter;
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[head, self.detailLabel, self.codeLabel, buttons, self.noteLabel]];
     stack.axis = UILayoutConstraintAxisVertical; stack.spacing = 14;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:stack];
-    UILayoutGuide *g = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [stack.centerYAnchor constraintEqualToAnchor:g.centerYAnchor],
-        [stack.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:40],
-        [stack.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
-    ]];
+    [HZTheme scrollColumn:stack onScreen:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self refresh]; }
