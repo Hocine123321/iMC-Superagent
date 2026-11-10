@@ -1,10 +1,10 @@
 # The Horizon Marketplace on iOS (M14)
 
-Status (2026-11-10, second pass): **browse and install are written; neither has run on a phone.** Install (step 3)
+Status (2026-11-10, after v33): **browse, install, update, remove and opt-in Modrinth resource packs are written; none has run on a phone.** Install (step 3)
 downloads a mod, resource pack or shader, checks it, puts it in the game's folder and records it; the project page has
 Install / Update / Remove, and the list has an Installed tab. 23 of the registry's 25 non-native projects pass the
-phone's install rules today; the other 2 are signed and are refused (see "Not done"). Revocation of installed files
-(step 4) and honest labels (step 5) are only partly built, see below.
+phone's install rules today; the other 2 are signed and are refused (see "Not done"). Removing an installed file the registry later takes down
+(step 4) and some honest labels (step 5) are not built, see "Not done".
 
 "Marketplace" here means **Horizon's own registry**, `horizon-rust/horizon-mods`, the source of the desktop
 launcher's mod browser. If an app of your own organisation was meant, say so.
@@ -49,7 +49,7 @@ answer cannot overwrite a good copy; with no network the old copy is shown and t
 
 ## Checked
 
-`python3 platform/ios/tests/market_index_check.py` (92 checks offline): every rule above with accepted and refused
+`python3 platform/ios/tests/market_index_check.py` (84 checks offline, 92 with `--live`): every rule above with accepted and refused
 cases, revocation by hash and for a whole project, falling back to the older version when the newest is revoked,
 the cache decision table. `--live` adds the real index: 158 projects parse, 25 installable and 133 desktop-only,
 every installable file is on the registry host, every icon and screenshot passes the image rule, the 3 revoked entries
@@ -70,12 +70,14 @@ Follows `launcher/src/browser/horizon.rs` (`install_version_guarded`) and the ga
 - **Never over a player's own file**, a folder mod of the same id, or a file another install owns.
 - **Remove** deletes the file, the record and the `mod.<id>` line. A record that names a file outside the install folders
   is refused, and a planted symlink is removed as a link.
-- **Checked:** `python3 platform/ios/tests/market_install_check.py --live` (67 checks): every refusal, placing, updating,
-  removing, and with `--live` a real mod, resource pack and shader downloaded from the registry and installed into a temp
+- **Checked:** `python3 platform/ios/tests/market_install_check.py` (60 checks offline, 68 with `--live`): every refusal, placing, updating,
+  removing, and, with `--live` only, a real mod, resource pack and shader downloaded from the registry and installed into a temp
   folder, a one-bit-flipped real download refused, and the live index judged (23 installable, 2 signed refused).
   It is a Python copy of the logic; the Objective-C was only compiled by CI.
 
 ## Modrinth resource packs (2026-11-10, never run on a phone)
+
+Checked by `python3 platform/ios/tests/modrinth_check.py` (48 checks offline, 66 with `--live`, which runs the rules over 14 real top packs).
 
 Added at the owner's request, **resource packs only**, behind Settings > Marketplace > Modrinth resource packs (off by
 default). Modrinth's mods are Java mods that the desktop ports with a JVM tool, and its shaders are not Horizon's format,
@@ -105,13 +107,14 @@ reads kinds in kebab-case (`"resource-pack"`), so it would have dropped that ent
   shader pack's own checks, a resource pack's `pack.mcmeta`). The phone checks the ZIP container only. The game checks
   content when it reads it and shows a red reason on a mod it cannot load, so a bad file cannot run silently, but a file
   that passes the hash and is wrong inside would install and then fail in the game.
-- **Update checks and automatic updates**, and removing an installed file the registry later takes down (step 4): the page
-  shows the registry's reason and refuses a new install, but an old install is not removed by itself.
+- **Automatic update checks**, and removing an installed file the registry later takes down (step 4): a project page offers
+  Update when a newer version exists and refuses a new install of a taken-down file, but nothing is removed by itself.
 - **Shaders are untested on Metal**, and no installed pack has been seen in the game's list. The labels say so.
 - **`api_level`**: the desktop skips a version that needs a newer mod API than the game serves. The phone's engine
   level has not been read, so this is not applied yet; a code mod could be offered that the game then refuses to start.
-- **Images**: icons and screenshots are not fetched or shown yet (the rule is written, the loader is not).
+- **Registry images**: icons and screenshots are not fetched or shown (the rule is written, the loader is not). Each kind
+  has a coloured tile with a system symbol instead.
 - **Descriptions are plain text**, not rendered Markdown.
-- **Installed list, update check, removal, revoked-file removal**, the "restart the game" note, ratings and reporting.
+- **The "restart the game" note** after installing a mod, ratings and reporting.
 - **A run on a phone.** Nothing here has loaded the index on a device.
 - **Registry terms for third-party apps are unverified.** Check them before a public release (roadmap risk).

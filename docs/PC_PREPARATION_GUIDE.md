@@ -41,6 +41,13 @@ Do not copy a folder that is missing `horizon-resources.json`.
 
 ## 4. Copy it to the iPhone
 
+**Easier route (since the launcher, never run on a phone):** copy the prepared `26.3` folder to the phone
+anywhere the Files app can see it, open Horizon, go to **Game files > Import a folder...**, and pick it.
+The app copies it beside the old files, checks it, and swaps it in only when complete, with a free-space
+check first. **Check the files** then confirms it. The manual copy below still works.
+
+The manual way:
+
 The Horizon app creates a folder visible in the Files app. Open the app **once** first.
 
 1. Connect the phone, or use AirDrop alternatives (a USB cable, a cloud drive, or a local share).
@@ -57,8 +64,9 @@ Copying about 500 MB over the Files app is slow; a cable and a computer file man
 
 ## 5. Start the app
 
-Open Horizon. If the files are found it goes past the "prepared game files are missing" screen.
-If it still shows that screen, send me the path you used and the output of `ls` for that folder.
+Open Horizon. The Home screen shows the game files as ready, and Play starts the game (it closes the app and
+needs a second open, see `LAUNCHER.md`).
+If Home says the files are missing or damaged, open **Game files > Check the files** for the reason, and send the path you used and the output of `ls` for that folder.
 
 ## Things to know
 

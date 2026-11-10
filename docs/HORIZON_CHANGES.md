@@ -1,19 +1,26 @@
 # Every change we made inside `horizon/`
 
-Written 2026-11-09. **This is the file to open when the upstream Horizon moves and the iOS app has to
+Written 2026-11-09, brought up to date 2026-11-10 (after iMC Horizon v33, repo commit `dbaaa96`).
+**This is the file to open when the upstream Horizon moves and the iOS app has to
 be rebuilt on top of the new version.** It lists every difference between the upstream snapshot and
 what `horizon/` holds now, why each exists, and how to put it back.
 
 ## How this stays true
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
-  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **58 files,
-  +8120 / -77: 16 new files, 42 modified, none deleted.** Only 77 upstream lines are removed or
+  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **60 files,
+  +9275 / -90: 18 new files, 42 modified, none deleted.** Only 90 upstream lines are removed or
   rewritten in total; everything else is added.
-- **`docs/horizon-changes.patch` is the exact diff** (generated, not hand-written). When this prose
-  and the patch disagree, the patch is right. Replay it onto a new upstream with
-  `git apply --3way docs/horizon-changes.patch` from the repo root, and fix the rejects by hand
-  using the notes below.
+- **The patches are the exact diff** (generated, not hand-written). When this prose and a patch
+  disagree, the patch is right. There are two copies of the same diff:
+  - `docs/horizon-changes.patch`: paths start with `horizon/`, for applying inside *this* repo.
+  - `docs/horizon-changes-upstream.patch`: the same diff with upstream's own paths (no `horizon/`
+    prefix), for applying inside a **clone of upstream Horizon**: `git apply --3way
+    /path/to/horizon-changes-upstream.patch`. This is the one to use when upstream moves. (The
+    first form does not apply in an upstream clone: every path is wrong there.)
+
+  Both are regenerated together by `tools/horizon_diff.sh --patch`, and `--check` fails if either is
+  out of date.
 - **`tools/horizon_diff.sh`** regenerates the file list, the stats and the patch, and with `--check`
   fails if this file does not mention a changed path. Run it after any edit under `horizon/`, and
   add the new entry here in the same commit.
@@ -28,7 +35,7 @@ could not be built without it) and some of it (the iMC Settings page, Auto Perfo
 goes beyond a touch fix. They are listed here as the facts they are, not as approved. **Each entry
 carries a risk, so you can decide what to keep when you rebase.**
 
-Entries are grouped by what they are for, not by file. Every one of the 58 files appears once, in
+Entries are grouped by what they are for, not by file. Every one of the 60 files appears once, in
 the index at the end.
 
 ---
@@ -134,7 +141,7 @@ until it passes. The patch will conflict wherever upstream reshaped `finish` or 
 | File | Lines | What it is |
 |---|---|---|
 | `crates/horizon-client-input/src/touch.rs` | 1164 | Pure finger state machine: stick, look, tap/hold attack, double-tap jump, hotbar slots, menu gestures (tap on lift, slide, scroll, long press), the surface mapping `to_surface`. 74-test crate with `imc_settings.rs`. |
-| `crates/horizon-client/src/game/touch.rs` | 729 | The glue: winit `Touch` event to `touch.rs`, on-screen buttons (`PADS`), hit rectangles, drawing, pointer events fed to the normal mouse path, auto sprint, the per-press log. |
+| `crates/horizon-client/src/game/touch.rs` | 896 | The glue: winit `Touch` event to `touch.rs`, on-screen buttons (`PADS`), hit rectangles, drawing, pointer events fed to the normal mouse path, auto sprint, the per-press log. |
 | `crates/horizon-client/src/game/lifecycle.rs` | 47 | `app_suspended` (save on going to the background) and `app_memory_warning`. |
 
 ### C2. Hooks into existing files
@@ -157,6 +164,8 @@ the shift and the log line.
 
 ## D. iMC Settings page (the iOS app's own settings, `horizon-imc.txt`)
 
+> **Partly superseded by section O (2026-11-10).** The two new files and the `settings.rs`, `lib.rs` and `graphics_ui.rs` (`blocked`) hooks below are current. The `options_ui.rs` hooks that created `Page::Imc` and its button on Horizon Settings were removed; the page is now `Page::GraphicsImc` inside Video Settings (section O). Do not re-apply the old `Page::Imc` / `Act::Imc` hunks.
+
 **This section goes beyond "minor touch fixes".** It adds a whole settings page inside the engine's
 options screen, following the existing Horizon Settings / PvP page pattern. Risk: **high** (it edits
 the large `options_ui.rs`, and every upstream change to that file can conflict).
@@ -164,9 +173,9 @@ the large `options_ui.rs`, and every upstream change to that file can conflict).
 ### D1. New files
 | File | Lines | What it is |
 |---|---|---|
-| `crates/horizon-client-input/src/imc_settings.rs` | 970 | `Item` (20 settings), `ImcSettings` (parse/serialize `horizon-imc.txt`, `cycle`, `reset`, `apply` into `Touch`), the heavy-setting `Cost` notices. Defaults equal what touch had before settings existed. |
-| `crates/horizon-client-render/src/ios_unused.rs` | 266 | The classifier behind "Grey out unused settings": keyboard, mouse, window and desktop-only options, by stable name. |
-| `crates/horizon-client-render/src/mobile_preset.rs` | 135 | The **Mobile preset** button's function: the engine's Performance preset plus battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Only sets values; 6 tests. |
+| `crates/horizon-client-input/src/imc_settings.rs` | 1049 | `Item` (22 settings; `Item::ALL`), `ImcSettings` (parse/serialize `horizon-imc.txt`, `cycle`, `reset`, `apply` into `Touch`), the heavy-setting `Cost` notices. Defaults equal what touch had before settings existed. |
+| `crates/horizon-client-render/src/ios_unused.rs` | 267 | The classifier behind "Grey out unused settings": keyboard, mouse, window and desktop-only options, by stable name. |
+| `crates/horizon-client-render/src/mobile_preset.rs` | 131 | The **Mobile preset** button's function: the engine's Performance preset plus battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Only sets values; 6 tests. |
 
 ### D2. Hooks into existing files
 | File | Change |
@@ -216,13 +225,15 @@ swap each read that sizes streaming for `capped_render_distance()`.
 
 ## I. Touch controls editor, Back button, controller hints (2026-11-09)
 
+> **Partly superseded by section O.** `Act::TouchEditor` and its handler were removed from `options_ui.rs`; the editor is opened from the iMC page in Video Settings, and leaving it returns there (`Page::GraphicsImc`). The new files and the other hooks are current.
+
 Three things that were wrong on the phone, fixed together because they share files.
 
 ### I1. New files (copy as they are)
 | File | Lines | What it is |
 |---|---|---|
-| `crates/horizon-client-input/src/touch_layout.rs` | 678 | Pure: where each on-screen button sits (`Slot`: move, scale, opacity, shown), saved as the **difference from the built-in layout** in `horizon-touch-layout.txt` (an unedited layout writes nothing and places every button bit-for-bit as before). Also `back` (the Back button's rectangle and what a tap does) and `editor` (the panel's rectangles and the size/opacity steps). 27 tests. |
-| `crates/horizon-client/src/game/touch_editor.rs` | 246 | The editor screen: the real buttons drawn on a dimmed stage, drag to move, a panel on the right (size, fade, hide, reset, Cancel, Done). Cancel puts back the arrangement it opened with. |
+| `crates/horizon-client-input/src/touch_layout.rs` | 728 | Pure: where each on-screen button sits (`Slot`: move, scale, opacity, shown), saved as the **difference from the built-in layout** in `horizon-touch-layout.txt` (an unedited layout writes nothing and places every button bit-for-bit as before). Also `back` (the Back button's rectangle and what a tap does) and `editor` (the panel's rectangles and the size/opacity steps). 27 tests. |
+| `crates/horizon-client/src/game/touch_editor.rs` | 475 | The editor screen: the real buttons drawn on a dimmed stage, drag to move, a panel on the right (size, fade, hide, reset, Cancel, Done). Cancel puts back the arrangement it opened with. |
 
 ### I2. Hooks into existing files
 | File | Change |
@@ -244,6 +255,8 @@ and `touch.rs` hunks by their anchors.
 ---
 
 ## J. Touch calibration, Back on the title menus (2026-11-09)
+
+> **Partly superseded by section O.** `Act::TouchCalibrate` and its handler were removed from `options_ui.rs`; the iMC page in Video Settings has the Calibrate touch button. The new files and the other hooks are current.
 
 Two fixes for the phone: a touch that lands off the button, and title pages with no way back.
 
@@ -270,6 +283,8 @@ Two fixes for the phone: a touch that lands off the button, and title pages with
 ---
 
 ## K. Extra on-screen buttons (2026-11-09)
+
+> **Status 2026-11-10.** The owner decided to stop developing custom extra buttons, so no more work goes into this. The code stays and works: the *Extra buttons* button on the iMC page (section O) still opens this page, and the buttons are off until switched on. If you rebase and want less to carry, K is the easiest whole section to drop: remove `touch_extras.rs`, `Page::TouchButtons`, `Act::TouchExtra*`, the `PadKind` extras in `touch.rs` and `touch_editor.rs`, the six appended names in `touch_layout.rs` and the 17 language keys.
 
 Chat, F3, F2, View and two keys the player picks, as buttons on the screen. Each presses a key of the
 game by the name of the binding, so the player's own choice counts (Chat presses whatever `key.chat` is
@@ -393,83 +408,128 @@ Sections D, I, J and K name `Page::Imc`, `Act::Imc` and the old buttons; they ar
 section. **Re-apply:** the `graphics_ui.rs` additions are self-contained; let the compiler list each
 `match` on `Item` and `Page`.
 
-## F. Index: all 58 files
+## F. Index: all 60 files
 
 `A` = new file, `M` = modified. Section in brackets.
 
 ```
-M horizon/Cargo.lock                                              [A5]
-M horizon/Cargo.toml                                              [A5]
-M horizon/crates/horizon-client-input/Cargo.toml                  [A2]
-A horizon/crates/horizon-client-input/src/auto_performance.rs     [E1]
-M horizon/crates/horizon-client-input/src/gamepad.rs                  [M1]
-A horizon/crates/horizon-client-input/src/imc_settings.rs         [D1]
-M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
-M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
-A horizon/crates/horizon-client-input/src/touch.rs                [C1]
-A horizon/crates/horizon-client-input/src/touch_cursor.rs         [N]
-A horizon/crates/horizon-client-input/src/touch_calibration.rs    [J1]
-A horizon/crates/horizon-client-input/src/touch_editor_tools.rs   [L1]
-A horizon/crates/horizon-client-input/src/touch_extras.rs         [K1]
-A horizon/crates/horizon-client-input/src/touch_layout.rs         [I1]
-M horizon/crates/horizon-client-input/src/window.rs               [A4]
-M horizon/crates/horizon-client-render/src/gfx.rs                 [A1, B]
-M horizon/crates/horizon-client-render/src/gfx/flat.rs            [A6]
-M horizon/crates/horizon-client-render/src/graphics.rs            [A1]
-M horizon/crates/horizon-client-render/src/graphics_ui.rs         [A1, D2]
-A horizon/crates/horizon-client-render/src/ios_unused.rs          [D1]
-M horizon/crates/horizon-client-render/src/lib.rs                 [D2]
-A horizon/crates/horizon-client-render/src/mobile_preset.rs       [D1]
-M horizon/crates/horizon-client-render/src/logging.rs             [A1]
-M horizon/crates/horizon-client-render/src/options_ui.rs          [A1, D2, I2]
-M horizon/crates/horizon-client-render/src/settings.rs            [D2, I2]
-M horizon/crates/horizon-client/assets/horizon/lang/en_us.json    [D2, I2]
-M horizon/crates/horizon-client/src/game.rs                       [B, C2, E2, I2, M]
-M horizon/crates/horizon-client/src/game/agent.rs                [I2]
-A horizon/crates/horizon-client/src/game/auto_performance.rs      [E1]
-M horizon/crates/horizon-client/src/game/chat.rs                    [M2]
-M horizon/crates/horizon-client/src/game/control.rs               [I2]
-M horizon/crates/horizon-client/src/game/debug_options.rs         [I2]
-M horizon/crates/horizon-client/src/game/dedicated.rs             [E2]
-M horizon/crates/horizon-client/src/game/ime.rs                   [I2]
-M horizon/crates/horizon-client/src/game/key_codes.rs              [M2]
-A horizon/crates/horizon-client/src/game/lifecycle.rs             [C1]
-M horizon/crates/horizon-client/src/game/loading_screen.rs        [A4, B, C2]
-M horizon/crates/horizon-client/src/game/loading_window.rs        [B]
-M horizon/crates/horizon-client/src/game/no_resources.rs          [A4]
-M horizon/crates/horizon-client/src/game/options.rs               [E2, I2]
-M horizon/crates/horizon-client/src/game/pad.rs                   [C2, I2, M]
-M horizon/crates/horizon-client/src/game/pad_menu.rs              [I2]
-M horizon/crates/horizon-client/src/game/play_keys.rs             [I2]
-M horizon/crates/horizon-client/src/game/pointer_capture.rs       [I2]
-M horizon/crates/horizon-client/src/game/remote.rs                [E2]
-M horizon/crates/horizon-client/src/game/render_settings.rs       [E2]
-M horizon/crates/horizon-client/src/game/screens.rs               [I2]
-M horizon/crates/horizon-client/src/game/split.rs                 [C2]
-M horizon/crates/horizon-client/src/game/split/players.rs         [B]
-M horizon/crates/horizon-client/src/game/startup_menu.rs          [B, I2]
-A horizon/crates/horizon-client/src/game/touch.rs                 [C1, I2]
-A horizon/crates/horizon-client/src/game/touch_calibration.rs     [J1]
-A horizon/crates/horizon-client/src/game/touch_cursor.rs          [N]
-A horizon/crates/horizon-client/src/game/touch_editor.rs          [I1]
-M horizon/crates/horizon-client/src/game/window_handler.rs        [A4, C2]
-M horizon/crates/horizon-hdr/Cargo.toml                           [A1]
-M horizon/crates/horizon-hdr/src/lib.rs                           [A1]
-M horizon/crates/horizon-threads/src/process_memory.rs            [A3]
-A horizon/platform/ios-bridge/Cargo.toml                          [A5]
-A horizon/platform/ios-bridge/src/lib.rs                          [A5]
+M horizon/Cargo.lock                                                     [A5]
+M horizon/Cargo.toml                                                     [A5]
+M horizon/crates/horizon-client-input/Cargo.toml                         [A2]
+A horizon/crates/horizon-client-input/src/auto_performance.rs            [E1]
+M horizon/crates/horizon-client-input/src/gamepad.rs                     [M]
+A horizon/crates/horizon-client-input/src/imc_settings.rs                [D1, N]
+M horizon/crates/horizon-client-input/src/keybinds.rs                    [A3]
+M horizon/crates/horizon-client-input/src/lib.rs                         [C2, I2, J2, K2, L2, N]
+A horizon/crates/horizon-client-input/src/touch.rs                       [C1]
+A horizon/crates/horizon-client-input/src/touch_cursor.rs                [N]
+A horizon/crates/horizon-client-input/src/touch_calibration.rs           [J1]
+A horizon/crates/horizon-client-input/src/touch_editor_tools.rs          [L1]
+A horizon/crates/horizon-client-input/src/touch_extras.rs                [K1]
+A horizon/crates/horizon-client-input/src/touch_layout.rs                [I1, K2]
+M horizon/crates/horizon-client-input/src/window.rs                      [A4]
+M horizon/crates/horizon-client-render/src/gfx.rs                        [A1, B]
+M horizon/crates/horizon-client-render/src/gfx/flat.rs                   [A6]
+M horizon/crates/horizon-client-render/src/graphics.rs                   [A1]
+M horizon/crates/horizon-client-render/src/graphics_ui.rs                [A1, D2, O]
+A horizon/crates/horizon-client-render/src/ios_unused.rs                 [D1, K2, O]
+M horizon/crates/horizon-client-render/src/lib.rs                        [D2]
+A horizon/crates/horizon-client-render/src/mobile_preset.rs              [D1]
+M horizon/crates/horizon-client-render/src/logging.rs                    [A1]
+M horizon/crates/horizon-client-render/src/options_ui.rs                 [A1, D2, I2, J2, K2, N, O]
+M horizon/crates/horizon-client-render/src/settings.rs                   [D2, I2, J2, K2, L2]
+M horizon/crates/horizon-client/assets/horizon/lang/en_us.json           [D2, I2, J2, K2, N, O]
+M horizon/crates/horizon-client/src/game.rs                              [B, C2, E2, I2, J2, L2, M, N]
+M horizon/crates/horizon-client/src/game/agent.rs                        [I2]
+A horizon/crates/horizon-client/src/game/auto_performance.rs             [E1]
+M horizon/crates/horizon-client/src/game/chat.rs                         [M2]
+M horizon/crates/horizon-client/src/game/control.rs                      [I2, O]
+M horizon/crates/horizon-client/src/game/debug_options.rs                [I2]
+M horizon/crates/horizon-client/src/game/dedicated.rs                    [E2]
+M horizon/crates/horizon-client/src/game/ime.rs                          [I2]
+M horizon/crates/horizon-client/src/game/key_codes.rs                    [M2]
+A horizon/crates/horizon-client/src/game/lifecycle.rs                    [C1]
+M horizon/crates/horizon-client/src/game/loading_screen.rs               [A4, B, C2]
+M horizon/crates/horizon-client/src/game/loading_window.rs               [B]
+M horizon/crates/horizon-client/src/game/no_resources.rs                 [A4]
+M horizon/crates/horizon-client/src/game/options.rs                      [E2, I2, J2]
+M horizon/crates/horizon-client/src/game/pad.rs                          [C2, I2, M]
+M horizon/crates/horizon-client/src/game/pad_menu.rs                     [I2]
+M horizon/crates/horizon-client/src/game/play_keys.rs                    [I2]
+M horizon/crates/horizon-client/src/game/pointer_capture.rs              [I2]
+M horizon/crates/horizon-client/src/game/remote.rs                       [E2]
+M horizon/crates/horizon-client/src/game/render_settings.rs              [E2]
+M horizon/crates/horizon-client/src/game/screens.rs                      [I2]
+M horizon/crates/horizon-client/src/game/split.rs                        [C2]
+M horizon/crates/horizon-client/src/game/split/players.rs                [B]
+M horizon/crates/horizon-client/src/game/startup_menu.rs                 [B, I2, J2]
+A horizon/crates/horizon-client/src/game/touch.rs                        [C1, C2, I2, J2, K2, L2, N]
+A horizon/crates/horizon-client/src/game/touch_calibration.rs            [J1]
+A horizon/crates/horizon-client/src/game/touch_cursor.rs                 [N]
+A horizon/crates/horizon-client/src/game/touch_editor.rs                 [I1, K2, L2, O]
+M horizon/crates/horizon-client/src/game/window_handler.rs               [A4, C2]
+M horizon/crates/horizon-hdr/Cargo.toml                                  [A1]
+M horizon/crates/horizon-hdr/src/lib.rs                                  [A1]
+M horizon/crates/horizon-threads/src/process_memory.rs                   [A3]
+A horizon/platform/ios-bridge/Cargo.toml                                 [A5]
+A horizon/platform/ios-bridge/src/lib.rs                                 [A5]
 ```
 
 ## G. Rebase checklist
 
-1. Import the new upstream beside the old one; do **not** overwrite `horizon/` first.
-2. Copy the twelve new files (C1, D1, E1, A5, I1): they are self-contained.
-3. Do section A (mechanical), then B (by intent, measure the stack), then the hooks in C2, D2, E2.
-4. `cargo test -p horizon-client-input` (touch, settings and Auto Performance logic) needs no
-   engine build. The render and client crates build on CI only.
-5. Run `tools/horizon_diff.sh --check` and update this file for anything that moved.
-6. The Cargo.lock change is one workspace package; if upstream's lock changed, regenerate rather
-   than merge, and have the owner approve it.
+### What a rebase costs (tested 2026-11-10, not guessed)
+
+The patch was replayed onto the newest upstream of that day, `horizon-rust/horizon` `1405044`
+(2026-11-10), which is **4,309 commits** and 1,091 commits touching our files ahead of the snapshot
+`77af961`. Nothing in `horizon/` was touched for the test; it ran in a scratch clone.
+
+| Check | Result |
+|---|---|
+| Is the baseline really upstream `77af961`? | Yes. All 5,615 files are byte-identical (blob ids compared). |
+| Does the patch rebuild `horizon/` from the baseline? | Yes. Applied to `77af961`, the resulting tree hash is identical to `horizon/` here. |
+| Did upstream delete or rename a file we modified? | No. All 42 modified files still exist. |
+| `git apply --3way` onto `1405044` | **40 of 60 files apply cleanly; 20 conflict (37 hunks).** No file is missing. |
+
+The 20 conflicted files and their hunk counts: `graphics_ui.rs` 7, `game.rs` 6, `options_ui.rs` 5,
+`horizon-hdr/src/lib.rs` 2, `settings.rs` 2, and one each in `gfx.rs`, `gfx/flat.rs`,
+`en_us.json`, `agent.rs`, `control.rs`, `debug_options.rs`, `no_resources.rs`, `options.rs`,
+`pad.rs`, `pointer_capture.rs`, `remote.rs`, `screens.rs`, `horizon-client-input/Cargo.toml`,
+`Cargo.toml` and `Cargo.lock`. The ones read in detail were all two sides adding lines in the same
+place: upstream's new `Screen::Studio` beside our `Screen::TouchEditor`, `mod hud_room;` beside our
+`mod touch_*;`, the workspace member `crates/horizon-addresses` beside `platform/ios-bridge`, and
+`wayland-data-control` / `horizon-dualsense` lines in `horizon-client-input/Cargo.toml`. Two need
+thought rather than keeping both: `horizon-hdr` (upstream's `set_metadata(device, surface, peak, black)` is
+now `set_metadata(device, surface, paper_white, peak, black)` on one side, with our `target_vendor`
+change on the other) and `remote.rs` (upstream rewrote the render-distance cap; ours uses
+`capped_render_distance()`). This will drift: the numbers above are for `1405044` only.
+
+New upstream things to look at that this test did not cover (it applies text, it does not compile):
+`crates/horizon-dualsense` already gates itself with `target_os = "ios"`, so upstream knows about iOS;
+any new crate or dependency since `77af961` may need the same Apple treatment as section A.
+
+### The procedure
+
+1. Work in a **clone of upstream**, not in this repo: `git clone https://github.com/horizon-rust/horizon.git`,
+   then `git checkout <the commit you want>`.
+2. Apply the upstream-relative patch: `git apply --3way /path/to/iMC/docs/horizon-changes-upstream.patch`.
+   (`docs/horizon-changes.patch` has `horizon/` in every path and does not apply there.) Git writes
+   conflict markers into the 20-ish files above and applies the rest; `git diff --name-only --diff-filter=U`
+   lists them.
+3. Resolve conflicts section by section using this file: A is mechanical (`target_vendor = "apple"`),
+   B is by intent (measure the stack with `tools/check_stack_budget.py`), the hooks are C2, D2, E2, I2 to O.
+   Sections D, I and J name hooks that O removed: follow O for those.
+4. `cargo test -p horizon-client-input` (touch, settings, Auto Performance, cursor logic) needs no engine
+   build. The render and client crates build on CI only.
+5. Copy the result into this repo's `horizon/` (replacing it), commit it **as one commit with the new
+   upstream commit id in the message**, and change the commit id in `README.md` and the roadmap.
+6. **The baseline moves.** `docs/HORIZON_BASELINE` must become the *new pristine upstream import* (commit
+   the untouched new upstream first, put that commit id in `HORIZON_BASELINE`, then commit our changes on
+   top). Otherwise `tools/horizon_diff.sh` would diff against the old snapshot and list thousands of upstream
+   files as ours.
+7. Run `tools/horizon_diff.sh --patch` then `--check`, and update this file for anything that moved
+   (the numbers in "How this stays true" and the index).
+8. The `Cargo.lock` change is one workspace package; if upstream's lock changed, regenerate rather than
+   merge, and have the owner approve it (standing rule: no `Cargo.lock` or dependency changes without approval).
 
 ## H. Changes not in `horizon/` that depend on it
 

@@ -5,7 +5,7 @@ summary: The choices the owner made along the way, and a plain picture of the fi
 
 # Horizon for iOS: decisions and the finished app
 
-Written 2026-11-08, status corrected 2026-11-09. This is the owner's reference. It says what was decided, what the app
+Written 2026-11-08, status corrected 2026-11-10 (after iMC Horizon v33). This is the owner's reference. It says what was decided, what the app
 will be when it is done, and how much of that is real today.
 
 **How to read the labels**
@@ -81,16 +81,16 @@ on the phone from your own Minecraft account.
 | M2 | App shell, Metal surface, memory reporting | **Done in CI.** On the owner's phone the app reached the title artwork, then hit a stack overflow that is now fixed (`IOS_CRASH_STACK.md`); the fixed build has not been confirmed on a phone. |
 | M8a step 1 | Build a Java 25 runtime for iOS in CI | **DONE** (24 MB compressed, 134 MB unpacked, device-only) |
 | M8a step 2 | Show that the phone can run it | **IN TEST.** A diagnostics screen is in the IPA you are installing now. |
-| M3 / M3b | Load the game files, reach the title screen, and the native launcher (home, import/check/delete, diagnostics, Play) | **Built and published** (v2 to v4); launcher layout and the folder picker untested on a phone |
+| M3 / M3b | Load the game files, reach the title screen, and the native launcher (home, import/check/delete, diagnostics, Play) | **Built and published** (v2 onward; the latest release is v33). The launcher has since been rebuilt (Home, Marketplace, Settings, Files, Game files, Account, Diagnostics, About, see `LAUNCHER.md`); none of it is confirmed on a phone |
 | M4 | Pause, resume and memory warnings | **Built**, untested on a phone |
-| M5 | Touch controls, playable singleplayer | **Built; first phone test found the touch offset** (right and a little down), fix and **iMC Settings** page written 2026-11-09 and waiting for a CI build (`IMC_SETTINGS.md`). Since then: Mobile preset, touch controls editor, Back button. All untested on a phone. |
+| M5 | Touch controls, playable singleplayer | **Built; first phone test found the touch offset** (right and a little down), fix and the **iMC Settings** page built and published (`IMC_SETTINGS.md`). Since then: Mobile preset, touch controls editor, Back button, touch calibration, Cursor mode (a trackpad-style pointer for menus), and the iMC Settings moved into a page of Video Settings. The custom extra buttons were abandoned (the code stays). All untested on a phone. |
 | M6 / M7 | Measure on the phone, then tune memory and heat | **M6 started:** a local session log (memory, heat, battery) is built, untested on a phone (`SESSION_LOG.md`). Benchmarks and frame times are PLANNED. M7 PLANNED. |
 | M8b | Download and prepare on the phone | **Download built, not run** (plan, downloader and screen, `IOS_DOWNLOAD_PLAN.md`; CI-compiled only). Preparation PLANNED, depends on M8a |
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
-| M12 | Real launcher pages: Settings, Library, Worlds, Screenshots, Logs, About (added 2026-11-10) | **About written, not run.** The rest PLANNED |
+| M12 | Real launcher pages: Settings, Library, Worlds, Screenshots, Logs, About (added 2026-11-10) | **Written, not run:** Home, Settings (Look, Marketplace, Start-up), Game files, Account, Diagnostics and About. Worlds, Screenshots and Logs pages PLANNED |
 | M13 | In-app file manager, limited to the app's own folder (added 2026-11-10) | **Written, not run** (browse, preview, share, rename, delete with warnings, new folder, add files). Zip export and folder import PLANNED |
-| M14 | Horizon Marketplace: browse and install from Horizon's registry (added 2026-11-10). Only about 25 of the 158 registry projects can work on a phone (133 are native mods that need a desktop build) | **Index client and browse screen written, not run; no install** (`IOS_MARKETPLACE.md`). Install PLANNED, waits on a minisign verifier |
+| M14 | Horizon Marketplace: browse and install from Horizon's registry (added 2026-11-10). Only about 25 of the 158 registry projects can work on a phone (133 are native mods that need a desktop build) | **Browse, install, update and remove written, not run** (`IOS_MARKETPLACE.md`); SHA-256 checked, projects whose author signs their files are refused until a minisign check exists. Modrinth resource packs are an opt-in extra in Settings |
 
 **The honest summary:** the engine runs on iOS and the app has a launcher, touch controls and a settings page. What is not yet shown is a game you can play: no run has got past the title screen on the phone, and whether Java can run on the phone at all is open.
 
@@ -123,7 +123,7 @@ finished folder to the phone. You chose not to rely on this, so it stays a backu
 
 1. **Phone-test the next build** (the one with the touch fix and iMC Settings). Check that a finger
    lands under itself in menus and in the world, that the buttons react where they are drawn, and
-   that **Options > Horizon Settings > iMC Settings...** opens and each choice does something. Send
+   that **Options > Video Settings > iMC** (a page of Video Settings) opens and each choice does something. Send
    `latest.log` and `crash.txt` if anything is off.
 2. **Settle JIT.** The 2026-11-08 run showed `CS_DEBUGGED` set but the `MAP_JIT` page refused
    (`errno 1`). Repeat the M8a test (`IOS_DEVICE_TEST_M8A.md`) with JIT enabled in StikDebug before

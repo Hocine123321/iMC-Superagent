@@ -2,7 +2,7 @@
 
 > **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
 
-**Status (2026-11-09):** M1 to M5 and M3b are built and published as *iMC Horizon* releases (v4 is the latest); none has been confirmed end to end on a phone. M8a is open: the one device run showed `CS_DEBUGGED` but a refused `MAP_JIT` page. See the table in `IOS_DECISIONS_AND_APP_VISION.md` for the current state of every milestone, and `IMC_SETTINGS.md` for the touch offset fix and the iMC Settings page. The sections below are the original plan and still read as proposals. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
+**Status (2026-11-10):** M1 to M5 and M3b are built and published as *iMC Horizon* releases (v33 is the latest), and the M8b download, M9 sign-in, M12 launcher pages, M13 file manager and M14 Marketplace are written into them but never run; none has been confirmed end to end on a phone. M8a is open: the one device run showed `CS_DEBUGGED` but a refused `MAP_JIT` page. See the table in `IOS_DECISIONS_AND_APP_VISION.md` for the current state of every milestone, and `IMC_SETTINGS.md` for the touch offset fix and the iMC Settings page. The sections below are the original plan; where work has happened a section carries a dated progress note. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
 **Base:** `horizon-rust/horizon` `77af961`, Minecraft 26.3, protocol 777.
 
 ## Ordering principles
@@ -43,6 +43,8 @@
 | M12 | **Real launcher pages** (added 2026-11-10): Library, Settings, Worlds, Screenshots, About | Device | no | medium |
 | M13 | **In-app file manager** (added 2026-11-10) | Device | no | medium |
 | M14 | **Horizon Marketplace** (added 2026-11-10): browse and install from Horizon's registry | Device | no | large |
+
+The state of every milestone is in the table of `IOS_DECISIONS_AND_APP_VISION.md` (section 3); the sections below carry dated progress notes.
 
 The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a can start now and gates M8b; M8b and M9 ship after M5. M10 and M11 follow.
 
@@ -213,7 +215,7 @@ the game cannot be two screens of one running process by the easy route. Options
    menu that sets the flag and exits).
 
 **Recommendation.** Do 3 first (it is the only one that works with the current dependencies, and
-the first-run screen in `platform/ios/App/FirstRun.m` is already a start of it), and keep 2 as the
+the Game files and Download screens are already a start of it), and keep 2 as the
 goal if the owner agrees to a winit upgrade.
 
 **Success test.** From a clean install: the launcher opens, shows the state of the game files,
@@ -228,7 +230,7 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 **Findings from reading winit 0.30.13 and the engine (VERIFIED in source, not yet run).**
 
 - winit's iOS backend observes `UIApplicationDidReceiveMemoryWarningNotification` itself and delivers it as `ApplicationHandler::memory_warning`, next to `suspended` and `resumed`. **No Swift observer is needed.**
-- Four `ApplicationHandler` implementations sit on the startup path, and **none implements `suspended` or `memory_warning`**, so both are silently dropped today: `game/no_resources.rs:91` (`Missing`, the first screen an iPhone user sees without resources), `game/loading_screen.rs:393` (`App`), `game/split.rs:592` (`Split`, which wraps `Game` and must forward every callback), and `game/window_handler.rs:201` (`Game`).
+- **Update 2026-11-10:** `suspended` and `memory_warning` are now implemented in `loading_screen.rs`, `split.rs` and `window_handler.rs` (the lifecycle work, section C of `HORIZON_CHANGES.md`); still not confirmed on a phone. The finding below is the original one: four `ApplicationHandler` implementations sit on the startup path and none implemented them, so both were silently dropped: `game/no_resources.rs:91` (`Missing`, the first screen an iPhone user sees without resources), `game/loading_screen.rs:393` (`App`), `game/split.rs:592` (`Split`, which wraps `Game` and must forward every callback), and `game/window_handler.rs:201` (`Game`).
 - `Game::resumed` returns early when `self.window.is_some()` (`window_handler.rs:203`), so a return from the background never reaches `recreate_surface()`, which already exists.
 
 **Objective.** The app survives everything iOS does to it.
@@ -503,7 +505,7 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 
 **Success test.** Each page opens, shows real data from a phone, and every destructive action asks first. Nothing the page writes breaks `--check`.
 
-**Progress (2026-11-10).** **About** is written (not run on a phone): the app's purpose, the non-affiliation statement, Horizon's MIT licence in full (a test keeps it identical to `horizon/LICENSE`), links, and what the game sends. Not started: Settings, Library, Worlds, Screenshots, Logs. **Third-party notices (2026-11-10).** Horizon's `THIRD_PARTY_NOTICES.md` (18 KB) is bundled into the app straight from the untouched `horizon/` snapshot (a `buildPhase: resources` source in `platform/ios/project.yml`, so there is no copy to drift) and About shows it unchanged, with a plain message if the file is ever missing from a build. Whether the file really lands in the built app is checked after CI, not assumed. The licences of the iOS-specific parts (the Java runtime, once it is settled) still need adding before the IPA is shared.
+**Progress (2026-11-10).** **About** is written (not run on a phone): the app's purpose, the non-affiliation statement, Horizon's MIT licence in full (a test keeps it identical to `horizon/LICENSE`), links, and what the game sends. **Update (later 2026-11-10):** the launcher was rebuilt (see `LAUNCHER.md`): Home, Settings (Look, Marketplace, Start-up), Game files, Account, Diagnostics and About are written, none run on a phone. Not started: Worlds, Screenshots, Logs. Liquid Glass was tried for the look and removed; controls are solid. **Third-party notices (2026-11-10).** Horizon's `THIRD_PARTY_NOTICES.md` (18 KB) is bundled into the app straight from the untouched `horizon/` snapshot (a `buildPhase: resources` source in `platform/ios/project.yml`, so there is no copy to drift) and About shows it unchanged, with a plain message if the file is ever missing from a build. Whether the file really lands in the built app is checked after CI, not assumed. The licences of the iOS-specific parts (the Java runtime, once it is settled) still need adding before the IPA is shared.
 
 **Depends on.** M3b (launcher exists). Settings and Library benefit from M8b.
 
@@ -556,11 +558,11 @@ So the first release is honest and small: about 25 installable projects, with th
 4. **Revocation.** Honour the index's `revoked` list: a revoked file is removed or refused with the reason shown.
 5. **Honest labels.** Say "restart the game" where the engine needs it (`docs/mods.md`), and never claim a mod works on iOS beyond what a device test showed.
 
-**Not in scope yet.** Modrinth and CurseForge (Java mods are ported by `horizon-port-pack`, a tool that needs a JVM, so it depends on M8a), and publishing from the phone.
+**Not in scope yet.** CurseForge, and Modrinth mods (Modrinth resource packs are done, as an opt-in; Java mods are ported by `horizon-port-pack`, a tool that needs a JVM, so they depend on M8a), and publishing from the phone.
 
 **Risks.** Third-party code and content from the internet: the checksum, signature and host rules above are the safety net, and installs stay off by default as in the engine. Mod licences and Mojang's usage rules apply to what the registry lists (the registry's own review covers that; we only display it). Registry terms for third-party apps are unverified, so check them before a public release. `ludovic111/horizon-mods` appears as a second allowed release host in the desktop code; take the host list from the source, not from memory.
 
-**Progress (2026-11-10).** Step 1 is written and step 2 started: the index client (`MarketIndex.m`, `MarketClient.m`) and a browse screen (Home > Marketplace) with tabs, search and project pages, no install. Rules read from the desktop source, three of them stricter on purpose; 92 offline checks pass against the real index. Never run on a phone. Install waits on a minisign verifier (a dependency, so your decision) and on `api_level`. Details and the full not-done list: `IOS_MARKETPLACE.md`.
+**Progress (2026-11-10).** Step 1 is written and step 2 started: the index client (`MarketIndex.m`, `MarketClient.m`) and a browse screen (Home > Marketplace) with tabs, search and project pages. Rules read from the desktop source, three of them stricter on purpose; 92 offline checks pass against the real index. Never run on a phone. **Update (later 2026-11-10):** install, update and remove are written (`MarketInstaller.m`, `MarketFetcher.m`: SHA-256, atomic placement, a `mod-browser.json` record, an Installed tab), and Modrinth resource packs were added as an opt-in extra (`ModrinthClient.m`, off until switched on in Settings). Projects whose author signs their files are still refused, because the minisign check (a dependency, so your decision) is not written. Details and the not-done list: `IOS_MARKETPLACE.md`.
 
 **Success test.** Install one content mod, one resource pack and one shader from a clean app on a phone, see them in Options > Mods or the pack list in the game, remove them, corrupt a download and confirm it is refused, and confirm a revoked entry is refused.
 

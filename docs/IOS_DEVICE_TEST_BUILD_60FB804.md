@@ -5,7 +5,7 @@ summary: What to try on the iPhone after installing the build with the Return, A
 
 # Phone test checklist (build 60fb804 and later)
 
-**Nothing here has been run on a phone yet.** The Rust and Objective-C compiled in CI, and the
+**Status 2026-11-10.** This is the checklist for build v17 (`60fb804`). The latest build is v33, which has more in it (a rebuilt launcher, Marketplace, Settings, Cursor mode, the iMC Settings page inside Video Settings), so install the latest *iOS app* run instead and use this list as a starting point; where it says "Options > Horizon Settings > iMC Settings" read **Options > Video Settings > iMC**. **Nothing here has been run on a phone yet.** The Rust and Objective-C compiled in CI, and the
 logic has unit tests, but whether these fixes work on a real iPhone is exactly what this page is for.
 
 Install the unsigned app from the latest successful **iOS app** run (artifact

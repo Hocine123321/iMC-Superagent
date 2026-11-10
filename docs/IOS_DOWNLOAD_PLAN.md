@@ -20,7 +20,7 @@ in the official launcher's layout.
 
 - **Mobile data (2026-11-10): no special handling.** The app does not ask before downloading and has
   no Wi-Fi-only mode.
-- **Sign-in gates the download only** (docs/IOS_SIGN_IN.md). Nothing calls that gate yet.
+- **Sign-in gates the download only** (`IOS_SIGN_IN.md`). The download screen calls the gate (see "The gate" below); the gate has never run against Microsoft.
 
 ## What the plan contains for 26.3 (measured live, 2026-11-10)
 
@@ -114,7 +114,7 @@ it then fails with a plain message). **Developer override:** create a file named
 Horizon folder (Files app) to skip the check, so this can be tried before Mojang approves the app's sign-in.
 The screen says when the override is on. It is meant for the owner's own phone.
 
-**Verified.** `python3 platform/ios/tests/downloader_check.py` (48 offline checks: retry and backoff rules,
+**Verified.** `python3 platform/ios/tests/downloader_check.py` (41 offline checks, 48 with `--live`: retry and backoff rules,
 the manifest lookup and its refusals, path containment including a planted symlink, the resume decision for
 a missing, short, wrong-hash, whole and folder-in-the-way file, install refusing bad size and hash and leaving
 a good file alone, partial-file cleanup, chunked SHA-1). `--live` adds Mojang's real manifest, version file

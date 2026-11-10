@@ -5,7 +5,7 @@ summary: What the in-game iMC Settings page holds, where it is stored, how it re
 
 # iMC Settings
 
-Written 2026-11-09. **Compiled and run on CI only; not yet run on a phone.** The pure parts
+Written 2026-11-09, brought up to date 2026-11-10 (v33). **Compiled and run on CI only; not yet run on a phone.** The pure parts
 (`imc_settings.rs`, `to_surface`) have unit tests that pass offline. The page itself, and its link
 to the touch controls, were written without a full engine build and are checked by the CI run.
 
@@ -26,6 +26,7 @@ is gone. Press rows on it: Edit touch controls, Calibrate touch, Mobile preset, 
 | Stick size | Small, Normal, Large, Largest | Normal | Finger travel for full speed, as a fraction of the screen's shorter side: 0.10, 0.14, 0.18, 0.22. |
 | Steering area | Narrow, Normal, Wide, Widest | Normal | How much of the left side steers: 30%, 40%, 50%, 60% of the width. |
 | Screen margin | None, Small, Normal, Large | Normal | Multiplies the button layout's safe margins (8% sides, 4% top, 7% bottom) by 0, 0.5, 1 and 1.5. |
+| Grey out unused settings | On, Off | Off | Greys out every engine setting that does nothing on an iPhone (keyboard binds, mouse, window) and says why when pointed at. The page ends with a grey list of the costliest engine settings. |
 | Auto sprint | On, Off | **Off** | Pushing the stick forward to its edge holds Run (starts at 95% of full tilt, stops below 80%). Backward and sideways never sprint. A thumb that is steering cannot also hold the Run button. |
 | Touch shift X, Y | -16, -8, 0, +8, +16 px | 0 | Moves every touch by that many screen pixels, after the safe-area correction. For an offset that is left on this phone (see below). |
 | Menu touch | Precise, Normal, Careful, Very careful, Firm | Normal | How far a finger may drift on a menu and still be a tap: 0.5, 1, 1.75, 2.5 and 3.5 times the screen's own slop (1% of the shorter side, 11.7 px on an iPhone 12). Higher stops accidental presses and slider moves. |
@@ -135,7 +136,7 @@ something differs from the defaults (the same rule `horizon-extras.txt` follows)
 
 | Piece | File |
 |---|---|
-| Values, parsing, saving, `apply` to the finger logic, the heavy-setting notices (pure, 17 tests) | `horizon/crates/horizon-client-input/src/imc_settings.rs` |
+| Values, parsing, saving, `apply` to the finger logic, the heavy-setting notices (pure, 25 tests) | `horizon/crates/horizon-client-input/src/imc_settings.rs` |
 | The governor: when to cut what (pure, 14 tests) | `horizon/crates/horizon-client-input/src/auto_performance.rs` |
 | The 5 s memory check and where the caps are applied | `horizon/crates/horizon-client/src/game/auto_performance.rs` |
 | `Settings.imc`: loaded and saved with the other Horizon files | `horizon/crates/horizon-client-render/src/settings.rs` |
@@ -191,7 +192,7 @@ work.
 
 ## Not done
 
-- The page is reachable from the game's Options only. Opening it from the launcher's Home screen is
+- The page is reachable from the game's Options only (Options > Video Settings > iMC). Opening it from the launcher's Home screen is
   not built.
 - The settings do not yet include the graphics API, render distance preset or "keep screen on"
   that `LAUNCHER.md` lists. Those need the engine to read a launcher-written file at start.
@@ -362,7 +363,7 @@ travels, and the cursor is what a tap presses. See `HORIZON_CHANGES.md` section 
   next menu uses.
 - **Cursor in inventory** (iMC Settings > Cursor, off by default): the bag, chests, crafting and
   creative open with the cursor and go back to plain touch on close, without pressing the button.
-- **Cursor speed**: how far it moves per bit of finger travel.
+- **Cursor speed**: how far it moves per bit of finger travel (five steps, 0.6, 0.8, 1.0, 1.4 and 2.0 times; 1.0 is the default).
 - **Gestures:** drag moves; tap clicks; hold still is a right click; tap then drag holds the left
   button (sliders, moving a stack); two fingers scroll.
 

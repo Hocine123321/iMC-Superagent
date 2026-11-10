@@ -1,6 +1,6 @@
 ---
 title: The iMC Horizon launcher
-summary: What the native launcher screens do, how Play works, and what is not built yet.
+summary: What the native launcher screens do, how Play works, the look and Settings, the source files, and what is not built yet. Written, compiled on CI, never run on a phone.
 ---
 
 # The launcher
@@ -19,7 +19,7 @@ two runs of the app:
 3. **Open** again: `main.m` finds the flag, deletes it, checks the game files, and starts the engine.
 4. Close the game and open the app: no flag, so the launcher is back.
 
-**Open straight into the game** (a switch on the Home screen, off by default) skips steps 1 and 2:
+**Open straight into the game** (a switch in Settings under Start-up, off by default) skips steps 1 and 2:
 with it on and the game files ready, opening the app starts the game. The setting is a line,
 `openGame:1`, in `Documents/Horizon/launcher.txt`, because `main.m` reads it before the engine and
 the engine's own settings live in `home/`. The launcher still opens when:
@@ -43,9 +43,9 @@ If the flag is set but the files fail the check, the launcher opens instead of t
 
 - **Home** (redesigned 2026-11-10, never run): name and versions, a status card for the game files,
   a large **Play**, and a 2x2 grid of the things needed most (Download, Marketplace, Game files,
-  Account). Everything else is behind the **...** button at the top right: File manager,
-  Diagnostics, About, Appearance (System, Dark, Light) and the "open straight into the game"
-  switch (its long explanation is now shown when it is turned on).
+  Account). Everything else is behind the **...** button at the top right: Library (File manager,
+  Game files), Tools (Diagnostics), Appearance (System, Dark, Light), Settings and About. The
+  "open straight into the game" switch is on the Settings page, not here.
 - **Game files**: **Import a folder** (the system folder picker; the copy is made beside the old
   files and swapped in only when complete, with a free-space check first), **Check**, **Delete**.
   The check is the engine's own rule (`missing_resources` and `damaged_prepared` in
@@ -58,9 +58,11 @@ If the flag is set but the files fail the check, the launcher opens instead of t
   open it, a small text file to read it, any other file to share it; swipe a row for Delete, Rename and
   Share; the **+** menu makes a folder or copies files in from the Files app (refusing a name already
   taken and a copy that would leave less than 100 MB free). Rules in `FileBrowser.m`: see below.
-- **Marketplace** (M14, written 2026-11-10, never run): browses Horizon's registry (tabs, search, project pages). It does not install anything yet. See `IOS_MARKETPLACE.md`.
+- **Marketplace** (M14, written 2026-11-10, never run): browses Horizon's registry (tabs, search, project pages). It installs, updates and removes resource packs (always shown), mods and shaders (shown once turned on in Settings), with an Installed tab, and can search Modrinth for resource packs once that is turned on. See `IOS_MARKETPLACE.md`.
 - **About** (M12, written 2026-11-10, never run): what the app is, that it is not a Minecraft product,
   the Horizon MIT licence in full, Horizon's third-party notices (bundled from `horizon/THIRD_PARTY_NOTICES.md`), links, and what the game sends.
+- **Settings** (written 2026-11-10, never run): see "Second pass" below for the exact contents.
+- **Account** (M9, built, never run): sign in with Microsoft, or the private test mode. See `IOS_SIGN_IN.md`.
 - **Diagnostics**: the newest crash report (native `crash.txt` or the engine's
   `home/crash-reports/`, whichever is newer) and `home/logs/latest.log`, with a Share button.
 
@@ -82,10 +84,12 @@ If the flag is set but the files fail the check, the launcher opens instead of t
 
 ## Not built yet
 
-- Launcher settings (graphics API, render distance preset). Needs the engine to read a
-  launcher-written file at start. The touch controls' settings already exist, inside the game:
-  **Options > Horizon Settings > iMC Settings...** (see `IMC_SETTINGS.md`).
-- Account and ownership (M9) and download and preparation on the phone (M8b).
+- Launcher settings for the engine (graphics API, render distance preset). The launcher's own Settings page exists
+  (appearance, background colour, Marketplace visibility, start-up); engine settings live inside the game, in
+  **Options > Video Settings > iMC** (see `IMC_SETTINGS.md`).
+- A working sign-in (M9 needs the owner's Azure app and Mojang's approval) and preparation of the game files on the
+  phone (M8b: the download is written but has never run; the Java preparation is not).
+- Worlds, Screenshots and Logs pages (M12).
 - Going back to the launcher from inside the game (a pause menu entry). Until then, closing the app
   returns to it.
 - Play without a relaunch, in one process. winit 0.30's `EventLoop::run` asserts that
@@ -114,9 +118,9 @@ on a phone, so the layout (landscape, two columns) and the folder picker's behav
 app are untested.
 
 
-## Look: dark and light, Liquid Glass (written 2026-11-10, never run)
+## Look: dark and light (written 2026-11-10, never run)
 
-`LauncherTheme.{h,m}` is the one place for colours and controls. Every colour is dynamic, so all
+`LauncherTheme.{h,m}` is the one place for colours, buttons and the Background colour strength (`glass:` in `launcher.txt`, the name of the first version). Every colour is dynamic, so all
 screens follow dark or light. The choice is the line `appearance:system|dark|light` in
 `Documents/Horizon/launcher.txt` (the same file as `openGame:`; both setters keep the other's line)
 and is applied to the window with `overrideUserInterfaceStyle`.
@@ -146,3 +150,17 @@ system's own controls turn into glass without any code, and the custom ones coul
 - **What the Marketplace shows** (owner's rule): resource packs and Installed by default. Mods, Shaders and Everything are
   tabs that exist only once their switch is on; Modrinth likewise. Checked by `launcher_prefs_check.py`.
 - **The ... menu** is grouped: Library (File manager, Game files), Tools (Diagnostics), Appearance, Settings, About.
+
+## The source files (`platform/ios/App`)
+
+| Files | What they do |
+|---|---|
+| `main.m`, `GameSession` | Entry point and the Play / flag logic; the signed-in profile handed to the engine |
+| `Launcher`, `LauncherModel` | The navigation shell, and the shared model (game folder, checks, diagnostics list) |
+| `LauncherHome`, `LauncherSettings`, `LauncherPrefs`, `LauncherTheme`, `GlassControls` | Home, the Settings page, the saved choices, colours and buttons, and the plain controls (the file name is from the glass version) |
+| `LauncherFiles`, `LauncherDownload`, `DownloadPlan`, `Downloader`, `DownloadStore` | Game files, and downloading Minecraft (`IOS_DOWNLOAD_PLAN.md`) |
+| `LauncherAccount`, `AccountClient`, `AccountModel`, `AccountStore` | Sign-in (`IOS_SIGN_IN.md`) |
+| `LauncherFileManager`, `FileBrowser` | The file manager and its rules |
+| `LauncherMarketplace`, `MarketIndex`, `MarketClient`, `MarketFetcher`, `MarketInstaller`, `MarketCells`, `ModrinthClient` | The Marketplace (`IOS_MARKETPLACE.md`) |
+| `LauncherDiagnostics`, `Diagnostics`, `CrashReporter`, `SessionLog` | Diagnostics, crash reports, the session log (`SESSION_LOG.md`) |
+| `LauncherAbout` | About and the third-party notices |

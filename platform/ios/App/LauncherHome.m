@@ -125,7 +125,7 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
     ]];
 }
 
-// Soft colour behind the glass, so the glass has something to refract. Follows dark/light.
+// A soft wash of the accent colour behind the Home screen; its strength is the Background colour setting. Follows dark/light.
 - (void)addBackdrop {
     CAGradientLayer *grad = [CAGradientLayer layer];
     grad.name = @"backdrop";
@@ -154,7 +154,7 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
 }
 
 // The "..." menu, in groups. Library holds the places files live; Tools the things for when something is
-// wrong; Settings opens the page with the appearance, glass and start-up choices. Quick appearance stays
+// wrong; Settings opens the page with the appearance, background, Marketplace and start-up choices. Quick appearance stays
 // in the menu as a submenu with a check on the current choice, because it is the thing most often flipped.
 - (UIMenu *)buildMenu {
     HZAppearance current = [HZTheme appearance];

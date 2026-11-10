@@ -2,7 +2,7 @@
 
 > **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
 
-**Status:** Phase 1 and 2 findings. No source files were modified. Evidence artifacts are in `docs/ios-evidence/`.
+**Status:** Phase 1 and 2 findings, written 2026-11-07 and 2026-11-08. No source files were modified *at the time*; this report is a dated record and its findings about upstream are left as written (for example "no touch input" describes upstream Horizon, which still has none of its own). **Update 2026-11-10:** the port has since been built on top of these findings: the engine compiles and links for iOS, and the app shell, launcher, touch, lifecycle and settings exist. What changed inside `horizon/` is in `HORIZON_CHANGES.md`; milestone states are in `IOS_DECISIONS_AND_APP_VISION.md`. Evidence artifacts are in `docs/ios-evidence/`.
 **Base:** `horizon-rust/horizon` `main` at `77af961663c48ef035b841cad68d84fc682918fd` (2026-11-07). Local branch `ios-port`; original remote renamed `upstream`.
 **Game version pinned by the repo:** Minecraft Java 26.3, network protocol 777 (`research-lock.json`, `horizon-core/src/version.rs`).
 **Toolchain used:** rustc/cargo 1.99.1 on Linux x86_64, targets `aarch64-apple-ios` and `aarch64-apple-ios-sim`. Workspace `rust-version` is 1.95.

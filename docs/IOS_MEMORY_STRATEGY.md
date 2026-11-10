@@ -2,7 +2,7 @@
 
 > **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
 
-**Status:** analysis and plan. No code changed. No on-device measurement exists yet.
+**Status:** analysis and plan, written 2026-11-08. No on-device measurement exists yet. **Update 2026-11-10:** some of the plan is now code, none of it measured on a phone: the footprint and thermal session log (`SESSION_LOG.md`) and Auto Performance, which caps render distance, far terrain and resolution when memory runs short (`IMC_SETTINGS.md`, section E of `HORIZON_CHANGES.md`). The benchmarks (M6) and tuning (M7) are still planned.
 **Base:** `77af961`. Target device for first work: iPhone 12 (A14, 4 GB RAM).
 **Labels:** VERIFIED (read in source or run here), INFERRED (follows from verified facts), UNRESOLVED (needs a device or a decision).
 

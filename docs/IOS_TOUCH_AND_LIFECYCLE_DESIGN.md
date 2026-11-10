@@ -1,12 +1,14 @@
 ---
 title: Touch controls (M5) and lifecycle (M4): design from source
-summary: What the engine already provides, the smallest set of edits under horizon/ for touch and lifecycle, and what is still a guess. Nothing here is built or run yet.
+summary: What the engine already provides, the smallest set of edits under horizon/ for touch and lifecycle, and what is still a guess. This is the original design (2026-11-08); touch and lifecycle have since been built, see the update below.
 ---
 
 # Touch (M5) and lifecycle (M4): design
 
-Written 2026-11-08 from reading the code. **Nothing here has been compiled or run.** Every claim
+Written 2026-11-08 from reading the code. **At the time of writing nothing here had been compiled or run.** Every claim
 about the engine says where it was read. Guesses are marked GUESS.
+
+**Update 2026-11-10.** The design was built and has shipped in the iOS builds (never confirmed on a phone beyond the first test, which found the touch offset). Where to look now: the touch state machine is `touch.rs` in `horizon-client-input`, the glue is `game/touch.rs`, the lifecycle hooks are `game/lifecycle.rs` and the `suspended` / `memory_warning` handlers, and the settings are in `IMC_SETTINGS.md`. Every edit under `horizon/` is listed with its reason in `HORIZON_CHANGES.md` (sections C and M), and the findings below are left as they were written. Later additions not in this design: calibration, a touch controls editor, Cursor mode, Auto Performance.
 
 Owner approval (2026-11-08): edits under `horizon/` are allowed for this work. Keep them to one hook
 point plus new files. Never touch `Cargo.lock`.

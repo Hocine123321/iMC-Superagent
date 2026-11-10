@@ -5,7 +5,9 @@ summary: What to install on the iPhone 12 and what to send back, so the Java run
 
 # First device test (M8a)
 
-Everything here is a **test**. Nothing in this file has been run on a phone yet. The goal is to
+**Status 2026-11-10.** This checklist was run once, on 2026-11-08: the report is `ios-evidence/diagnostics-2026-11-08-run1.txt` (`CS_DEBUGGED` set, but the `MAP_JIT` page was refused with `errno 1`). The question is **still open**: the test is to be repeated with JIT enabled in StikDebug before the app is launched (see `IOS_DECISIONS_AND_APP_VISION.md`, section 5). The steps below are still the right ones; the app is now much newer (iMC Horizon v33).
+
+Everything here is a **test**. The goal is to
 answer, in order, with evidence:
 
 1. Does the Horizon app install and stay open with your signing method?
