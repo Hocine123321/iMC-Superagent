@@ -13,8 +13,11 @@ final class LauncherState: ObservableObject {
 
     var isReady: Bool { if case .ready = files { return true } else { return false } }
 
+    /// The Objective-C header has no nullability annotations, so shared() imports as optional.
+    private var model: HZLauncherModel { HZLauncherModel.shared()! }
+
     func refresh() {
-        let model = HZLauncherModel.shared()
+        let model = self.model
         var problem: NSString?
         let state = model.checkFiles(&problem)
         switch state {
@@ -37,10 +40,10 @@ final class LauncherState: ObservableObject {
     /// The same Play as before: the game is a separate run of the app, so leave the one-shot flag and exit.
     /// (Replaced by an in-process start in M24 stage 3.)
     func play() {
-        guard HZLauncherModel.shared().setStartGameFlag() else { startFailed = true; return }
+        guard model.setStartGameFlag() else { startFailed = true; return }
         HorizonCrashReporterCleanExit()
         exit(0)
     }
 
-    func cancelPlay() { _ = HZLauncherModel.shared().consumeStartGameFlag() }
+    func cancelPlay() { _ = model.consumeStartGameFlag() }
 }

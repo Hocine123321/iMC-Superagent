@@ -27,6 +27,9 @@ jobs:
           echo "SDK: $SDK"
           FAILED=0
           for f in *.m; do
+            # Files that import the generated Swift header can only be compiled together with the Swift
+            # sources, which the full app build does.
+            if grep -q 'Horizon-Swift.h' "$f"; then echo "--- $f (skipped, needs the Swift header)"; continue; fi
             echo "--- $f"
             if ! xcrun --sdk iphoneos clang -fsyntax-only -fobjc-arc -fmodules -Wall -Wextra \
                  -Wno-unused-parameter -arch arm64 -miphoneos-version-min=16.0 -isysroot "$SDK" "$f"; then
