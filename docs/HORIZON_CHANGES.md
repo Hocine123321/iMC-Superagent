@@ -373,6 +373,26 @@ unit tested for the pure part; the game glue is checked by the CI build only.
 
 **Re-apply:** copy the two new files, then re-do the small hooks by their anchors.
 
+## O. iMC Settings moved into Video Settings (2026-11-10)
+
+The standalone iMC Settings list page (Options > Horizon Settings > iMC Settings) is gone. The same
+settings are now a page of the Video Settings screen, after HDR, with the pages that hold Shaders and
+Performance: searchable, a cost dot and a description for each row, a group header per block. Written
+and unit tested in the render and input crates; the game crate edits are checked by the CI build only.
+
+| File | Change |
+|---|---|
+| `crates/horizon-client-render/src/graphics_ui.rs` | `Page::Imc` (last; `Page::ALL` is 7), `Item::Imc(imc_settings::Item)` and `Item::ImcDo(ImcDo)` with every `match` on `Item` covered, `ImcDo` (Mobile preset, Edit touch controls, Calibrate touch, Extra buttons, Reset), `Action::Imc(ImcDo)`, the page's rows in five groups (Touch controls, Screen, Cursor, Auto Performance, Presets), and `blocked` greying an Auto Performance choice while it is off. Tests that meant "the last page" now name `Page::Imc`. |
+| `crates/horizon-client-render/src/options_ui.rs` | Removed: `Page::Imc`, its row builder, its button on Horizon Settings, its title and tooltip, `Act::Imc`, `Act::ImcReset`, `Act::TouchEditor`, `Act::TouchCalibrate`, `Act::MobilePreset`, their tooltips and four click handlers. Added: `Page::GraphicsImc` (the Video screen opened on its iMC page), its arms beside `GraphicsHdr`, and the `Action::Imc` handler in `graphics_events` (the four old actions, plus `Extra buttons` pushing `Page::TouchButtons`). The old page test became "every item is a row of the iMC page, and Horizon Settings has no button for it". |
+| `crates/horizon-client-render/src/ios_unused.rs` | `GraphicsImc` in the "page is used" arm (replaces `Imc`). |
+| `crates/horizon-client/assets/horizon/lang/en_us.json` | Ten keys: the page name and its about line, the group headers that had no key, one blocked reason, and the tooltips of Extra buttons and Reset. |
+| `crates/horizon-client/src/game/touch_editor.rs` | Leaving the editor reopens `Page::GraphicsImc` (was `Page::Imc`). |
+| `crates/horizon-client/src/game/control.rs` | The control socket's options page name `graphics-imc`. |
+
+Sections D, I, J and K name `Page::Imc`, `Act::Imc` and the old buttons; they are replaced by this
+section. **Re-apply:** the `graphics_ui.rs` additions are self-contained; let the compiler list each
+`match` on `Item` and `Page`.
+
 ## F. Index: all 58 files
 
 `A` = new file, `M` = modified. Section in brackets.

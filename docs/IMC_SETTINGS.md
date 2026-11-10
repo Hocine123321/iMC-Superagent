@@ -11,9 +11,11 @@ to the touch controls, were written without a full engine build and are checked 
 
 ## What it is
 
-A page inside the game, under **Options > Horizon Settings > iMC Settings...**, for settings that
-belong to the iOS app and not to Minecraft. It follows the same pattern as the PvP & HUD page: a
-`Page` in `options_ui.rs`, buttons two to a row, a tooltip on each, and a Done button.
+A page inside the game, under **Options > Video Settings > iMC** (after HDR, beside Shaders and
+Performance), for settings that belong to the iOS app and not to Minecraft. It is a page of the Video
+Settings screen (`graphics_ui.rs`), so it has that screen's search, the cost dot and the description
+of the hovered row, and Undo. It used to be a separate list page under Horizon Settings; that page
+is gone. Press rows on it: Edit touch controls, Calibrate touch, Mobile preset, Extra buttons, Reset.
 
 | Setting | Choices | Default | What it changes |
 |---|---|---|---|
@@ -137,7 +139,8 @@ something differs from the defaults (the same rule `horizon-extras.txt` follows)
 | The governor: when to cut what (pure, 14 tests) | `horizon/crates/horizon-client-input/src/auto_performance.rs` |
 | The 5 s memory check and where the caps are applied | `horizon/crates/horizon-client/src/game/auto_performance.rs` |
 | `Settings.imc`: loaded and saved with the other Horizon files | `horizon/crates/horizon-client-render/src/settings.rs` |
-| The page, its buttons, `Act::Imc`, `Act::ImcReset` and `Act::MobilePreset` | `horizon/crates/horizon-client-render/src/options_ui.rs` |
+| The page, its rows and press rows (`Item::Imc`, `Item::ImcDo`, `Action::Imc`) | `horizon/crates/horizon-client-render/src/graphics_ui.rs` |
+| Running the press rows (`graphics_events`), `Page::GraphicsImc` | `horizon/crates/horizon-client-render/src/options_ui.rs` |
 | The Mobile preset's values (pure, 6 tests) | `horizon/crates/horizon-client-render/src/mobile_preset.rs` |
 | Applies the values to the fingers; hides the buttons; scales the margins | `horizon/crates/horizon-client/src/game/touch.rs` |
 | English text (`horizon.imc.*`, `horizon.pages.imc*`) | `horizon/crates/horizon-client/assets/horizon/lang/en_us.json` |

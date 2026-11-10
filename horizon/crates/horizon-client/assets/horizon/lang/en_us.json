@@ -1064,5 +1064,15 @@
   "horizon.recipe_transfer.missing": "Missing Items",
   "horizon.recipe_transfer.no_room": "Inventory full",
   "horizon.recipe_transfer.unavailable": "Recipe does not fit this menu",
-  "horizon.recipe_transfer.unsupported": "Server requires a known recipe"
+  "horizon.recipe_transfer.unsupported": "Server requires a known recipe",
+  "iMC": "iMC",
+  "The iPhone app's own settings: touch controls, the cursor and Auto Performance.": "The iPhone app's own settings: touch controls, the cursor and Auto Performance.",
+  "Touch controls": "Touch controls",
+  "Screen": "Screen",
+  "Cursor": "Cursor",
+  "Auto Performance": "Auto Performance",
+  "Presets": "Presets",
+  "Turn Auto Performance on to use it.": "Turn Auto Performance on to use it.",
+  "horizon.imc.extra_buttons.tooltip": "Six more buttons for the screen while you play: Chat, F3, F2, View and two keys of your choice.",
+  "horizon.imc.reset.tooltip": "Puts every iMC setting back to its default, Auto Performance included. It does not undo the Mobile preset."
 }

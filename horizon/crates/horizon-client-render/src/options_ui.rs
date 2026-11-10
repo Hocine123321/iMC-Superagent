@@ -1316,6 +1316,8 @@ pub enum Page {
     Graphics,
     GraphicsAdvanced,
     GraphicsHdr,
+    /// The graphics screen at its iMC page: the iOS app's own settings (`imc_settings`).
+    GraphicsImc,
     /// HDR calibration, full screen (`calibration`).
     HdrCalibration,
     /// Horizon's controller settings and button binds.
@@ -1329,8 +1331,6 @@ pub enum Page {
     /// Horizon Settings: every page Horizon adds, as a mod's settings
     /// screen hangs off vanilla's Options.
     Horizon,
-    /// iMC Settings: the iOS app's own (`imc_settings`), under Horizon Settings.
-    Imc,
     /// iMC Settings' extra on-screen buttons (`touch_extras`): Chat, F3, F2, View and two keys.
     TouchButtons,
     /// Replay Studio: saved recordings browser and 3D video editor launcher.
@@ -1356,10 +1356,6 @@ enum Act {
     Done,
     Cycle(Opt),
     Extra(crate::extras::Item),
-    /// An iMC Settings button (`imc_settings::Item`).
-    Imc(horizon_client_input::imc_settings::Item),
-    /// iMC Settings' Reset button.
-    ImcReset,
     Key(&'static str),
     ResetKey(&'static str),
     ResetKeys,
@@ -1368,12 +1364,6 @@ enum Act {
     PvpPreset,
     /// PvP & HUD's Edit HUD button.
     HudEditor,
-    /// iMC Settings' Edit touch controls button.
-    TouchEditor,
-    /// iMC Settings' Calibrate touch button.
-    TouchCalibrate,
-    /// iMC Settings' Mobile preset button (`mobile_preset::apply`).
-    MobilePreset,
     /// The extra buttons page: switch one on or off.
     TouchExtra(horizon_client_input::touch_extras::Extra),
     /// The extra buttons page: step Key 1 or Key 2 to the next key.
@@ -1892,7 +1882,6 @@ fn horizon_page_tooltip(page: Page) -> Option<&'static str> {
         Page::Controller => "horizon.pages.controller.tooltip",
         Page::Extras => "horizon.pages.extras.tooltip",
         Page::Pvp => "horizon.pages.pvp.tooltip",
-        Page::Imc => "horizon.pages.imc.tooltip",
         Page::TouchButtons => "horizon.pages.touch_buttons.tooltip",
         Page::Agent => "horizon.pages.agent.tooltip",
         Page::SplitProfiles => "horizon.pages.split_profiles.tooltip",
@@ -1932,10 +1921,6 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
     if let Act::Extra(item) = act {
         tip = Some(Text::literal(item.description_text()));
     }
-    if let Act::Imc(item) = act {
-        let key = item.description_key();
-        tip = Some(Text::literal(lang::get_or(&key, item.description())));
-    }
     if let Act::Push(page) = act
         && let Some(text) = horizon_page_tooltip(*page)
     {
@@ -1947,11 +1932,8 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         Act::Push(Page::Accessibility) => Some("options.accessibility.tooltip".into()),
         Act::PvpPreset => Some("horizon.pvp.preset.tooltip".into()),
         Act::HudEditor => Some("horizon.pvp.editor.tooltip".into()),
-        Act::TouchEditor => Some("horizon.imc.editor.tooltip".into()),
-        Act::TouchCalibrate => Some("horizon.imc.calibrate.tooltip".into()),
         Act::TouchExtra(e) => Some(format!("horizon.imc.extra.{}.tooltip", e.name()).into()),
         Act::TouchExtraKey(_) => Some("horizon.imc.extra.key.tooltip".into()),
-        Act::MobilePreset => Some("horizon.imc.mobile.tooltip".into()),
         _ => None,
     };
     if let Some(key) = key.filter(|key| lang::has(key)) {
@@ -2154,7 +2136,10 @@ impl OptionsUi {
                     .pack_screen
                     .as_ref()
                     .is_some_and(|p| p.search_focused()),
-                Page::Graphics | Page::GraphicsAdvanced | Page::GraphicsHdr => {
+                Page::Graphics
+                | Page::GraphicsAdvanced
+                | Page::GraphicsHdr
+                | Page::GraphicsImc => {
                     self.graphics.typing()
                 }
                 Page::Controller | Page::PadBinds => self.controller.typing(),
@@ -2345,6 +2330,23 @@ impl OptionsUi {
                     events.push(Event::OpenShaderOptions);
                     self.push(Page::ShaderPacks);
                 }
+                // The iMC page's press rows, which do what the old page's buttons did.
+                Action::Imc(what) => {
+                    use crate::graphics_ui::ImcDo;
+                    match what {
+                        ImcDo::MobilePreset => {
+                            crate::mobile_preset::apply(s);
+                            events.push(Event::Changed);
+                        }
+                        ImcDo::EditControls => events.push(Event::TouchEditor),
+                        ImcDo::Calibrate => events.push(Event::TouchCalibrate),
+                        ImcDo::Reset => {
+                            s.imc.reset();
+                            events.push(Event::Changed);
+                        }
+                        ImcDo::ExtraButtons => self.push(Page::TouchButtons),
+                    }
+                }
                 Action::Done => events.extend(self.back(s)),
             }
         }
@@ -2432,6 +2434,7 @@ impl OptionsUi {
             Page::Graphics => Some(crate::graphics_ui::Page::General),
             Page::GraphicsAdvanced => Some(crate::graphics_ui::Page::Advanced),
             Page::GraphicsHdr => Some(crate::graphics_ui::Page::Hdr),
+            Page::GraphicsImc => Some(crate::graphics_ui::Page::Imc),
             _ => None,
         }
     }
@@ -2456,13 +2459,14 @@ impl OptionsUi {
             Page::NativeMod(_) => "Mod Settings",
             Page::ShaderPacks => "horizon.pages.shader_packs",
             Page::ShaderOptions => "horizon.pages.shader_options",
-            Page::Graphics | Page::GraphicsAdvanced | Page::GraphicsHdr | Page::HdrCalibration => {
-                "options.videoTitle"
-            }
+            Page::Graphics
+            | Page::GraphicsAdvanced
+            | Page::GraphicsHdr
+            | Page::GraphicsImc
+            | Page::HdrCalibration => "options.videoTitle",
             Page::Controller | Page::PadBinds => "horizon.pages.controller",
             Page::Extras => "horizon.pages.extras",
             Page::Pvp => "horizon.pages.pvp",
-            Page::Imc => "horizon.pages.imc",
             Page::TouchButtons => "horizon.pages.touch_buttons",
             Page::Credits => "credits_and_attribution.screen.title",
             Page::Horizon => "horizon.pages.settings",
@@ -2795,7 +2799,6 @@ impl OptionsUi {
                         ),
                         Some(open("horizon.pages.open.studio", Page::Studio)),
                     ),
-                    Row::Buttons(open("horizon.pages.open.imc", Page::Imc), None),
                     // No AI hides the AI Agent page and everything AI.
                     Row::Buttons(
                         self.extra_button(s, crate::extras::Item::DiscordPresence),
@@ -2813,131 +2816,6 @@ impl OptionsUi {
                     }),
                 )
                 .collect()
-            }
-            Page::Imc => {
-                use horizon_client_input::imc_settings::{HEAVY, Item};
-                let imc = |item: Item| {
-                    let on_off = |v: &str| match v {
-                        "On" => lang::get_or("options.on", "ON"),
-                        "Off" => lang::get_or("options.off", "OFF"),
-                        other => other.to_owned(),
-                    };
-                    let value = Text::option_name_value(
-                        Text::literal(lang::get_or(&item.caption_key(), item.caption())),
-                        Text::literal(on_off(s.imc.value(item))),
-                    )
-                    .plain();
-                    let widget = button(0.0, 0.0, 150.0, Text::literal(value), Act::Imc(item));
-                    // A setting of Auto Performance does nothing while it is off.
-                    if s.imc.is_active(item) {
-                        widget
-                    } else {
-                        inactive(widget)
-                    }
-                };
-                // A grey line under a group: the cost of what is on, in the player's language.
-                // One line is about 64 characters wide, so a longer notice runs onto the next.
-                let notes = |text: String| -> Vec<Row> {
-                    wrap(&text, 64).into_iter().map(Row::Note).collect()
-                };
-                let cost = |item: Item| -> Vec<Row> {
-                    item.cost()
-                        .map(|c| notes(lang::get_or(&item.cost_key(), c)))
-                        .unwrap_or_default()
-                };
-                let mut rows = vec![Row::Header("horizon.imc.header.controls")];
-                // Two to a row, as the other Horizon pages lay out their switches.
-                for pair in [
-                    [Item::Controls, Item::DoubleTapJump],
-                    [Item::LookSpeed, Item::HoldTime],
-                    [Item::StickSize, Item::MoveZone],
-                ] {
-                    rows.push(Row::Buttons(imc(pair[0]), Some(imc(pair[1]))));
-                }
-                rows.push(Row::Header("horizon.imc.header.screen"));
-                rows.push(Row::Buttons(
-                    imc(Item::SafeMargin),
-                    Some(imc(Item::AutoSprint)),
-                ));
-                // Which of the engine's settings an iPhone has no use for.
-                rows.push(Row::Buttons(
-                    imc(Item::GreyUnused),
-                    Some(imc(Item::MenuTouch)),
-                ));
-                // The cursor: a pointer the finger moves like a trackpad. The button on the
-                // screen switches to it; this one brings it up in inventories by itself.
-                rows.push(Row::Header("horizon.imc.header.cursor"));
-                rows.push(Row::Buttons(
-                    imc(Item::CursorInventory),
-                    Some(imc(Item::CursorSpeed)),
-                ));
-                // Where a finger lands. Only needed if the touch is off on this phone.
-                rows.push(Row::Buttons(imc(Item::ShiftX), Some(imc(Item::ShiftY))));
-                // Where the on-screen buttons answer, for a phone where they sit off the finger.
-                rows.push(Row::Buttons(
-                    imc(Item::ButtonShiftX),
-                    Some(imc(Item::ButtonShiftY)),
-                ));
-                // Performance: the switch, how early it reacts, then what it may give up.
-                rows.push(Row::Header("horizon.imc.header.performance"));
-                rows.push(Row::Buttons(
-                    imc(Item::AutoPerformance),
-                    Some(imc(Item::AutoSensitivity)),
-                ));
-                rows.extend(cost(Item::AutoPerformance));
-                // What it is doing right now, so the player can see it work.
-                for line in self.perf_status.iter() {
-                    rows.extend(notes(line.clone()));
-                }
-                rows.push(Row::Buttons(
-                    imc(Item::AutoRenderDistance),
-                    Some(imc(Item::AutoMinDistance)),
-                ));
-                rows.extend(cost(Item::AutoRenderDistance));
-                rows.push(Row::Buttons(
-                    imc(Item::AutoFarTerrain),
-                    Some(imc(Item::AutoResolution)),
-                ));
-                rows.extend(cost(Item::AutoFarTerrain));
-                rows.extend(cost(Item::AutoResolution));
-                // The engine's own settings that cost the most on a phone, so the player knows
-                // what they are changing on the Video and Graphics pages.
-                rows.push(Row::Header("horizon.imc.header.heavy"));
-                for h in HEAVY {
-                    rows.extend(notes(format!(
-                        "{}: {}",
-                        lang::get_or(h.name_key, h.name),
-                        lang::get_or(&format!("horizon.imc.heavy.{}", h.name_key), h.notice),
-                    )));
-                }
-                // The editor moves the buttons over the real view: only from a world.
-                let edit = button(0.0, 0.0, 150.0, tr("horizon.imc.editor"), Act::TouchEditor);
-                let edit = if self.in_world { edit } else { inactive(edit) };
-                rows.push(Row::Buttons(
-                    button(0.0, 0.0, 150.0, tr("horizon.imc.mobile"), Act::MobilePreset),
-                    Some(edit),
-                ));
-                rows.push(Row::Buttons(
-                    button(
-                        0.0,
-                        0.0,
-                        150.0,
-                        tr("horizon.imc.extra_buttons"),
-                        Act::Push(Page::TouchButtons),
-                    ),
-                    None,
-                ));
-                rows.push(Row::Buttons(
-                    button(0.0, 0.0, 150.0, tr("horizon.imc.reset"), Act::ImcReset),
-                    Some(button(
-                        0.0,
-                        0.0,
-                        150.0,
-                        tr("horizon.imc.calibrate"),
-                        Act::TouchCalibrate,
-                    )),
-                ));
-                rows
             }
             Page::TouchButtons => {
                 use horizon_client_input::touch_extras::{Extra, key_caption};
@@ -4469,14 +4347,6 @@ impl OptionsUi {
                                 events.push(Event::Changed);
                             }
                         }
-                        Act::Imc(item) => {
-                            s.imc.cycle(item, self.shift);
-                            events.push(Event::Changed);
-                        }
-                        Act::ImcReset => {
-                            s.imc.reset();
-                            events.push(Event::Changed);
-                        }
                         Act::TouchExtra(e) => {
                             s.touch_extras.toggle(e);
                             events.push(Event::Changed);
@@ -4541,12 +4411,6 @@ impl OptionsUi {
                             events.push(Event::Changed);
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
-                        Act::TouchEditor => events.push(Event::TouchEditor),
-                        Act::TouchCalibrate => events.push(Event::TouchCalibrate),
-                        Act::MobilePreset => {
-                            crate::mobile_preset::apply(s);
-                            events.push(Event::Changed);
-                        }
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
@@ -5427,14 +5291,6 @@ impl OptionsUi {
                                 events.push(Event::Changed);
                             }
                         }
-                        Act::Imc(item) => {
-                            s.imc.cycle(item, shift);
-                            events.push(Event::Changed);
-                        }
-                        Act::ImcReset => {
-                            s.imc.reset();
-                            events.push(Event::Changed);
-                        }
                         Act::TouchExtra(e) => {
                             s.touch_extras.toggle(e);
                             events.push(Event::Changed);
@@ -5501,12 +5357,6 @@ impl OptionsUi {
                             events.push(Event::Changed);
                         }
                         Act::HudEditor => events.push(Event::HudEditor),
-                        Act::TouchEditor => events.push(Event::TouchEditor),
-                        Act::TouchCalibrate => events.push(Event::TouchCalibrate),
-                        Act::MobilePreset => {
-                            crate::mobile_preset::apply(s);
-                            events.push(Event::Changed);
-                        }
                         Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
@@ -7759,6 +7609,8 @@ mod tests {
                     Item::Vanilla(o) => format!("{o:?}"),
                     Item::Horizon(h) => format!("graphics:{h:?}"),
                     Item::Extra(e) => format!("extra:{e:?}"),
+                    Item::Imc(i) => format!("imc:{i:?}"),
+                    Item::ImcDo(d) => format!("imc-do:{d:?}"),
                 };
                 graphics_rows.insert(id.clone());
                 put(id, "Graphics");
@@ -7782,7 +7634,6 @@ mod tests {
                         Act::Cycle(opt) => format!("{opt:?}"),
                         Act::Extra(e) => format!("extra:{e:?}"),
                         Act::PvpPreset => "pvp-preset".to_owned(),
-                        Act::MobilePreset => "mobile-preset".to_owned(),
                         Act::TouchExtra(e) => format!("touch-extra:{}", e.name()),
                         Act::TouchExtraKey(e) => format!("touch-extra-key:{}", e.name()),
                         Act::Push(to) => {
@@ -7930,7 +7781,6 @@ mod tests {
                 Page::Pvp,
                 Page::SplitSetup,
                 Page::Studio,
-                Page::Imc,
                 Page::Agent,
             ]
         );
@@ -7963,26 +7813,40 @@ mod tests {
     }
 
     #[test]
-    fn imc_settings_page_lists_every_item_and_a_click_changes_and_saves_it() {
+    fn imc_settings_are_a_page_of_the_video_screen_not_of_horizon_settings() {
+        use crate::graphics_ui::{Item as G, Page as GP, rows};
         use horizon_client_input::imc_settings::Item;
-        let mut s = Settings::default();
-        let mut ui = OptionsUi::default();
-        ui.show(Page::Imc);
-        let (widgets, _, _, _) = ui.layout(&s, 427.0, 240.0);
-        let acts: Vec<&Act> = widgets
-            .iter()
-            .filter_map(|w| match &w.kind {
-                WKind::Button { act, .. } => Some(act),
-                _ => None,
-            })
+        // Every iMC setting is a row of the Video screen's iMC page, exactly once.
+        let on_page: Vec<_> = rows()
+            .into_iter()
+            .filter(|(p, _)| *p == GP::Imc)
+            .flat_map(|(_, groups)| groups)
+            .flat_map(|(_, rows)| rows)
+            .map(|r| r.item)
             .collect();
         for item in Item::ALL {
-            assert!(acts.contains(&&Act::Imc(item)), "{item:?} has no button");
+            assert_eq!(
+                on_page.iter().filter(|i| **i == G::Imc(item)).count(),
+                1,
+                "{item:?}"
+            );
         }
-        assert!(acts.contains(&&Act::ImcReset));
-        // A click cycles the setting and asks for it to be saved.
+        // The old page and its button are gone from Horizon Settings.
+        let s = Settings::default();
+        let mut ui = OptionsUi::default();
+        ui.show(Page::Horizon);
+        let (widgets, _, _, _) = ui.layout(&s, 427.0, 240.0);
+        assert!(!widgets.iter().any(|w| matches!(
+            &w.kind,
+            WKind::Button {
+                act: Act::Push(Page::GraphicsImc),
+                ..
+            }
+        )));
+        // A click cycles the setting; Reset puts it back.
+        let mut s = Settings::default();
         let before = s.imc.clone();
-        s.imc.cycle(Item::LookSpeed, false);
+        G::Imc(Item::LookSpeed).cycle(&mut s, false, [0, 0]);
         assert_ne!(s.imc, before);
         s.imc.reset();
         assert_eq!(s.imc, before);
