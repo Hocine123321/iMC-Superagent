@@ -3,6 +3,7 @@
 #import "GlassControls.h"
 #import "LauncherModel.h"
 #import "Downloader.h"
+#import "DownloadRate.h"
 #import "AccountClient.h"
 #import "AccountStore.h"
 #import "AccountModel.h"
@@ -14,6 +15,7 @@ static NSString *const kVersion = @"26.3";
 @property (strong) HZGlassProgress *bar;
 @property (strong) UIButton *startButton, *stopButton;
 @property (strong) HZDownloader *downloader;
+@property (strong) HZDownloadRate *rate;   // speed and time left, fed from the progress callbacks
 @property (nonatomic) BOOL busy;
 @end
 
@@ -146,6 +148,7 @@ static NSString *Bytes(unsigned long long b) {
     self.stopButton.enabled = YES;
     // Keep the screen awake while a 673 MB download runs; restored when it ends.
     UIApplication.sharedApplication.idleTimerDisabled = YES;
+    self.rate = [HZDownloadRate new];
     __weak typeof(self) weak = self;
     [self.downloader startWithProgress:^(HZDownloadProgress *p) { [weak apply:p]; }];
 }
@@ -201,8 +204,16 @@ static NSString *Bytes(unsigned long long b) {
     }
     if (p.bytesTotal > 0) {
         self.bar.progress = (float)((double)p.bytesDone / (double)p.bytesTotal);
-        self.numbersLabel.text = [NSString stringWithFormat:@"%@ of %@   (%lu of %lu files)", Bytes(p.bytesDone), Bytes(p.bytesTotal),
-                                  (unsigned long)p.filesDone, (unsigned long)p.filesTotal];
+        NSString *numbers = [NSString stringWithFormat:@"%@ of %@   (%lu of %lu files)", Bytes(p.bytesDone), Bytes(p.bytesTotal),
+                             (unsigned long)p.filesDone, (unsigned long)p.filesTotal];
+        // Speed and time left only while files are really coming in, and only once there is enough to be honest.
+        if (p.phase == HZPhaseDownloading) {
+            [self.rate noteBytes:p.bytesDone at:NSProcessInfo.processInfo.systemUptime];
+            NSString *speed = [self.rate speedText];
+            NSString *left = [self.rate timeLeftTextForRemaining:p.bytesTotal > p.bytesDone ? p.bytesTotal - p.bytesDone : 0];
+            if (speed) numbers = [numbers stringByAppendingFormat:@"\n%@%@", speed, left ? [@"  ·  " stringByAppendingString:left] : @""];
+        }
+        self.numbersLabel.text = numbers;
     }
 }
 
