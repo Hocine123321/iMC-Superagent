@@ -1,14 +1,35 @@
 #import "GlassControls.h"
 #import "LauncherTheme.h"
+#import "LauncherPrefs.h"
 
+// 2026-11-10: the first version drew these on UIGlassEffect. On the launcher's near-black background glass
+// has nothing to refract, so it came out as a black slab with no visible selection (the owner's screenshot).
+// These are now plain solid controls in the launcher's colours: a clear track, an accent fill, a white knob.
 static const CGFloat kTrackHeight = 8;
 
-// A rounded glass (or blur) surface, never stealing touches.
-static UIVisualEffectView *Surface(UIColor *tint, BOOL interactive, CGFloat radius) {
-    UIVisualEffectView *v = [HZTheme glassViewWithTint:tint interactive:interactive cornerRadius:radius];
+static UIColor *Track(void) {
+    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
+        return t.userInterfaceStyle == UIUserInterfaceStyleLight ? [UIColor colorWithWhite:0 alpha:0.12] : [UIColor colorWithWhite:1 alpha:0.18];
+    }];
+}
+static UIColor *Knob(void) { return UIColor.whiteColor; }
+static void Shadow(UIView *v, CGFloat radius, float opacity) {
+    v.layer.shadowColor = UIColor.blackColor.CGColor;
+    v.layer.shadowOpacity = opacity;
+    v.layer.shadowRadius = radius;
+    v.layer.shadowOffset = CGSizeMake(0, 2);
+}
+// A rounded solid view.
+static UIView *Pill(UIColor *color, CGFloat radius) {
+    UIView *v = [UIView new];
+    v.backgroundColor = color;
+    v.layer.cornerRadius = radius;
+    v.layer.cornerCurve = kCACornerCurveContinuous;
     v.userInteractionEnabled = NO;
+    v.translatesAutoresizingMaskIntoConstraints = NO;
     return v;
 }
+
 static void Pin(UIView *v, UIView *to) {
     v.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
@@ -16,12 +37,17 @@ static void Pin(UIView *v, UIView *to) {
         [v.topAnchor constraintEqualToAnchor:to.topAnchor], [v.bottomAnchor constraintEqualToAnchor:to.bottomAnchor]]];
 }
 static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]; }
+// A spring, or an instant change when the person asked for less motion (Settings, or the phone's own switch).
+static void Animate(void (^change)(void)) {
+    if ([HZPrefs reduceMotion] || UIAccessibilityIsReduceMotionEnabled()) { change(); return; }
+    [UIView animateWithDuration:0.35 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.4 options:UIViewAnimationOptionBeginFromCurrentState animations:change completion:nil];
+}
 
 #pragma mark - Segmented
 
 @implementation HZGlassSegmented {
     NSArray<UILabel *> *_labels;
-    UIVisualEffectView *_track, *_thumb;
+    UIView *_track, *_thumb;
     NSLayoutConstraint *_thumbLeading, *_thumbWidth;
     NSInteger _selected;
 }
@@ -30,11 +56,11 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
     if ((self = [super initWithFrame:CGRectZero])) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.isAccessibilityElement = NO;
-        _track = Surface(nil, NO, 20);
+        _track = Pill(Track(), 20);
         [self addSubview:_track];
         Pin(_track, self);
-        // The selected segment is a second, tinted glass pill that slides.
-        _thumb = Surface([[HZTheme accent] colorWithAlphaComponent:0.55], YES, 17);
+        // The selected segment is an accent pill that slides under the labels.
+        _thumb = Pill([HZTheme accent], 17);
         _thumb.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_thumb];
         NSMutableArray *labels = [NSMutableArray array];
@@ -67,8 +93,13 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
 }
 
 - (CGFloat)segmentWidth { return _labels.count ? (self.bounds.size.width - 6) / (CGFloat)_labels.count : 0; }
+- (void)colourLabels {
+    for (NSUInteger i = 0; i < _labels.count; i++)
+        _labels[i].textColor = (NSInteger)i == _selected ? [HZTheme onAccent] : [HZTheme secondaryText];
+}
 - (void)layoutSubviews {
     [super layoutSubviews];
+    [self colourLabels];
     _thumbWidth.constant = [self segmentWidth];
     _thumbLeading.constant = 3 + [self segmentWidth] * (CGFloat)_selected;
 }
@@ -76,9 +107,8 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
 - (void)setSelectedSegmentIndex:(NSInteger)i {
     _selected = MAX(0, MIN(i, (NSInteger)_labels.count - 1));
     self.accessibilityValue = _selected < (NSInteger)_labels.count ? _labels[(NSUInteger)_selected].text : nil;
-    [UIView animateWithDuration:0.35 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.4 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
-        [self setNeedsLayout]; [self layoutIfNeeded];
-    } completion:nil];
+    [self colourLabels];
+    Animate(^{ [self setNeedsLayout]; [self layoutIfNeeded]; });
 }
 - (void)tapped:(UIControl *)c forEvent:(UIEvent *)e {
     CGPoint pt = [[e touchesForView:self].anyObject locationInView:self];
@@ -97,7 +127,7 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
 #pragma mark - Slider
 
 @implementation HZGlassSlider {
-    UIVisualEffectView *_track, *_fill, *_thumb;
+    UIView *_track, *_fill, *_thumb;
     NSLayoutConstraint *_fillWidth, *_thumbCenter;
     float _value;
     BOOL _dragging;
@@ -107,9 +137,10 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
     if ((self = [super initWithFrame:f])) {
         _minimumValue = 0; _maximumValue = 1; _value = 0; _continuous = YES;
         self.translatesAutoresizingMaskIntoConstraints = NO;
-        _track = Surface(nil, NO, kTrackHeight / 2);
-        _fill = Surface([[HZTheme accent] colorWithAlphaComponent:0.9], NO, kTrackHeight / 2);
-        _thumb = Surface(nil, YES, 16);
+        _track = Pill(Track(), kTrackHeight / 2);
+        _fill = Pill([HZTheme accent], kTrackHeight / 2);
+        _thumb = Pill(Knob(), 16);
+        Shadow(_thumb, 4, 0.35);
         for (UIView *v in @[_track, _fill, _thumb]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self addSubview:v]; }
         _fillWidth = [_fill.widthAnchor constraintEqualToConstant:0];
         _thumbCenter = [_thumb.centerXAnchor constraintEqualToAnchor:self.leadingAnchor constant:16];
@@ -170,21 +201,22 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
 #pragma mark - Switch
 
 @implementation HZGlassSwitch {
-    UIVisualEffectView *_track, *_knob;
+    UIView *_track, *_knob;
     NSLayoutConstraint *_knobLeading;
     BOOL _on;
 }
 - (instancetype)initWithFrame:(CGRect)f {
     if ((self = [super initWithFrame:f])) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
-        _track = Surface(nil, NO, 16);
-        _knob = Surface(nil, YES, 14);
+        _track = Pill(Track(), 16);
+        _knob = Pill(Knob(), 13);
+        Shadow(_knob, 3, 0.35);
         for (UIView *v in @[_track, _knob]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self addSubview:v]; }
         Pin(_track, self);
         _knobLeading = [_knob.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:2];
         [NSLayoutConstraint activateConstraints:@[
             [self.widthAnchor constraintEqualToConstant:64], [self.heightAnchor constraintEqualToConstant:32],
-            [_knob.widthAnchor constraintEqualToConstant:40], [_knob.heightAnchor constraintEqualToConstant:28],
+            [_knob.widthAnchor constraintEqualToConstant:36], [_knob.heightAnchor constraintEqualToConstant:26],
             [_knob.centerYAnchor constraintEqualToAnchor:self.centerYAnchor], _knobLeading]];
         [self addTarget:self action:@selector(toggle) forControlEvents:UIControlEventTouchUpInside];
         self.isAccessibilityElement = YES;
@@ -198,13 +230,11 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
 - (void)setOn:(BOOL)on animated:(BOOL)animated {
     _on = on;
     void (^change)(void) = ^{ [self apply]; [self layoutIfNeeded]; };
-    if (animated) [UIView animateWithDuration:0.35 delay:0 usingSpringWithDamping:0.7 initialSpringVelocity:0.3 options:0 animations:change completion:nil]; else change();
+    if (animated) Animate(change); else change();
 }
 - (void)apply {
-    _knobLeading.constant = _on ? 64 - 40 - 2 : 2;
-    // The track takes the accent colour when on. The glass view's own tint cannot be changed after it is made,
-    // so the colour sits in its content view.
-    _track.contentView.backgroundColor = _on ? [[HZTheme accent] colorWithAlphaComponent:0.7] : UIColor.clearColor;
+    _knobLeading.constant = _on ? 64 - 36 - 3 : 3;
+    _track.backgroundColor = _on ? [HZTheme accent] : Track();
     self.accessibilityValue = _on ? @"On" : @"Off";
 }
 - (void)toggle { [self setOn:!_on animated:YES]; Haptic(); [self sendActionsForControlEvents:UIControlEventValueChanged]; }
@@ -214,15 +244,15 @@ static void Haptic(void) { [[UISelectionFeedbackGenerator new] selectionChanged]
 #pragma mark - Progress
 
 @implementation HZGlassProgress {
-    UIVisualEffectView *_track, *_fill;
+    UIView *_track, *_fill;
     NSLayoutConstraint *_fillWidth;
     float _progress;
 }
 - (instancetype)initWithFrame:(CGRect)f {
     if ((self = [super initWithFrame:f])) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
-        _track = Surface(nil, NO, 7);
-        _fill = Surface([[HZTheme accent] colorWithAlphaComponent:0.9], NO, 7);
+        _track = Pill(Track(), 7);
+        _fill = Pill([HZTheme accent], 7);
         for (UIView *v in @[_track, _fill]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self addSubview:v]; }
         Pin(_track, self);
         _fillWidth = [_fill.widthAnchor constraintEqualToConstant:0];

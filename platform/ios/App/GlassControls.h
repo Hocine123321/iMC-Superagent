@@ -1,8 +1,8 @@
-// Glass controls drawn by the app (see LauncherTheme.h for why): a segmented control, a slider, a switch
-// and a progress bar. Each sits on a UIGlassEffect surface where the phone has one (iOS 26 and later,
-// found at run time) and on a system blur material where it does not. They are UIControls: they send
-// UIControlEventValueChanged, so they are used like the UIKit controls they stand in for.
-// Written 2026-11-10 against Apple's UIGlassEffect documentation; never run on a phone.
+// Controls drawn by the app: a segmented control, a slider, a switch and a progress bar. The names say
+// Glass because the first version tried Liquid Glass; they are now plain solid controls (a clear track, an
+// accent fill, a white knob) because glass over the launcher's dark background shows nothing. They are
+// UIControls and send UIControlEventValueChanged, so they are used like the UIKit controls they replace.
+// Never run on a phone.
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN

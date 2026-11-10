@@ -1,11 +1,16 @@
 #import "MarketInstaller.h"
 #import <CommonCrypto/CommonDigest.h>
+#import <zlib.h>
 
 static NSString *const kManifest = @"mod-browser.json";
 static NSString *const kModsList = @"horizon-mods.txt";
 static NSString *const kModsDir = @"horizon-mods";
 
 @implementation HZInstalledEntry
+@end
+
+@interface HZMarketInstaller ()
+- (nullable NSString *)removeProject:(NSString *)projectId source:(NSString *)source;
 @end
 
 @implementation HZMarketInstaller {
@@ -102,7 +107,7 @@ static NSString *const kModsDir = @"horizon-mods";
 - (NSArray<HZInstalledEntry *> *)installed {
     NSMutableArray *out = [NSMutableArray array];
     for (NSDictionary *e in [self rawEntries]) {
-        if (![e[@"source"] isEqual:@"horizon"]) continue;   // only what the Horizon registry installed
+        if (![e[@"source"] isEqual:@"horizon"] && ![e[@"source"] isEqual:@"modrinth"]) continue;   // only what this app's sources installed
         NSString *file = e[@"file"];
         if (![file isKindOfClass:[NSString class]] || ![[self class] fileIsInsideInstallFolders:file]) continue;
         HZInstalledEntry *x = [HZInstalledEntry new];
@@ -113,13 +118,18 @@ static NSString *const kModsDir = @"horizon-mods";
         x.file = file;
         x.checksum = e[@"checksum"] ?: @"";
         x.verdict = e[@"verdict"] ?: @"";
+        x.source = e[@"source"];
         [out addObject:x];
     }
     return out;
 }
 
 - (HZInstalledEntry *)installedEntryForProject:(NSString *)projectId {
-    for (HZInstalledEntry *e in [self installed]) if ([e.projectId isEqualToString:projectId]) return e;
+    for (HZInstalledEntry *e in [self installed]) if ([e.source isEqual:@"horizon"] && [e.projectId isEqualToString:projectId]) return e;
+    return nil;
+}
+- (HZInstalledEntry *)installedEntryForModrinth:(NSString *)modrinthId {
+    for (HZInstalledEntry *e in [self installed]) if ([e.source isEqual:@"modrinth"] && [e.projectId isEqualToString:modrinthId]) return e;
     return nil;
 }
 
@@ -223,7 +233,7 @@ static NSString *const kModsDir = @"horizon-mods";
 
     NSDictionary *entry = @{
         @"source": @"horizon", @"project": p.projectId, @"slug": p.projectId, @"title": p.name,
-        @"kind": [p.kind isEqualToString:@"mod"] ? @"mod" : p.kind,
+        @"kind": [p.kind isEqualToString:@"resourcepack"] ? @"resource-pack" : p.kind,   // the desktop reads kebab-case: "resource-pack"
         @"version": v.version, @"number": v.version, @"file": relative,
         @"checksum": [@"SHA-256:" stringByAppendingString:v.file.sha256],
         @"page": [@"https://horizon-rust.github.io/horizon-mods/" stringByAppendingString:p.projectId],
@@ -241,11 +251,14 @@ static NSString *const kModsDir = @"horizon-mods";
     return nil;
 }
 
-- (NSString *)removeProject:(NSString *)projectId {
+- (NSString *)removeProject:(NSString *)projectId { return [self removeProject:projectId source:@"horizon"]; }
+- (NSString *)removeModrinth:(NSString *)modrinthId { return [self removeProject:modrinthId source:@"modrinth"]; }
+
+- (NSString *)removeProject:(NSString *)projectId source:(NSString *)source {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray<NSDictionary *> *entries = [self rawEntries];
     NSDictionary *mine = nil;
-    for (NSDictionary *e in entries) if ([e[@"source"] isEqual:@"horizon"] && [e[@"project"] isEqual:projectId]) { mine = e; break; }
+    for (NSDictionary *e in entries) if ([e[@"source"] isEqual:source] && [e[@"project"] isEqual:projectId]) { mine = e; break; }
     if (!mine) return @"That project is not installed by this app.";
     NSString *file = mine[@"file"];
     if (![file isKindOfClass:[NSString class]] || ![[self class] fileIsInsideInstallFolders:file]) return @"The record names a file outside the install folders, so the app will not touch it.";
@@ -259,6 +272,135 @@ static NSString *const kModsDir = @"horizon-mods";
     for (NSDictionary *e in entries) if (e != mine) [next addObject:e];
     if (![self saveRawEntries:next]) return @"The file was removed but the record could not be updated.";
     if ([mine[@"kind"] isEqual:@"mod"]) [self setMod:projectId enabled:NO];
+    return nil;
+}
+
+#pragma mark - Modrinth resource packs
+
++ (NSString *)hexOf:(unsigned char *)bytes length:(int)n {
+    NSMutableString *hex = [NSMutableString stringWithCapacity:(NSUInteger)n * 2];
+    for (int i = 0; i < n; i++) [hex appendFormat:@"%02x", bytes[i]];
+    return hex;
+}
++ (NSString *)sha512OfFileAtPath:(NSString *)path {
+    NSFileHandle *h = [NSFileHandle fileHandleForReadingAtPath:path];
+    if (!h) return nil;
+    CC_SHA512_CTX ctx; CC_SHA512_Init(&ctx);
+    while (YES) { @autoreleasepool { NSData *c = [h readDataOfLength:1 << 16]; if (!c.length) break; CC_SHA512_Update(&ctx, c.bytes, (CC_LONG)c.length); } }
+    [h closeFile];
+    unsigned char out[CC_SHA512_DIGEST_LENGTH]; CC_SHA512_Final(out, &ctx);
+    return [self hexOf:out length:CC_SHA512_DIGEST_LENGTH];
+}
++ (NSString *)sha1OfFileAtPath:(NSString *)path {
+    NSFileHandle *h = [NSFileHandle fileHandleForReadingAtPath:path];
+    if (!h) return nil;
+    CC_SHA1_CTX ctx; CC_SHA1_Init(&ctx);
+    while (YES) { @autoreleasepool { NSData *c = [h readDataOfLength:1 << 16]; if (!c.length) break; CC_SHA1_Update(&ctx, c.bytes, (CC_LONG)c.length); } }
+    [h closeFile];
+    unsigned char out[CC_SHA1_DIGEST_LENGTH]; CC_SHA1_Final(out, &ctx);
+    return [self hexOf:out length:CC_SHA1_DIGEST_LENGTH];
+}
+
+static uint32_t LE32(const unsigned char *p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+static uint16_t LE16(const unsigned char *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+
+// Reads the names from the ZIP's central directory: the end record (PK\5\6) is searched in the last 64 KB,
+// it points at the directory, which is a list of PK\1\2 entries. A file that is not laid out this way, or whose
+// directory runs past the file, is refused (nil). Nothing is unzipped.
++ (NSArray<NSString *> *)zipEntryNamesAtPath:(NSString *)path {
+    NSData *file = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+    if (file.length < 22 || file.length > [HZMarketIndex maxFileBytes]) return nil;
+    const unsigned char *b = file.bytes; NSUInteger n = file.length;
+    NSUInteger searchFrom = n > 22 + 65535 ? n - 22 - 65535 : 0, eocd = NSNotFound;
+    for (NSUInteger i = n - 22 + 1; i-- > searchFrom;) if (LE32(b + i) == 0x06054b50) { eocd = i; break; }
+    if (eocd == NSNotFound) return nil;
+    uint16_t count = LE16(b + eocd + 10); uint32_t dirSize = LE32(b + eocd + 12), dirOff = LE32(b + eocd + 16);
+    if ((uint64_t)dirOff + dirSize > n || count == 0xFFFF) return nil;   // ZIP64 is not accepted here
+    NSMutableArray *names = [NSMutableArray arrayWithCapacity:count];
+    NSUInteger p = dirOff, end = (NSUInteger)dirOff + dirSize;
+    for (uint16_t i = 0; i < count; i++) {
+        if (p + 46 > end || LE32(b + p) != 0x02014b50) return nil;
+        uint16_t nameLen = LE16(b + p + 28), extraLen = LE16(b + p + 30), commentLen = LE16(b + p + 32);
+        uint16_t flags = LE16(b + p + 8);
+        if (p + 46 + nameLen > end) return nil;
+        NSData *raw = [NSData dataWithBytes:b + p + 46 length:nameLen];
+        NSString *name = [[NSString alloc] initWithData:raw encoding:NSUTF8StringEncoding];
+        if (!name) { if (flags & 0x800) return nil; name = [[NSString alloc] initWithData:raw encoding:NSISOLatin1StringEncoding]; }
+        if (!name) return nil;
+        [names addObject:name];
+        p += 46 + nameLen + extraLen + commentLen;
+    }
+    return names;
+}
+
+// The desktop's plain_zip + pack_format: every path plain, and pack.mcmeta there.
++ (BOOL)resourcePackLooksValidAtPath:(NSString *)path why:(NSString **)why {
+    NSArray<NSString *> *names = [self zipEntryNamesAtPath:path];
+    if (!names) { if (why) *why = @"The file is not a ZIP the app can read."; return NO; }
+    BOOL mcmeta = NO;
+    for (NSString *n in names) {
+        if ([n hasPrefix:@"/"] || [n containsString:@"\\"] || [[n componentsSeparatedByString:@"/"] containsObject:@".."]) {
+            if (why) *why = [NSString stringWithFormat:@"\"%@\" is not a plain path inside the pack.", n]; return NO;
+        }
+        if ([n isEqualToString:@"pack.mcmeta"]) mcmeta = YES;
+    }
+    if (!mcmeta) { if (why) *why = @"There is no pack.mcmeta at the pack's root, so it is not a resource pack."; return NO; }
+    return YES;
+}
+
+- (NSString *)placeModrinthDownloaded:(NSString *)temp project:(HZModrinthProject *)p version:(HZModrinthVersion *)v {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *(^fail)(NSString *) = ^NSString *(NSString *why) { [fm removeItemAtPath:temp error:nil]; return why; };
+    NSString *refusal = [HZModrinthClient refusalForFile:v.file];
+    if (refusal) return fail(refusal);
+    NSDictionary *a = [fm attributesOfItemAtPath:temp error:nil];
+    if (![a.fileType isEqualToString:NSFileTypeRegular]) return fail(@"The download is not a regular file.");
+    if (a.fileSize != v.file.size) return fail([NSString stringWithFormat:@"The file is %llu bytes, Modrinth lists %llu. Nothing was installed.", (unsigned long long)a.fileSize, v.file.size]);
+    // The strongest checksum Modrinth lists, as the desktop does.
+    NSString *algo, *want, *got;
+    if (v.file.sha512.length) { algo = @"SHA-512"; want = v.file.sha512; got = [[self class] sha512OfFileAtPath:temp]; }
+    else { algo = @"SHA-1"; want = v.file.sha1; got = [[self class] sha1OfFileAtPath:temp]; }
+    if (![got isEqualToString:want]) return fail([NSString stringWithFormat:@"The file's %@ is not the one Modrinth lists. Nothing was installed.", algo]);
+    NSString *why = nil;
+    if (![[self class] resourcePackLooksValidAtPath:temp why:&why]) return fail([why stringByAppendingString:@" Nothing was installed."]);
+
+    NSString *relative = [@"resourcepacks" stringByAppendingPathComponent:v.file.name];
+    NSString *target = [_home stringByAppendingPathComponent:relative];
+    NSMutableArray<NSDictionary *> *entries = [self rawEntries];
+    NSDictionary *ours = nil;
+    for (NSDictionary *e in entries) if ([e[@"source"] isEqual:@"modrinth"] && [e[@"project"] isEqual:p.projectId]) { ours = e; break; }
+    for (NSDictionary *e in entries) {
+        if (e == ours) continue;
+        if ([e[@"file"] isEqual:relative]) return fail([NSString stringWithFormat:@"%@ belongs to %@: remove it first.", relative, e[@"title"] ?: @"another install"]);
+    }
+    BOOL exists = [fm fileExistsAtPath:target] || [fm destinationOfSymbolicLinkAtPath:target error:nil];
+    if (exists && ![ours[@"file"] isEqual:relative]) return fail([NSString stringWithFormat:@"%@ is already there and the app did not put it there. Move it away first.", relative]);
+
+    NSError *err = nil;
+    [fm createDirectoryAtPath:[target stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:&err];
+    if (err) return fail(err.localizedDescription);
+    if (exists) {
+        NSURL *res = nil;
+        if (![fm replaceItemAtURL:[NSURL fileURLWithPath:target] withItemAtURL:[NSURL fileURLWithPath:temp] backupItemName:nil options:0 resultingItemURL:&res error:&err])
+            return fail(err.localizedDescription ?: @"Could not replace the old version.");
+    } else if (![fm moveItemAtPath:temp toPath:target error:&err]) {
+        return fail(err.localizedDescription ?: @"Could not move the file into place.");
+    }
+    NSString *oldFile = ours[@"file"];
+    if ([oldFile isKindOfClass:[NSString class]] && ![oldFile isEqual:relative] && [[self class] fileIsInsideInstallFolders:oldFile])
+        [fm removeItemAtPath:[_home stringByAppendingPathComponent:oldFile] error:nil];
+
+    NSDictionary *entry = @{
+        @"source": @"modrinth", @"project": p.projectId, @"slug": p.slug, @"title": p.title,
+        @"kind": @"resource-pack", @"version": v.number, @"number": v.number, @"file": relative,
+        @"checksum": [NSString stringWithFormat:@"%@:%@", v.file.sha512.length ? @"SHA-512" : @"SHA-1", want],
+        @"page": [@"https://modrinth.com/resourcepack/" stringByAppendingString:p.slug],
+        @"dependency": @NO,
+    };
+    NSMutableArray *next = [NSMutableArray array];
+    for (NSDictionary *e in entries) if (e != ours) [next addObject:e];
+    [next addObject:entry];
+    if (![self saveRawEntries:next]) return @"The file is in place but the install record could not be written.";
     return nil;
 }
 

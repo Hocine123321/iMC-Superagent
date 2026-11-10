@@ -20,6 +20,15 @@ NS_ASSUME_NONNULL_BEGIN
    stagingDir:(NSString *)stagingDir
      progress:(void (^)(double fraction))progress
          done:(void (^)(NSString *_Nullable path, NSString *_Nullable error))done;
+// The same download for a file that is not in Horizon's registry. `allowedURL` decides whether the first
+// address is acceptable (Modrinth: its CDN only), and `redirectHosts` lists the only hosts a redirect may
+// go to (Modrinth's CDN answers directly, so that is just cdn.modrinth.com). Nothing else is followed.
+- (void)fetchURL:(NSString *)url
+            size:(unsigned long long)size
+      stagingDir:(NSString *)stagingDir
+   redirectHosts:(NSArray<NSString *> *)redirectHosts
+        progress:(void (^)(double fraction))progress
+            done:(void (^)(NSString *_Nullable path, NSString *_Nullable error))done;
 - (void)cancel;
 @end
 

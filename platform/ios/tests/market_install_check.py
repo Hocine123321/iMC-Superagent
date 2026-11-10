@@ -97,7 +97,7 @@ class Home:
         os.replace(tmp, target)
         old = ours.get("file") if ours else None
         if old and old != rel and inside(old) and os.path.exists(os.path.join(self.h, old)): os.remove(os.path.join(self.h, old))
-        entry = {"source": "horizon", "project": p["id"], "slug": p["id"], "title": p["name"], "kind": p["kind"], "version": v["version"],
+        entry = {"source": "horizon", "project": p["id"], "slug": p["id"], "title": p["name"], "kind": {"resourcepack": "resource-pack"}.get(p["kind"], p["kind"]), "version": v["version"],
                  "number": v["version"], "file": rel, "checksum": "SHA-256:" + v["file"]["sha256"], "dependency": False, "verdict": "Unsigned"}
         self.save([e for e in es if e is not ours] + [entry])
         if p["kind"] == "mod": self.set_mod(p["id"], True)
@@ -198,6 +198,7 @@ check("place: a folder mod with the same id blocks it", h.place(z7, p7, v7) == "
 # resource pack
 z8 = make_zip(os.path.join(d, "dl8.part")); d8 = open(z8, "rb").read(); p8, v8 = project("resourcepack", "pack", "pack-1.0.0.zip", data=d8)
 check("place: a resource pack installs to resourcepacks", h.place(z8, p8, v8) is None and os.path.isfile(os.path.join(d, "resourcepacks/pack-1.0.0.zip")))
+check("place: a resource pack is recorded as kind resource-pack, the desktop's spelling", [e["kind"] for e in h.raw() if e["project"] == "pack"] == ["resource-pack"])
 check("place: a resource pack is not added to horizon-mods.txt", "pack" not in h.mods_text())
 # update of a pack whose file name changes removes the old file
 z9 = make_zip(os.path.join(d, "dl9.part"), b"new"); d9 = open(z9, "rb").read(); p9, v9 = project("resourcepack", "pack", "pack-2.0.0.zip", data=d9); v9["version"] = "2.0.0"

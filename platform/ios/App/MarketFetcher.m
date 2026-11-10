@@ -10,6 +10,7 @@
 @property (nonatomic) NSUInteger redirects;
 @property (nonatomic) BOOL finished;
 @property (copy) NSString *refusal;   // set when the delegate cancels the task on purpose
+@property (copy) NSArray<NSString *> *redirectHosts;   // nil = the GitHub rule (Horizon's registry)
 @end
 
 @implementation HZMarketFetcher
@@ -21,10 +22,20 @@
 }
 
 - (void)fetch:(HZMarketFile *)file stagingDir:(NSString *)stagingDir progress:(void (^)(double))progress done:(void (^)(NSString *, NSString *))done {
-    self.progress = progress; self.done = done; self.stagingDir = stagingDir; self.expected = file.size;
-    if (![HZMarketIndex isRegistryFileURL:file.url]) { [self finishWith:nil error:@"The file is not on the registry's release address."]; return; }
-    NSURL *url = [NSURL URLWithString:file.url];
-    if (!url) { [self finishWith:nil error:@"The file address is not valid."]; return; }
+    if (![HZMarketIndex isRegistryFileURL:file.url]) { done(nil, @"The file is not on the registry's release address."); return; }
+    self.redirectHosts = nil;
+    [self startURL:file.url size:file.size stagingDir:stagingDir progress:progress done:done];
+}
+
+- (void)fetchURL:(NSString *)url size:(unsigned long long)size stagingDir:(NSString *)stagingDir redirectHosts:(NSArray<NSString *> *)hosts progress:(void (^)(double))progress done:(void (^)(NSString *, NSString *))done {
+    self.redirectHosts = hosts;
+    [self startURL:url size:size stagingDir:stagingDir progress:progress done:done];
+}
+
+- (void)startURL:(NSString *)urlString size:(unsigned long long)size stagingDir:(NSString *)stagingDir progress:(void (^)(double))progress done:(void (^)(NSString *, NSString *))done {
+    self.progress = progress; self.done = done; self.stagingDir = stagingDir; self.expected = size;
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url || ![url.scheme.lowercaseString isEqualToString:@"https"]) { [self finishWith:nil error:@"The file address is not valid."]; return; }
     NSError *err = nil;
     [[NSFileManager defaultManager] createDirectoryAtPath:stagingDir withIntermediateDirectories:YES attributes:nil error:&err];
     if (err) { [self finishWith:nil error:err.localizedDescription]; return; }
@@ -60,7 +71,9 @@
 - (void)URLSession:(NSURLSession *)s task:(NSURLSessionTask *)t willPerformHTTPRedirection:(NSHTTPURLResponse *)r newRequest:(NSURLRequest *)req completionHandler:(void (^)(NSURLRequest *))handler {
     self.redirects++;
     NSURL *to = req.URL;
-    if (self.redirects > 5 || !to || ![HZMarketFetcher isAllowedRedirectHost:to.host ?: @"" scheme:to.scheme ?: @""]) {
+    BOOL allowed = to && (self.redirectHosts ? ([to.scheme.lowercaseString isEqualToString:@"https"] && [self.redirectHosts containsObject:to.host.lowercaseString ?: @""])
+                                              : [HZMarketFetcher isAllowedRedirectHost:to.host ?: @"" scheme:to.scheme ?: @""]);
+    if (self.redirects > 5 || !allowed) {
         self.refusal = [NSString stringWithFormat:@"The download was sent to %@, which the app does not allow.", to.host ?: @"an unknown address"];
         handler(nil);       // do not follow
         [t cancel];

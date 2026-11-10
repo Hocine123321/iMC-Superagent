@@ -74,6 +74,27 @@ Follows `launcher/src/browser/horizon.rs` (`install_version_guarded`) and the ga
   folder, a one-bit-flipped real download refused, and the live index judged (23 installable, 2 signed refused).
   It is a Python copy of the logic; the Objective-C was only compiled by CI.
 
+## Modrinth resource packs (2026-11-10, never run on a phone)
+
+Added at the owner's request, **resource packs only**, behind Settings > Marketplace > Modrinth resource packs (off by
+default). Modrinth's mods are Java mods that the desktop ports with a JVM tool, and its shaders are not Horizon's format,
+so neither is offered. Follows `launcher/src/browser/modrinth.rs`, `download.rs`, `browser.rs` (`safe_name`, `pick`).
+
+| Step | Rule |
+|---|---|
+| Search | `api.modrinth.com/v2/search`, facets `project_type:resourcepack` and `versions:26.3`, 30 per page, most downloaded first (or by relevance when you type). 7,136 packs at the time of writing |
+| Version | the newest *listed* version whose `game_versions` contains `26.3`, its primary file; an older one is used if the newest fails a rule |
+| File | only `https://cdn.modrinth.com/data/<id>/versions/<id>/<name>`; one plain name (the desktop's rule: spaces, `§`, `[ ]`, `+` are fine; `/ \ : * ? " < > |`, a leading dot, a trailing dot or space are not); ends in `.zip`; at most 64 MB |
+| Download | redirects only to `cdn.modrinth.com`, cut off at the listed size |
+| Check | size, then **SHA-512** (SHA-1 if that is all it lists), then a ZIP whose every path is plain (no leading `/`, no `..`, no `\`) with `pack.mcmeta` at its root, read from the ZIP's directory without unzipping |
+| Place | `resourcepacks/<name>`, never over a player's file; recorded in `mod-browser.json` with `"source":"modrinth"` and `"kind":"resource-pack"` |
+
+Not reviewed by Horizon: the install confirmation says so. A pack only works if the game loads it; nothing here has put a
+Modrinth pack in the game's list on a phone.
+
+**A bug fixed on the way.** The first install pass recorded a Horizon resource pack as `"kind":"resourcepack"`. The desktop
+reads kinds in kebab-case (`"resource-pack"`), so it would have dropped that entry and not seen the pack. Fixed and tested.
+
 ## Not done
 
 - **Signed projects are refused** (2 of 25 today, e.g. `flesh_to_leather`): the minisign check (Ed25519 + BLAKE2b) is not

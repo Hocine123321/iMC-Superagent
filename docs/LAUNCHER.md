@@ -131,15 +131,22 @@ initialiser `initWithStyle:` (style 0 is `regular`; the enum is `regular`, `clea
 missing property gives plain glass instead of a crash. When the runner gets an iOS 26 SDK, the
 runtime lookup can become a normal `UIGlassEffect` call.
 
-## Second pass (2026-11-10, never run)
+## Second pass (2026-11-10)
 
-- **Real system glass buttons.** `UIButtonConfiguration glassButtonConfiguration` and `prominentGlassButtonConfiguration`
-  (iOS 26, listed on Apple's UIButtonConfiguration page) are called by name at run time, so every button gets the
-  system's own press, morph and highlight, not a glass view behind a label. Older iOS gets a gray or filled button.
-- **Glass slider, switch, segmented control and progress bar** (`GlassControls.{h,m}`). The system turns `UISlider`,
-  `UISwitch` and `UISegmentedControl` into glass only for an app *built* with the iOS 26 SDK (CI has 18.5), so these are
-  drawn by the app on `UIGlassEffect` surfaces (a blur material on older iOS). They send `UIControlEventValueChanged`
-  and support VoiceOver adjust.
-- **Settings page** (Home > ... > Settings): Appearance (glass segmented), Glass strength (glass slider, `glass:0...1`
-  in `launcher.txt`) and "Open straight into the game" (glass switch).
+- **Glass did not work, so it is gone from the controls.** The first pass drew the slider, switch, tabs and progress bar
+  on `UIGlassEffect` and called `glassButtonConfiguration` for buttons. On a phone (iOS 27.2) none of it looked like
+  glass: over the launcher's near-black background there is nothing to refract, and the tabs came out as a black slab with
+  no visible selection. The controls (`GlassControls.{h,m}`, names kept) are now plain: a clear track, an accent fill or
+  pill, a white knob. The Home card is a system blur material with a hairline edge. Buttons still ask the system for
+  `glassButtonConfiguration` / `prominentGlassButtonConfiguration` where it exists (iOS 26+) and fall back to the stock
+  gray/filled style; whether that looks like glass on a phone is **not confirmed**, the owner said it does not.
+- **Marketplace redesign.** Cards (a coloured icon tile per kind, name, kind and source, one-line summary, a pill that
+  says Get / v1.2 / Desktop only) in a plain list, with one row of scrolling chips for the tabs. Both project pages share
+  one layout (`HZMarketPageController`): header, a big Install button with a progress bar, one line saying what happens,
+  the facts on the right.
+- **Settings page** (Home > ... > Settings), grouped: **Look** (Appearance, Background colour, Compact lists, Reduce motion),
+  **Marketplace** (Modrinth resource packs, Show mods, Show shaders, Show everything else, Ask before installing),
+  **Start-up** (Open straight into the game). All saved in `launcher.txt` (`LauncherPrefs.{h,m}`), defaults the safe way.
+- **What the Marketplace shows** (owner's rule): resource packs and Installed by default. Mods, Shaders and Everything are
+  tabs that exist only once their switch is on; Modrinth likewise. Checked by `launcher_prefs_check.py`.
 - **The ... menu** is grouped: Library (File manager, Game files), Tools (Diagnostics), Appearance, Settings, About.

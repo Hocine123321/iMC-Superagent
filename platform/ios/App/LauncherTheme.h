@@ -37,6 +37,11 @@ typedef NS_ENUM(NSInteger, HZAppearance) {
 + (void)applyAppearanceToWindows;
 + (NSString *)nameOfAppearance:(HZAppearance)appearance;
 
+// launcher.txt: one "key:value" per line. These keep every line they do not own (openGame: belongs to
+// LauncherModel and main.m). LauncherPrefs builds the named choices on top of them.
++ (nullable NSString *)settingFor:(NSString *)key;
++ (void)setSetting:(NSString *)value for:(NSString *)key;
+
 // How strongly the colour behind the glass shows, 0...1 (default 0.5). It is what makes glass look like
 // glass, so a person can turn it down. Kept as "glass:" in launcher.txt. Posts HZThemeChanged when set.
 + (float)glassStrength;
@@ -63,10 +68,8 @@ extern NSNotificationName const HZThemeChanged;
 // Changes the title of a button made by the two methods above.
 + (void)setTitle:(NSString *)title onButton:(UIButton *)button;
 
-// Glass controls the iOS 18.5 SDK cannot give us. The system only turns UISlider, UISwitch and
-// UISegmentedControl into glass when an app is BUILT with the iOS 26 SDK, which CI does not have. These
-// are drawn by the app on a glass surface instead, and behave like their UIKit twins (target-action,
-// value, accessibility, dragging).
+// Controls with the launcher's look (GlassControls.h): the stock UISlider, UISwitch and UISegmentedControl
+// look plain, and only turn into Liquid Glass in an app built with the iOS 26 SDK, which CI does not have.
 + (UIControl *)glassSegmentedWithItems:(NSArray<NSString *> *)items selected:(NSInteger)selected;
 + (UIControl *)glassSliderMin:(float)min max:(float)max value:(float)value;
 + (UIControl *)glassSwitchOn:(BOOL)on;

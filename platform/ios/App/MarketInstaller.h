@@ -17,12 +17,14 @@
 //     mod it cannot load. docs/IOS_MARKETPLACE.md lists this.
 #import <Foundation/Foundation.h>
 #import "MarketIndex.h"
+#import "ModrinthClient.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface HZInstalledEntry : NSObject
 @property (nonatomic, copy) NSString *projectId, *title, *kind, *version, *file, *checksum;
 @property (nonatomic, copy) NSString *verdict;   // "Unsigned" (a verified entry written by the desktop reads "Verified")
+@property (nonatomic, copy) NSString *source;    // "horizon" or "modrinth"
 @end
 
 @interface HZMarketInstaller : NSObject
@@ -50,12 +52,28 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSArray<HZInstalledEntry *> *)installed;
 - (nullable HZInstalledEntry *)installedEntryForProject:(NSString *)projectId;
+// The same for a Modrinth pack (the record keys it by Modrinth's project id and source).
+- (nullable HZInstalledEntry *)installedEntryForModrinth:(NSString *)modrinthId;
+- (nullable NSString *)removeModrinth:(NSString *)modrinthId;
 
 // ---- Doing it ----
 
 // Checks a downloaded file at `temp` and, if it passes, moves it into place and records it. Returns nil
 // on success or a sentence for the player; `temp` is deleted either way. Pure disk work: no network.
 - (nullable NSString *)placeDownloaded:(NSString *)temp project:(HZMarketProject *)project version:(HZMarketVersion *)version index:(HZMarketIndex *)index;
+
+// Modrinth resource packs (owner's request, 2026-11-10). Same disk rules as above, with the desktop's checks
+// for a pack from that source: size, SHA-512 (SHA-1 if that is all Modrinth lists), a ZIP whose every path is
+// plain (no leading /, no .., no backslash) with pack.mcmeta at its root, and a name that is one plain name.
+// The record uses "source":"modrinth" and "kind":"resource-pack", as launcher/src/browser/installed.rs reads it.
+- (nullable NSString *)placeModrinthDownloaded:(NSString *)temp project:(HZModrinthProject *)project version:(HZModrinthVersion *)version;
+
+// Whether a ZIP's every path is plain and it has pack.mcmeta at the root. `why` says what is wrong.
++ (BOOL)resourcePackLooksValidAtPath:(NSString *)path why:(NSString *_Nullable *_Nullable)why;
+// The ZIP's entry names, read from its central directory (no unzipping). nil if it cannot be read.
++ (nullable NSArray<NSString *> *)zipEntryNamesAtPath:(NSString *)path;
++ (nullable NSString *)sha512OfFileAtPath:(NSString *)path;
++ (nullable NSString *)sha1OfFileAtPath:(NSString *)path;
 
 // Removes an installed project's file, its record and (for a mod) its "mod.<id>" line. Returns nil or a sentence.
 - (nullable NSString *)removeProject:(NSString *)projectId;

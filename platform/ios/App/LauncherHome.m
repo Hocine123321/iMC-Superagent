@@ -26,9 +26,13 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
 
 - (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleDefault; }
 
-// The status card and the "..." menu: a glass surface holding content. Plain card where there is no glass.
+// The status card: a frosted card (a system blur material over the coloured backdrop, with a hairline edge),
+// not UIGlassEffect, which showed as a flat black slab on this dark background.
 - (UIVisualEffectView *)card {
-    UIVisualEffectView *v = [HZTheme glassViewWithTint:nil interactive:NO cornerRadius:24];
+    UIVisualEffectView *v = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];
+    v.translatesAutoresizingMaskIntoConstraints = NO;
+    v.layer.cornerRadius = 24; v.layer.cornerCurve = kCACornerCurveContinuous; v.clipsToBounds = YES;
+    v.layer.borderWidth = 1; v.layer.borderColor = [HZTheme separator].CGColor;
     return v;
 }
 
