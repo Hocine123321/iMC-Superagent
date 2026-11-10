@@ -22,6 +22,11 @@ targets:
         excludes: ["Info.plist"]
       # The app icon (light, dark and tinted), drawn by tools/make_app_icon.py (python3 tools/make_app_icon.py regenerates the PNGs).
       - path: Assets.xcassets
+      # Horizon's third-party notices travel with the app (docs/IOS_FEASIBILITY_REPORT.md 11.3, item 12:
+      # a binary distribution must carry them). Taken straight from the untouched upstream snapshot, so
+      # there is no copy to drift and nothing in horizon/ changes. The About page reads it from the bundle.
+      - path: ../../horizon/THIRD_PARTY_NOTICES.md
+        buildPhase: resources
     # XcodeGen writes App/Info.plist from these properties at generation time, replacing whatever
     # the file held (a bare `path:` produced a 743-byte plist without our keys).
     info:

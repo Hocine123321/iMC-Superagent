@@ -68,8 +68,17 @@ static NSString *const kHorizonLicense =
         @"play, as Horizon does on every platform.\n\n", body, grey);
     add(@"Licence of Horizon\n", h2, white);
     add(kHorizonLicense, mono, grey);
-    add(@"\nOther components and their licences are listed in Horizon's THIRD_PARTY_NOTICES.md, in the source "
-        @"repository above (horizon/THIRD_PARTY_NOTICES.md). They are not yet shown inside the app.\n", body, grey);
+    // The notices file is bundled from horizon/THIRD_PARTY_NOTICES.md (project.yml). Shown as it is.
+    NSString *notices = [NSString stringWithContentsOfFile:[NSBundle.mainBundle pathForResource:@"THIRD_PARTY_NOTICES" ofType:@"md"]
+                                                  encoding:NSUTF8StringEncoding error:nil];
+    add(@"\n\nThird-party notices\n", h2, white);
+    if (notices.length) {
+        add(@"From Horizon's THIRD_PARTY_NOTICES.md, unchanged.\n\n", body, grey);
+        add(notices, mono, grey);
+    } else {
+        add(@"The notices file is missing from this build. It is in the source repository above, "
+            @"as horizon/THIRD_PARTY_NOTICES.md.\n", body, grey);
+    }
 
     self.text = [UITextView new];
     self.text.editable = NO;
