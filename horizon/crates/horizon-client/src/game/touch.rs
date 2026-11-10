@@ -224,7 +224,7 @@ pub(super) struct TouchState {
     /// Which on-screen button each finger holds.
     holding: Vec<(FingerId, usize)>,
     /// The last physical position of a menu finger, to send a release at the same place.
-    pointer: (f32, f32),
+    pub(super) pointer: (f32, f32),
     /// Auto-sprint is holding the Run button down now (`touch_sprint`).
     sprint_held: bool,
     /// Touch was used since the app started: the controls draw only then, so a desktop run with
@@ -321,6 +321,14 @@ impl Game<'_> {
         if self.touch_back_event(event_loop, id, touch.phase, at, size) {
             return;
         }
+        // The Cursor/Touch button, kept from the pointer like Back.
+        if self.cursor_switch_event(id, touch.phase, at, size) {
+            return;
+        }
+        // Cursor mode: in a menu the finger moves a drawn pointer instead of being one.
+        if self.cursor_event(event_loop, id, touch.phase, at, size, now) {
+            return;
+        }
         let rects = self.touch_rects(size);
         if touch.phase == TouchPhase::Started && !rects.is_empty() {
             // In the world the buttons are hit by rectangle, not by the engine's pointer, so the
@@ -408,6 +416,7 @@ impl Game<'_> {
         self.settings.imc.apply(&mut self.touch.logic);
         self.touch_follow_mode(event_loop);
         let now = self.touch.started.elapsed().as_secs_f64();
+        self.cursor_frame(event_loop, now);
         let actions = self.touch.logic.tick(now);
         self.touch_apply(event_loop, actions);
         let stick = if self.touch.logic.mode() == Mode::Playing {
@@ -458,6 +467,7 @@ impl Game<'_> {
         }
         let actions = self.touch.logic.cancel_all();
         self.touch_apply(event_loop, actions);
+        self.cursor_release_all(event_loop);
         self.pad.set_injected_left([0.0; 2]);
         if std::mem::take(&mut self.touch.sprint_held) {
             self.touch_button(event_loop, Button::LeftStick, false);
@@ -644,7 +654,7 @@ impl Game<'_> {
         self.pad.inject_button(button, down);
     }
 
-    fn touch_apply(&mut self, event_loop: &dyn EventLoopCtl, actions: Vec<TouchAction>) {
+    pub(super) fn touch_apply(&mut self, event_loop: &dyn EventLoopCtl, actions: Vec<TouchAction>) {
         for action in actions {
             match action {
                 TouchAction::Look { yaw, pitch } => {
@@ -738,9 +748,15 @@ impl Game<'_> {
             let tw = HudBatch::text_width(atlas, label);
             batch.text(atlas, label, x + (w - tw) / 2.0, y + (h - 8.0) / 2.0, 0xFFFF_FFFF, true);
         }
-        if !self.touch_controls_visible() {
-            return;
+        if self.touch_controls_visible() {
+            self.draw_touch_pads(batch);
         }
+        // The Cursor/Touch button and the pointer last, so nothing covers them.
+        self.draw_touch_cursor(batch);
+    }
+
+    /// The on-screen buttons and the steering stick, over the world.
+    fn draw_touch_pads(&self, batch: &mut HudBatch) {
         let atlas = &self.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         for (i, kind) in self.pad_kinds().into_iter().enumerate() {

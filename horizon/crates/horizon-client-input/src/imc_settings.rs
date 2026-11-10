@@ -57,10 +57,14 @@ pub enum Item {
     AutoRenderDistance,
     /// Auto Performance may lower the resolution.
     AutoResolution,
+    /// Inventories open with the cursor, without switching the whole game to it.
+    CursorInventory,
+    /// How fast the cursor travels for the finger's travel.
+    CursorSpeed,
 }
 
 impl Item {
-    pub const ALL: [Item; 20] = [
+    pub const ALL: [Item; 22] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
@@ -81,6 +85,8 @@ impl Item {
         Item::AutoFarTerrain,
         Item::AutoRenderDistance,
         Item::AutoResolution,
+        Item::CursorInventory,
+        Item::CursorSpeed,
     ];
 
     /// The line's key in `horizon-imc.txt`.
@@ -106,6 +112,8 @@ impl Item {
             Item::AutoFarTerrain => "autoFarTerrain",
             Item::AutoRenderDistance => "autoRenderDistance",
             Item::AutoResolution => "autoResolution",
+            Item::CursorInventory => "cursorInventory",
+            Item::CursorSpeed => "cursorSpeed",
         }
     }
 
@@ -132,6 +140,8 @@ impl Item {
             Item::AutoFarTerrain => "Cut far terrain",
             Item::AutoRenderDistance => "Lower render distance",
             Item::AutoResolution => "Lower resolution",
+            Item::CursorInventory => "Cursor in inventory",
+            Item::CursorSpeed => "Cursor speed",
         }
     }
 
@@ -217,6 +227,12 @@ impl Item {
             Item::AutoResolution => {
                 "Auto Performance may lower the world resolution as a last resort. Off by default: it softens every pixel."
             }
+            Item::CursorInventory => {
+                "Shows the cursor whenever an inventory is open (your bag, chests, crafting, creative), without switching the whole game to cursor mode. It goes away when you close it. The Cursor button on the screen still switches everything."
+            }
+            Item::CursorSpeed => {
+                "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots."
+            }
         }
     }
 }
@@ -283,6 +299,10 @@ pub struct ImcSettings {
     pub button_shift_y: u8,
     /// Auto Performance (`auto_performance`).
     pub auto: AutoConfig,
+    /// Inventories open with the cursor (`touch_cursor`), without the whole game switching.
+    pub cursor_inventory: bool,
+    /// Index into [`crate::touch_cursor::SPEEDS`].
+    pub cursor_speed: u8,
 }
 
 impl Default for ImcSettings {
@@ -304,6 +324,8 @@ impl Default for ImcSettings {
             button_shift_x: NO_SHIFT,
             button_shift_y: NO_SHIFT,
             auto: AutoConfig::default(),
+            cursor_inventory: false,
+            cursor_speed: crate::touch_cursor::NORMAL_SPEED,
         }
     }
 }
@@ -380,6 +402,14 @@ impl ImcSettings {
                         s.auto.use_resolution = v;
                     }
                 }
+                "cursorInventory" => {
+                    if let Ok(v) = value.parse() {
+                        s.cursor_inventory = v;
+                    }
+                }
+                "cursorSpeed" => {
+                    s.cursor_speed = step(crate::touch_cursor::SPEEDS.len()).unwrap_or(s.cursor_speed);
+                }
                 _ => {}
             }
         }
@@ -390,7 +420,7 @@ impl ImcSettings {
     pub fn serialize(&self) -> String {
         format!(
             "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
-             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\n",
+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\n",
             self.controls,
             self.look_speed,
             self.stick_size,
@@ -411,6 +441,8 @@ impl ImcSettings {
             self.auto.use_far_terrain,
             self.auto.use_render_distance,
             self.auto.use_resolution,
+            self.cursor_inventory,
+            self.cursor_speed,
         )
     }
 
@@ -439,6 +471,8 @@ impl ImcSettings {
             Item::AutoFarTerrain => on_off(self.auto.use_far_terrain),
             Item::AutoRenderDistance => on_off(self.auto.use_render_distance),
             Item::AutoResolution => on_off(self.auto.use_resolution),
+            Item::CursorInventory => on_off(self.cursor_inventory),
+            Item::CursorSpeed => name(&crate::touch_cursor::SPEED_NAMES, self.cursor_speed),
         }
     }
 
@@ -490,6 +524,8 @@ impl ImcSettings {
                 self.auto.use_render_distance = !self.auto.use_render_distance;
             }
             Item::AutoResolution => self.auto.use_resolution = !self.auto.use_resolution,
+            Item::CursorInventory => self.cursor_inventory = !self.cursor_inventory,
+            Item::CursorSpeed => turn(&mut self.cursor_speed, crate::touch_cursor::SPEEDS.len()),
             Item::AutoSensitivity => {
                 let mut i = self.auto_sensitivity_index();
                 turn(&mut i, Sensitivity::ALL.len());
@@ -539,6 +575,11 @@ impl ImcSettings {
     /// The multiple of the screen's own slop a menu finger may drift (Menu touch).
     pub fn menu_slop_scale(&self) -> f32 {
         MENU_SLOPS[usize::from(self.menu_touch).min(MENU_SLOPS.len() - 1)]
+    }
+
+    /// How far the cursor moves for a pixel of finger (`touch_cursor::SPEEDS`).
+    pub fn cursor_speed_scale(&self) -> f32 {
+        crate::touch_cursor::speed_at(self.cursor_speed)
     }
 
     pub fn safe_margin_scale(&self) -> f32 {
@@ -966,5 +1007,43 @@ mod tests {
         s.reset();
         assert_eq!(s.button_shift(), (0.0, 0.0));
         assert_eq!(s.menu_touch, 1);
+    }
+
+    #[test]
+    fn the_cursor_is_off_by_default_at_normal_speed_and_round_trips() {
+        let d = ImcSettings::default();
+        assert!(!d.cursor_inventory, "plain touch until the player asks");
+        assert_eq!(d.cursor_speed_scale(), 1.0);
+        let mut s = d.clone();
+        s.cycle(Item::CursorInventory, false);
+        s.cycle(Item::CursorSpeed, false);
+        assert!(s.cursor_inventory);
+        assert_eq!(s.cursor_speed_scale(), 1.4);
+        assert_eq!(ImcSettings::parse(&s.serialize()), s);
+        assert_eq!(s.value(Item::CursorInventory), "On");
+        assert_eq!(s.value(Item::CursorSpeed), "Fast");
+        // Back from the first choice wraps to the last.
+        let mut s = d;
+        s.cycle(Item::CursorSpeed, true);
+        s.cycle(Item::CursorSpeed, true);
+        s.cycle(Item::CursorSpeed, true);
+        assert_eq!(s.cursor_speed, 4);
+    }
+
+    #[test]
+    fn an_old_file_without_the_cursor_lines_still_reads_with_the_defaults() {
+        let s = ImcSettings::parse("lookSpeed:3\ndoubleTapJump:true\n");
+        assert!(!s.cursor_inventory);
+        assert_eq!(s.cursor_speed, crate::touch_cursor::NORMAL_SPEED);
+    }
+
+    #[test]
+    fn cursor_lines_out_of_range_keep_their_defaults() {
+        let s = ImcSettings::parse("cursorSpeed:9\ncursorInventory:maybe\n");
+        assert_eq!(s.cursor_speed, crate::touch_cursor::NORMAL_SPEED);
+        assert!(!s.cursor_inventory);
+        let s = ImcSettings::parse("cursorSpeed:0\ncursorInventory:true\n");
+        assert_eq!(s.cursor_speed, 0);
+        assert!(s.cursor_inventory);
     }
 }

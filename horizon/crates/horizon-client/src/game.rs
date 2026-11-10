@@ -170,6 +170,7 @@ mod hand;
 mod headless;
 mod hud_editor;
 mod touch_calibration;
+mod touch_cursor;
 mod touch_editor;
 mod ime;
 mod initial_spawn;
@@ -2698,6 +2699,8 @@ struct Game<'a> {
     ticks_until_autosave: i64,
     /// Fingers on a touch screen (the phone): see `game/touch.rs`.
     touch: touch::TouchState,
+    /// Cursor mode (`game/touch_cursor.rs`): the finger moves a drawn pointer like a trackpad.
+    cursor_mode: touch_cursor::CursorState,
     /// When the app last saved because it went inactive (`game/lifecycle.rs`).
     last_suspend_save: Option<Instant>,
     /// Auto Performance: the memory watcher and the caps it sets (`game/auto_performance.rs`).
@@ -16388,6 +16391,7 @@ impl<'a> Game<'a> {
             // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
             ticks_until_autosave: 6000,
             touch: Default::default(),
+            cursor_mode: Default::default(),
             last_suspend_save: None,
             auto_performance: Default::default(),
             applied_modifiers: Vec::new(),

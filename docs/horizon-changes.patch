@@ -645,10 +645,10 @@ index 29560c8..fcffcdb 100644
 +}
 diff --git a/horizon/crates/horizon-client-input/src/imc_settings.rs b/horizon/crates/horizon-client-input/src/imc_settings.rs
 new file mode 100644
-index 0000000..df72ced
+index 0000000..04884ac
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/imc_settings.rs
-@@ -0,0 +1,970 @@
+@@ -0,0 +1,1049 @@
 +//! iMC Settings: the settings that belong to the iOS app, not to Minecraft.
 +//!
 +//! Pure logic with no winit types and no game state, so it runs under `cargo test`. The values
@@ -708,10 +708,14 @@ index 0000000..df72ced
 +    AutoRenderDistance,
 +    /// Auto Performance may lower the resolution.
 +    AutoResolution,
++    /// Inventories open with the cursor, without switching the whole game to it.
++    CursorInventory,
++    /// How fast the cursor travels for the finger's travel.
++    CursorSpeed,
 +}
 +
 +impl Item {
-+    pub const ALL: [Item; 20] = [
++    pub const ALL: [Item; 22] = [
 +        Item::Controls,
 +        Item::LookSpeed,
 +        Item::StickSize,
@@ -732,6 +736,8 @@ index 0000000..df72ced
 +        Item::AutoFarTerrain,
 +        Item::AutoRenderDistance,
 +        Item::AutoResolution,
++        Item::CursorInventory,
++        Item::CursorSpeed,
 +    ];
 +
 +    /// The line's key in `horizon-imc.txt`.
@@ -757,6 +763,8 @@ index 0000000..df72ced
 +            Item::AutoFarTerrain => "autoFarTerrain",
 +            Item::AutoRenderDistance => "autoRenderDistance",
 +            Item::AutoResolution => "autoResolution",
++            Item::CursorInventory => "cursorInventory",
++            Item::CursorSpeed => "cursorSpeed",
 +        }
 +    }
 +
@@ -783,6 +791,8 @@ index 0000000..df72ced
 +            Item::AutoFarTerrain => "Cut far terrain",
 +            Item::AutoRenderDistance => "Lower render distance",
 +            Item::AutoResolution => "Lower resolution",
++            Item::CursorInventory => "Cursor in inventory",
++            Item::CursorSpeed => "Cursor speed",
 +        }
 +    }
 +
@@ -868,6 +878,12 @@ index 0000000..df72ced
 +            Item::AutoResolution => {
 +                "Auto Performance may lower the world resolution as a last resort. Off by default: it softens every pixel."
 +            }
++            Item::CursorInventory => {
++                "Shows the cursor whenever an inventory is open (your bag, chests, crafting, creative), without switching the whole game to cursor mode. It goes away when you close it. The Cursor button on the screen still switches everything."
++            }
++            Item::CursorSpeed => {
++                "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots."
++            }
 +        }
 +    }
 +}
@@ -934,6 +950,10 @@ index 0000000..df72ced
 +    pub button_shift_y: u8,
 +    /// Auto Performance (`auto_performance`).
 +    pub auto: AutoConfig,
++    /// Inventories open with the cursor (`touch_cursor`), without the whole game switching.
++    pub cursor_inventory: bool,
++    /// Index into [`crate::touch_cursor::SPEEDS`].
++    pub cursor_speed: u8,
 +}
 +
 +impl Default for ImcSettings {
@@ -955,6 +975,8 @@ index 0000000..df72ced
 +            button_shift_x: NO_SHIFT,
 +            button_shift_y: NO_SHIFT,
 +            auto: AutoConfig::default(),
++            cursor_inventory: false,
++            cursor_speed: crate::touch_cursor::NORMAL_SPEED,
 +        }
 +    }
 +}
@@ -1031,6 +1053,14 @@ index 0000000..df72ced
 +                        s.auto.use_resolution = v;
 +                    }
 +                }
++                "cursorInventory" => {
++                    if let Ok(v) = value.parse() {
++                        s.cursor_inventory = v;
++                    }
++                }
++                "cursorSpeed" => {
++                    s.cursor_speed = step(crate::touch_cursor::SPEEDS.len()).unwrap_or(s.cursor_speed);
++                }
 +                _ => {}
 +            }
 +        }
@@ -1041,7 +1071,7 @@ index 0000000..df72ced
 +    pub fn serialize(&self) -> String {
 +        format!(
 +            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
-+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\n",
++             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\n",
 +            self.controls,
 +            self.look_speed,
 +            self.stick_size,
@@ -1062,6 +1092,8 @@ index 0000000..df72ced
 +            self.auto.use_far_terrain,
 +            self.auto.use_render_distance,
 +            self.auto.use_resolution,
++            self.cursor_inventory,
++            self.cursor_speed,
 +        )
 +    }
 +
@@ -1090,6 +1122,8 @@ index 0000000..df72ced
 +            Item::AutoFarTerrain => on_off(self.auto.use_far_terrain),
 +            Item::AutoRenderDistance => on_off(self.auto.use_render_distance),
 +            Item::AutoResolution => on_off(self.auto.use_resolution),
++            Item::CursorInventory => on_off(self.cursor_inventory),
++            Item::CursorSpeed => name(&crate::touch_cursor::SPEED_NAMES, self.cursor_speed),
 +        }
 +    }
 +
@@ -1141,6 +1175,8 @@ index 0000000..df72ced
 +                self.auto.use_render_distance = !self.auto.use_render_distance;
 +            }
 +            Item::AutoResolution => self.auto.use_resolution = !self.auto.use_resolution,
++            Item::CursorInventory => self.cursor_inventory = !self.cursor_inventory,
++            Item::CursorSpeed => turn(&mut self.cursor_speed, crate::touch_cursor::SPEEDS.len()),
 +            Item::AutoSensitivity => {
 +                let mut i = self.auto_sensitivity_index();
 +                turn(&mut i, Sensitivity::ALL.len());
@@ -1190,6 +1226,11 @@ index 0000000..df72ced
 +    /// The multiple of the screen's own slop a menu finger may drift (Menu touch).
 +    pub fn menu_slop_scale(&self) -> f32 {
 +        MENU_SLOPS[usize::from(self.menu_touch).min(MENU_SLOPS.len() - 1)]
++    }
++
++    /// How far the cursor moves for a pixel of finger (`touch_cursor::SPEEDS`).
++    pub fn cursor_speed_scale(&self) -> f32 {
++        crate::touch_cursor::speed_at(self.cursor_speed)
 +    }
 +
 +    pub fn safe_margin_scale(&self) -> f32 {
@@ -1618,6 +1659,44 @@ index 0000000..df72ced
 +        assert_eq!(s.button_shift(), (0.0, 0.0));
 +        assert_eq!(s.menu_touch, 1);
 +    }
++
++    #[test]
++    fn the_cursor_is_off_by_default_at_normal_speed_and_round_trips() {
++        let d = ImcSettings::default();
++        assert!(!d.cursor_inventory, "plain touch until the player asks");
++        assert_eq!(d.cursor_speed_scale(), 1.0);
++        let mut s = d.clone();
++        s.cycle(Item::CursorInventory, false);
++        s.cycle(Item::CursorSpeed, false);
++        assert!(s.cursor_inventory);
++        assert_eq!(s.cursor_speed_scale(), 1.4);
++        assert_eq!(ImcSettings::parse(&s.serialize()), s);
++        assert_eq!(s.value(Item::CursorInventory), "On");
++        assert_eq!(s.value(Item::CursorSpeed), "Fast");
++        // Back from the first choice wraps to the last.
++        let mut s = d;
++        s.cycle(Item::CursorSpeed, true);
++        s.cycle(Item::CursorSpeed, true);
++        s.cycle(Item::CursorSpeed, true);
++        assert_eq!(s.cursor_speed, 4);
++    }
++
++    #[test]
++    fn an_old_file_without_the_cursor_lines_still_reads_with_the_defaults() {
++        let s = ImcSettings::parse("lookSpeed:3\ndoubleTapJump:true\n");
++        assert!(!s.cursor_inventory);
++        assert_eq!(s.cursor_speed, crate::touch_cursor::NORMAL_SPEED);
++    }
++
++    #[test]
++    fn cursor_lines_out_of_range_keep_their_defaults() {
++        let s = ImcSettings::parse("cursorSpeed:9\ncursorInventory:maybe\n");
++        assert_eq!(s.cursor_speed, crate::touch_cursor::NORMAL_SPEED);
++        assert!(!s.cursor_inventory);
++        let s = ImcSettings::parse("cursorSpeed:0\ncursorInventory:true\n");
++        assert_eq!(s.cursor_speed, 0);
++        assert!(s.cursor_inventory);
++    }
 +}
 diff --git a/horizon/crates/horizon-client-input/src/keybinds.rs b/horizon/crates/horizon-client-input/src/keybinds.rs
 index 63274cb..a3d0cb4 100644
@@ -1648,7 +1727,7 @@ index 63274cb..a3d0cb4 100644
          Key::Dead(Some(c)) => learn(name, c.encode_utf8(&mut [0; 4])),
          _ => {}
 diff --git a/horizon/crates/horizon-client-input/src/lib.rs b/horizon/crates/horizon-client-input/src/lib.rs
-index 6d0df2c..5c29981 100644
+index 6d0df2c..2187241 100644
 --- a/horizon/crates/horizon-client-input/src/lib.rs
 +++ b/horizon/crates/horizon-client-input/src/lib.rs
 @@ -4,10 +4,12 @@
@@ -1664,12 +1743,13 @@ index 6d0df2c..5c29981 100644
  pub mod input;
  pub mod interaction_input;
  pub mod key_names;
-@@ -16,4 +18,9 @@ pub mod keymapping;
+@@ -16,4 +18,10 @@ pub mod keymapping;
  pub mod modifiers;
  pub mod mouse;
  pub mod snap;
 +pub mod touch;
 +pub mod touch_calibration;
++pub mod touch_cursor;
 +pub mod touch_editor_tools;
 +pub mod touch_extras;
 +pub mod touch_layout;
@@ -3108,6 +3188,711 @@ index 0000000..8a0fa97
 +        }
 +        assert!(Calibration::default().is_identity());
 +        assert_eq!(Calibration::IDENTITY.apply((10.0, 20.0)), (10.0, 20.0));
++    }
++}
+diff --git a/horizon/crates/horizon-client-input/src/touch_cursor.rs b/horizon/crates/horizon-client-input/src/touch_cursor.rs
+new file mode 100644
+index 0000000..bf8f2a7
+--- /dev/null
++++ b/horizon/crates/horizon-client-input/src/touch_cursor.rs
+@@ -0,0 +1,699 @@
++//! Cursor mode: the finger is a trackpad and a real pointer moves on the screen.
++//!
++//! Plain touch puts the pointer under the finger, so the finger covers what it aims at and a
++//! small slot in a big inventory is hard to hit. Here the finger moves the pointer by how far it
++//! travels, as a laptop's trackpad does: the pointer stays where it was when a finger lands,
++//! the thumb can rest anywhere, and the pointer is drawn so the player sees exactly what a tap
++//! will press.
++//!
++//! - **Drag** one finger: the pointer moves by the finger's travel times [`Cursor::speed`].
++//! - **Tap** (short, little travel): a left click where the pointer is.
++//! - **Hold still** a moment: a right click, held until the finger lifts (the inventory's split).
++//! - **Tap, then touch again and drag** quickly: the left button goes down and the pointer drags
++//!   with it (a slider's knob, a stack across the inventory), and goes up when the finger lifts.
++//! - **Two fingers** moving up or down scroll.
++//!
++//! Pure logic with no winit types, so it runs under `cargo test`. It speaks the same [`Action`]s
++//! as [`crate::touch::Touch`] in a menu, so the game feeds them through the same pointer path.
++
++use crate::touch::{Action, FingerId};
++use std::collections::HashMap;
++
++/// How many pixels of finger travel scroll one line (as plain touch does).
++const PIXELS_PER_LINE: f32 = 40.0;
++
++/// Where the cursor starts when a screen opens, as fractions of the screen.
++const START: (f32, f32) = (0.5, 0.5);
++
++/// The speeds the player can pick: how many pixels the pointer moves for each pixel of finger.
++pub const SPEEDS: [f32; 5] = [0.6, 0.8, 1.0, 1.4, 2.0];
++pub const SPEED_NAMES: [&str; 5] = ["Slowest", "Slow", "Normal", "Fast", "Fastest"];
++/// The index of the normal speed.
++pub const NORMAL_SPEED: u8 = 2;
++
++/// Which screens the cursor takes over by itself when "Cursor in inventory" is on. The caller
++/// decides what is an inventory; this is what it says back to the game.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Source {
++    /// Not in use: plain touch.
++    Off,
++    /// The player switched to it with the button.
++    Switched,
++    /// An inventory opened and the setting asked for it. Plain touch returns when it closes.
++    Automatic,
++}
++
++impl Source {
++    pub fn active(self) -> bool {
++        self != Source::Off
++    }
++}
++
++/// Whether the cursor should be in use, from the player's switch and the screen.
++///
++/// - `switched`: the player pressed the cursor/touch button (it holds across screens).
++/// - `auto_inventory`: the setting "Cursor in inventory".
++/// - `in_inventory`: the open screen is an inventory-type one (the inventory, chests, crafting,
++///   creative).
++///
++/// The switch always wins when it is on. When it is off, an inventory brings the cursor up only
++/// if the setting asks for it, and the cursor goes away again with the screen.
++pub fn source_for(switched: bool, auto_inventory: bool, in_inventory: bool) -> Source {
++    if switched {
++        Source::Switched
++    } else if auto_inventory && in_inventory {
++        Source::Automatic
++    } else {
++        Source::Off
++    }
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum Role {
++    /// The only finger down so far: moves the pointer, or clicks.
++    Pointer,
++    /// A second finger: scrolls.
++    Scroll,
++}
++
++#[derive(Clone, Copy, Debug)]
++struct Finger {
++    start: (f32, f32),
++    at: (f32, f32),
++    since: f64,
++    /// Went further than the slop from where it landed.
++    moved: bool,
++    role: Role,
++    /// This touch began soon after a tap, so a drag holds the left button.
++    drag_armed: bool,
++}
++
++/// The state of cursor mode.
++#[derive(Clone, Debug)]
++pub struct Cursor {
++    screen: (f32, f32),
++    /// The pointer, in physical pixels.
++    pos: (f32, f32),
++    /// Pixels the pointer moves per pixel of finger.
++    pub speed: f32,
++    /// How far a finger may travel and still be a tap, in pixels.
++    pub slop: f32,
++    /// A tap is shorter than this many seconds.
++    pub tap_secs: f64,
++    /// A press held still this long is a right click.
++    pub long_press_secs: f64,
++    /// A touch that lands within this long of a tap's lift (and not far from it) is a tap-drag.
++    pub drag_window_secs: f64,
++    fingers: HashMap<FingerId, Finger>,
++    /// When the last tap lifted, for the tap-drag.
++    last_tap: Option<f64>,
++    /// The left button is held by a tap-drag.
++    left_down: Option<FingerId>,
++    /// The right button is held by a long press.
++    right_down: Option<FingerId>,
++    last_scroll_y: Option<f32>,
++    out: Vec<Action>,
++}
++
++impl Cursor {
++    pub fn new(screen: (f32, f32)) -> Self {
++        Cursor {
++            screen,
++            pos: (screen.0 * START.0, screen.1 * START.1),
++            speed: 1.0,
++            slop: 10.0,
++            tap_secs: 0.25,
++            long_press_secs: 0.45,
++            drag_window_secs: 0.30,
++            fingers: HashMap::new(),
++            last_tap: None,
++            left_down: None,
++            right_down: None,
++            last_scroll_y: None,
++            out: Vec::new(),
++        }
++    }
++
++    /// The screen changed size (a rotation): the pointer keeps its place as a fraction of it.
++    pub fn resize(&mut self, screen: (f32, f32)) {
++        if screen == self.screen || screen.0 <= 0.0 || screen.1 <= 0.0 {
++            return;
++        }
++        let fraction = (
++            self.pos.0 / self.screen.0.max(1.0),
++            self.pos.1 / self.screen.1.max(1.0),
++        );
++        self.screen = screen;
++        self.pos = self.clamp((fraction.0 * screen.0, fraction.1 * screen.1));
++    }
++
++    /// The pointer, in physical pixels.
++    pub fn position(&self) -> (f32, f32) {
++        self.pos
++    }
++
++    /// Puts the pointer somewhere (a screen opening, the player switching to the cursor).
++    pub fn place(&mut self, at: (f32, f32)) {
++        self.pos = self.clamp(at);
++    }
++
++    /// Puts the pointer back in the middle of the screen.
++    pub fn centre(&mut self) {
++        self.pos = (self.screen.0 * START.0, self.screen.1 * START.1);
++    }
++
++    /// Whether a button is held by the cursor now (a tap-drag or a long press).
++    pub fn holding(&self) -> bool {
++        self.left_down.is_some() || self.right_down.is_some()
++    }
++
++    fn clamp(&self, p: (f32, f32)) -> (f32, f32) {
++        (
++            p.0.clamp(0.0, (self.screen.0 - 1.0).max(0.0)),
++            p.1.clamp(0.0, (self.screen.1 - 1.0).max(0.0)),
++        )
++    }
++
++    /// A finger landed. The pointer does not move: only travel moves it.
++    pub fn down(&mut self, id: FingerId, at: (f32, f32), now: f64) -> Vec<Action> {
++        self.out.clear();
++        if self.fingers.contains_key(&id) {
++            return Vec::new();
++        }
++        let role = if self.fingers.values().any(|f| f.role == Role::Pointer) {
++            self.last_scroll_y = Some(at.1);
++            Role::Scroll
++        } else {
++            Role::Pointer
++        };
++        let drag_armed = role == Role::Pointer
++            && self
++                .last_tap
++                .is_some_and(|t| now - t <= self.drag_window_secs);
++        self.fingers.insert(
++            id,
++            Finger {
++                start: at,
++                at,
++                since: now,
++                moved: false,
++                role,
++                drag_armed,
++            },
++        );
++        // A second finger in the middle of a click turns it into a scroll, not a click.
++        if role == Role::Scroll {
++            for f in self.fingers.values_mut() {
++                f.moved = true;
++            }
++        }
++        // Park the pointer so the game's hover follows it from the first touch.
++        if role == Role::Pointer {
++            self.out.push(Action::PointerTo {
++                x: self.pos.0,
++                y: self.pos.1,
++            });
++        }
++        std::mem::take(&mut self.out)
++    }
++
++    /// A finger moved.
++    pub fn moved(&mut self, id: FingerId, at: (f32, f32), now: f64) -> Vec<Action> {
++        self.out.clear();
++        let Some(mut f) = self.fingers.get(&id).copied() else {
++            return Vec::new();
++        };
++        let (dx, dy) = (at.0 - f.at.0, at.1 - f.at.1);
++        let from_start = ((at.0 - f.start.0).powi(2) + (at.1 - f.start.1).powi(2)).sqrt();
++        f.at = at;
++        match f.role {
++            Role::Pointer => {
++                if !f.moved && from_start > self.slop {
++                    f.moved = true;
++                    // A tap-drag: the second touch, once it really moves, grabs.
++                    if f.drag_armed && self.left_down.is_none() {
++                        self.left_down = Some(id);
++                        self.out.push(Action::PointerLeft(true));
++                    }
++                }
++                if f.moved {
++                    // The travel that crossed the slop is spent on moving the pointer too, so
++                    // it does not feel like a dead zone: from the second the finger counts as
++                    // moving, every pixel counts.
++                    self.pos = self.clamp((self.pos.0 + dx * self.speed, self.pos.1 + dy * self.speed));
++                    self.out.push(Action::PointerTo {
++                        x: self.pos.0,
++                        y: self.pos.1,
++                    });
++                }
++                self.hold(id, &f, now);
++            }
++            Role::Scroll => {
++                if let Some(last) = self.last_scroll_y {
++                    let lines = (last - at.1) / PIXELS_PER_LINE;
++                    if lines.abs() >= 0.25 {
++                        self.out.push(Action::Scroll { lines: -lines });
++                        self.last_scroll_y = Some(at.1);
++                    }
++                }
++            }
++        }
++        self.fingers.insert(id, f);
++        std::mem::take(&mut self.out)
++    }
++
++    /// Time passing with no finger event: a finger held still becomes a right click.
++    pub fn tick(&mut self, now: f64) -> Vec<Action> {
++        self.out.clear();
++        let ids: Vec<FingerId> = self.fingers.keys().copied().collect();
++        for id in ids {
++            let f = self.fingers[&id];
++            if f.role == Role::Pointer {
++                self.hold(id, &f, now);
++            }
++        }
++        std::mem::take(&mut self.out)
++    }
++
++    fn hold(&mut self, id: FingerId, f: &Finger, now: f64) {
++        if !f.moved
++            && !f.drag_armed
++            && self.right_down.is_none()
++            && self.left_down.is_none()
++            && now - f.since >= self.long_press_secs
++        {
++            self.right_down = Some(id);
++            self.out.push(Action::PointerRight(true));
++        }
++    }
++
++    /// A finger lifted (or the system cancelled it). `cancelled` never clicks.
++    pub fn up(&mut self, id: FingerId, now: f64, cancelled: bool) -> Vec<Action> {
++        self.out.clear();
++        let Some(f) = self.fingers.remove(&id) else {
++            return Vec::new();
++        };
++        match f.role {
++            Role::Pointer => {
++                if self.right_down == Some(id) {
++                    self.right_down = None;
++                    self.out.push(Action::PointerRight(false));
++                } else if self.left_down == Some(id) {
++                    self.left_down = None;
++                    self.out.push(Action::PointerLeft(false));
++                    self.last_tap = None;
++                } else if !cancelled
++                    && !f.moved
++                    && !self.fingers.values().any(|o| o.role == Role::Scroll)
++                    && now - f.since < self.tap_secs
++                {
++                    // A tap: the press and the release where the pointer is.
++                    self.out.push(Action::PointerTo {
++                        x: self.pos.0,
++                        y: self.pos.1,
++                    });
++                    self.out.push(Action::PointerLeft(true));
++                    self.out.push(Action::PointerLeft(false));
++                    self.last_tap = Some(now);
++                } else {
++                    self.last_tap = None;
++                }
++            }
++            Role::Scroll => {
++                if !self.fingers.values().any(|o| o.role == Role::Scroll) {
++                    self.last_scroll_y = None;
++                }
++            }
++        }
++        // When the last pointer finger leaves, a scroll finger left over scrolls on its own
++        // no longer; it simply waits to lift.
++        std::mem::take(&mut self.out)
++    }
++
++    /// Let go of everything (a screen closed, the app went to the background, the mode changed).
++    pub fn cancel_all(&mut self) -> Vec<Action> {
++        let mut out = Vec::new();
++        if self.right_down.take().is_some() {
++            out.push(Action::PointerRight(false));
++        }
++        if self.left_down.take().is_some() {
++            out.push(Action::PointerLeft(false));
++        }
++        self.fingers.clear();
++        self.last_tap = None;
++        self.last_scroll_y = None;
++        out
++    }
++}
++
++/// The speed for a stored index, never out of range.
++pub fn speed_at(index: u8) -> f32 {
++    SPEEDS[usize::from(index).min(SPEEDS.len() - 1)]
++}
++
++/// Where the cursor/touch switch sits and how it is hit: a small button, as fractions of the
++/// screen, under the Back button's corner so the two never overlap.
++pub mod switch {
++    pub const WIDTH: f32 = 0.11;
++    pub const HEIGHT: f32 = 0.11;
++    pub const INSET_X: f32 = 0.02;
++    /// Below Back (which starts at 4% and is 13% tall).
++    pub const INSET_Y: f32 = 0.19;
++
++    /// The button as `[x, y, w, h]` in pixels on a screen of `size`.
++    pub fn rect(size: (f32, f32)) -> [f32; 4] {
++        [
++            size.0 * INSET_X,
++            size.1 * INSET_Y,
++            size.0 * WIDTH,
++            size.1 * HEIGHT,
++        ]
++    }
++
++    /// A finger that went down on the switch toggles it when it lifts on it.
++    pub fn fires(down_on_it: bool, up_at: (f32, f32), rect: [f32; 4]) -> bool {
++        down_on_it
++            && up_at.0 >= rect[0]
++            && up_at.0 < rect[0] + rect[2]
++            && up_at.1 >= rect[1]
++            && up_at.1 < rect[1] + rect[3]
++    }
++
++    /// The caption: the mode a tap would switch TO.
++    pub fn caption(cursor_on: bool) -> &'static str {
++        if cursor_on { "Touch" } else { "Cursor" }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    const SCREEN: (f32, f32) = (2532.0, 1170.0);
++    const F: FingerId = 1;
++    const G: FingerId = 2;
++
++    fn cursor() -> Cursor {
++        Cursor::new(SCREEN)
++    }
++
++    fn near(a: (f32, f32), b: (f32, f32)) -> bool {
++        (a.0 - b.0).abs() < 0.01 && (a.1 - b.1).abs() < 0.01
++    }
++
++    fn pointer_moves(actions: &[Action]) -> Vec<(f32, f32)> {
++        actions
++            .iter()
++            .filter_map(|a| match a {
++                Action::PointerTo { x, y } => Some((*x, *y)),
++                _ => None,
++            })
++            .collect()
++    }
++
++    #[test]
++    fn the_pointer_starts_in_the_middle() {
++        assert_eq!(cursor().position(), (1266.0, 585.0));
++    }
++
++    #[test]
++    fn a_landing_finger_does_not_move_the_pointer() {
++        let mut c = cursor();
++        let before = c.position();
++        let a = c.down(F, (100.0, 100.0), 0.0);
++        assert_eq!(c.position(), before);
++        // It only tells the game where the pointer is, which is not where the finger is.
++        assert_eq!(pointer_moves(&a), vec![before]);
++    }
++
++    #[test]
++    fn dragging_moves_the_pointer_by_the_travel() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        // The first move crosses the slop and is spent in full.
++        c.moved(F, (150.0, 100.0), 0.05);
++        assert!(near(c.position(), (1316.0, 585.0)), "{:?}", c.position());
++        c.moved(F, (150.0, 160.0), 0.10);
++        assert!(near(c.position(), (1316.0, 645.0)), "{:?}", c.position());
++    }
++
++    #[test]
++    fn the_speed_scales_the_travel() {
++        let mut c = cursor();
++        c.speed = 2.0;
++        c.down(F, (0.0, 0.0), 0.0);
++        c.moved(F, (50.0, 0.0), 0.05);
++        assert!(near(c.position(), (1366.0, 585.0)), "{:?}", c.position());
++    }
++
++    #[test]
++    fn the_pointer_stays_on_the_screen() {
++        let mut c = cursor();
++        c.down(F, (0.0, 0.0), 0.0);
++        for i in 1..=100 {
++            c.moved(F, (i as f32 * 100.0, i as f32 * 100.0), i as f64 * 0.01);
++        }
++        assert_eq!(c.position(), (SCREEN.0 - 1.0, SCREEN.1 - 1.0));
++        for i in 1..=200 {
++            c.moved(F, (10000.0 - i as f32 * 100.0, 10000.0 - i as f32 * 100.0), 1.0 + i as f64 * 0.01);
++        }
++        assert_eq!(c.position(), (0.0, 0.0));
++    }
++
++    #[test]
++    fn a_tap_clicks_where_the_pointer_is_not_where_the_finger_is() {
++        let mut c = cursor();
++        c.down(F, (50.0, 50.0), 0.0);
++        let a = c.up(F, 0.1, false);
++        assert_eq!(
++            a,
++            vec![
++                Action::PointerTo { x: 1266.0, y: 585.0 },
++                Action::PointerLeft(true),
++                Action::PointerLeft(false),
++            ]
++        );
++    }
++
++    #[test]
++    fn a_shaky_thumb_is_still_a_tap_and_does_not_move_the_pointer() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.moved(F, (104.0, 103.0), 0.05);
++        assert_eq!(c.position(), (1266.0, 585.0));
++        let a = c.up(F, 0.12, false);
++        assert!(a.contains(&Action::PointerLeft(true)));
++    }
++
++    #[test]
++    fn a_drag_never_clicks_when_it_lifts() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.moved(F, (300.0, 100.0), 0.05);
++        let a = c.up(F, 0.1, false);
++        assert!(a.is_empty(), "{a:?}");
++    }
++
++    #[test]
++    fn a_slow_press_is_not_a_tap() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        // Held past the tap time but not yet a long press (the tick has not run).
++        let a = c.up(F, 0.3, false);
++        assert!(a.is_empty(), "{a:?}");
++    }
++
++    #[test]
++    fn holding_still_is_a_right_click_held_until_the_finger_lifts() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        assert!(c.tick(0.2).is_empty());
++        assert_eq!(c.tick(0.5), vec![Action::PointerRight(true)]);
++        // Only once.
++        assert!(c.tick(0.6).is_empty());
++        assert!(c.holding());
++        assert_eq!(c.up(F, 0.9, false), vec![Action::PointerRight(false)]);
++        assert!(!c.holding());
++    }
++
++    #[test]
++    fn a_moved_finger_is_never_a_long_press() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.moved(F, (200.0, 100.0), 0.1);
++        assert!(c.tick(1.0).is_empty());
++    }
++
++    #[test]
++    fn tap_then_drag_holds_the_left_button_until_the_finger_lifts() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.up(F, 0.08, false);
++        // The next touch is soon after the tap.
++        c.down(G, (400.0, 400.0), 0.2);
++        let a = c.moved(G, (460.0, 400.0), 0.25);
++        assert!(a.contains(&Action::PointerLeft(true)), "{a:?}");
++        assert!(c.holding());
++        let a = c.moved(G, (520.0, 400.0), 0.3);
++        assert!(a.contains(&Action::PointerTo { x: 1266.0 + 120.0, y: 585.0 }), "{a:?}");
++        assert_eq!(c.up(G, 0.4, false), vec![Action::PointerLeft(false)]);
++        assert!(!c.holding());
++    }
++
++    #[test]
++    fn a_tap_drag_that_never_moves_is_just_a_second_tap() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.up(F, 0.08, false);
++        c.down(G, (100.0, 100.0), 0.2);
++        let a = c.up(G, 0.26, false);
++        assert!(a.contains(&Action::PointerLeft(true)) && a.contains(&Action::PointerLeft(false)));
++    }
++
++    #[test]
++    fn a_touch_long_after_a_tap_is_a_plain_drag() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.up(F, 0.08, false);
++        c.down(G, (400.0, 400.0), 1.0);
++        let a = c.moved(G, (500.0, 400.0), 1.05);
++        assert!(!a.contains(&Action::PointerLeft(true)));
++        assert!(!c.holding());
++    }
++
++    #[test]
++    fn a_held_second_touch_after_a_tap_does_not_become_a_right_click() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.up(F, 0.08, false);
++        c.down(G, (100.0, 100.0), 0.2);
++        // Held still: waiting to see if it drags, so no right click.
++        assert!(c.tick(1.0).is_empty());
++    }
++
++    #[test]
++    fn a_second_finger_scrolls_and_the_first_never_clicks() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.down(G, (300.0, 300.0), 0.02);
++        // Dragging up moves the list with the finger, as plain touch does: negative lines.
++        let a = c.moved(G, (300.0, 220.0), 0.1);
++        assert_eq!(a, vec![Action::Scroll { lines: -2.0 }]);
++        // Lifting both: no click from the first finger's short press.
++        assert!(c.up(G, 0.15, false).is_empty());
++        assert!(c.up(F, 0.16, false).is_empty());
++    }
++
++    #[test]
++    fn scrolling_back_down_scrolls_the_other_way() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.down(G, (300.0, 300.0), 0.02);
++        let a = c.moved(G, (300.0, 380.0), 0.1);
++        assert_eq!(a, vec![Action::Scroll { lines: 2.0 }]);
++    }
++
++    #[test]
++    fn a_cancelled_touch_never_clicks() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        assert!(c.up(F, 0.05, true).is_empty());
++    }
++
++    #[test]
++    fn a_cancelled_hold_or_drag_lets_go_of_its_button() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.tick(0.5);
++        assert_eq!(c.cancel_all(), vec![Action::PointerRight(false)]);
++        assert!(!c.holding());
++
++        let mut c = cursor();
++        c.down(F, (0.0, 0.0), 0.0);
++        c.up(F, 0.05, false);
++        c.down(G, (0.0, 0.0), 0.1);
++        c.moved(G, (100.0, 0.0), 0.15);
++        assert_eq!(c.cancel_all(), vec![Action::PointerLeft(false)]);
++        assert!(!c.holding());
++    }
++
++    #[test]
++    fn cancel_all_forgets_the_fingers_so_a_stale_lift_does_nothing() {
++        let mut c = cursor();
++        c.down(F, (0.0, 0.0), 0.0);
++        c.cancel_all();
++        assert!(c.up(F, 0.1, false).is_empty());
++        assert!(c.moved(F, (50.0, 50.0), 0.2).is_empty());
++    }
++
++    #[test]
++    fn the_same_finger_landing_twice_is_ignored() {
++        let mut c = cursor();
++        c.down(F, (0.0, 0.0), 0.0);
++        assert!(c.down(F, (5.0, 5.0), 0.01).is_empty());
++    }
++
++    #[test]
++    fn rotating_keeps_the_pointer_in_the_same_place_on_the_screen() {
++        let mut c = cursor();
++        c.place((633.0, 292.5));
++        c.resize((1170.0, 2532.0));
++        assert!(near(c.position(), (292.5, 633.0)), "{:?}", c.position());
++        c.resize((0.0, 0.0));
++        assert!(near(c.position(), (292.5, 633.0)));
++    }
++
++    #[test]
++    fn the_pointer_can_be_placed_and_is_kept_on_the_screen() {
++        let mut c = cursor();
++        c.place((-50.0, 99999.0));
++        assert_eq!(c.position(), (0.0, SCREEN.1 - 1.0));
++        c.centre();
++        assert_eq!(c.position(), (1266.0, 585.0));
++    }
++
++    #[test]
++    fn the_speeds_are_in_order_and_normal_changes_nothing() {
++        assert!(SPEEDS.windows(2).all(|w| w[0] < w[1]));
++        assert_eq!(SPEEDS.len(), SPEED_NAMES.len());
++        assert_eq!(speed_at(NORMAL_SPEED), 1.0);
++        assert_eq!(speed_at(200), SPEEDS[SPEEDS.len() - 1]);
++    }
++
++    #[test]
++    fn the_switch_always_wins_and_the_setting_only_helps_in_an_inventory() {
++        assert_eq!(source_for(true, false, false), Source::Switched);
++        assert_eq!(source_for(true, true, true), Source::Switched);
++        assert_eq!(source_for(false, true, true), Source::Automatic);
++        assert_eq!(source_for(false, true, false), Source::Off);
++        assert_eq!(source_for(false, false, true), Source::Off);
++        assert!(!Source::Off.active());
++        assert!(Source::Automatic.active() && Source::Switched.active());
++    }
++
++    #[test]
++    fn the_switch_does_not_overlap_back_and_stays_on_the_screen() {
++        let size = (2532.0, 1170.0);
++        let s = switch::rect(size);
++        assert!(s[0] >= 0.0 && s[1] >= 0.0 && s[0] + s[2] <= size.0 && s[1] + s[3] <= size.1);
++        // Back: x 2%, y 4%, 11% wide, 13% tall (touch_layout::back).
++        let b = crate::touch_layout::back::rect(size);
++        let apart = s[0] + s[2] <= b[0] || b[0] + b[2] <= s[0] || s[1] + s[3] <= b[1] || b[1] + b[3] <= s[1];
++        assert!(apart, "{s:?} overlaps {b:?}");
++    }
++
++    #[test]
++    fn the_switch_fires_only_when_the_finger_lifts_on_it() {
++        let r = switch::rect((2532.0, 1170.0));
++        let inside = (r[0] + 5.0, r[1] + 5.0);
++        assert!(switch::fires(true, inside, r));
++        assert!(!switch::fires(false, inside, r));
++        assert!(!switch::fires(true, (0.0, 0.0), r));
++    }
++
++    #[test]
++    fn the_caption_names_the_mode_a_tap_switches_to() {
++        assert_eq!(switch::caption(false), "Cursor");
++        assert_eq!(switch::caption(true), "Touch");
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-input/src/touch_editor_tools.rs b/horizon/crates/horizon-client-input/src/touch_editor_tools.rs
@@ -5686,7 +6471,7 @@ index 0000000..1008d06
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-render/src/options_ui.rs b/horizon/crates/horizon-client-render/src/options_ui.rs
-index 8ee09de..771cebf 100644
+index 8ee09de..967daf9 100644
 --- a/horizon/crates/horizon-client-render/src/options_ui.rs
 +++ b/horizon/crates/horizon-client-render/src/options_ui.rs
 @@ -1329,6 +1329,10 @@ pub enum Page {
@@ -5859,7 +6644,7 @@ index 8ee09de..771cebf 100644
                      // No AI hides the AI Agent page and everything AI.
                      Row::Buttons(
                          self.extra_button(s, crate::extras::Item::DiscordPresence),
-@@ -2735,6 +2814,159 @@ impl OptionsUi {
+@@ -2735,6 +2814,166 @@ impl OptionsUi {
                  )
                  .collect()
              }
@@ -5912,6 +6697,13 @@ index 8ee09de..771cebf 100644
 +                rows.push(Row::Buttons(
 +                    imc(Item::GreyUnused),
 +                    Some(imc(Item::MenuTouch)),
++                ));
++                // The cursor: a pointer the finger moves like a trackpad. The button on the
++                // screen switches to it; this one brings it up in inventories by itself.
++                rows.push(Row::Header("horizon.imc.header.cursor"));
++                rows.push(Row::Buttons(
++                    imc(Item::CursorInventory),
++                    Some(imc(Item::CursorSpeed)),
 +                ));
 +                // Where a finger lands. Only needed if the touch is off on this phone.
 +                rows.push(Row::Buttons(imc(Item::ShiftX), Some(imc(Item::ShiftY))));
@@ -6019,7 +6811,7 @@ index 8ee09de..771cebf 100644
              Page::Agent => {
                  let mut rows = vec![Row::Buttons(
                      self.extra_button(s, crate::extras::Item::AgentControl),
-@@ -3508,6 +3740,10 @@ impl OptionsUi {
+@@ -3508,6 +3747,10 @@ impl OptionsUi {
              {
                  *active = self.in_world && self.minecart_improvements;
              }
@@ -6030,7 +6822,7 @@ index 8ee09de..771cebf 100644
          }
          self.row_bands = rows
              .bands
-@@ -4226,6 +4462,22 @@ impl OptionsUi {
+@@ -4226,6 +4469,22 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -6053,7 +6845,7 @@ index 8ee09de..771cebf 100644
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -4282,6 +4534,12 @@ impl OptionsUi {
+@@ -4282,6 +4541,12 @@ impl OptionsUi {
                              events.push(Event::Changed);
                          }
                          Act::HudEditor => events.push(Event::HudEditor),
@@ -6066,7 +6858,7 @@ index 8ee09de..771cebf 100644
                          Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                          Act::Credits => events.push(Event::Credits),
                          Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
-@@ -5162,6 +5420,22 @@ impl OptionsUi {
+@@ -5162,6 +5427,22 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -6089,7 +6881,7 @@ index 8ee09de..771cebf 100644
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -5220,6 +5494,12 @@ impl OptionsUi {
+@@ -5220,6 +5501,12 @@ impl OptionsUi {
                              events.push(Event::Changed);
                          }
                          Act::HudEditor => events.push(Event::HudEditor),
@@ -6102,7 +6894,7 @@ index 8ee09de..771cebf 100644
                          Act::AccessibilityHelp => events.push(Event::AccessibilityHelp),
                          Act::Credits => events.push(Event::Credits),
                          Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
-@@ -7495,6 +7775,9 @@ mod tests {
+@@ -7495,6 +7782,9 @@ mod tests {
                          Act::Cycle(opt) => format!("{opt:?}"),
                          Act::Extra(e) => format!("extra:{e:?}"),
                          Act::PvpPreset => "pvp-preset".to_owned(),
@@ -6112,7 +6904,7 @@ index 8ee09de..771cebf 100644
                          Act::Push(to) => {
                              ways_in
                                  .entry(format!("{to:?}"))
-@@ -7560,8 +7843,8 @@ mod tests {
+@@ -7560,8 +7850,8 @@ mod tests {
                      Opt::GraphicsBackend => "graphics-api".to_owned(),
                      o => format!("{o:?}"),
                  };
@@ -6123,7 +6915,7 @@ index 8ee09de..771cebf 100644
                      continue;
                  }
                  assert!(
-@@ -7640,6 +7923,7 @@ mod tests {
+@@ -7640,6 +7930,7 @@ mod tests {
                  Page::Pvp,
                  Page::SplitSetup,
                  Page::Studio,
@@ -6131,7 +6923,7 @@ index 8ee09de..771cebf 100644
                  Page::Agent,
              ]
          );
-@@ -7671,6 +7955,32 @@ mod tests {
+@@ -7671,6 +7962,32 @@ mod tests {
          assert!(pushes(&mut ui).contains(&Page::Controller));
      }
  
@@ -6316,10 +7108,10 @@ index 2ead838..6750b68 100644
          }
      }
 diff --git a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-index 7466983..07f9ec0 100644
+index 7466983..ac325d8 100644
 --- a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
 +++ b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-@@ -720,6 +720,83 @@
+@@ -720,6 +720,88 @@
    "horizon.pages.pvp": "PvP & HUD",
    "horizon.pages.pvp.tooltip": "Crosshair, HUD and PvP settings, all off by default. Nothing here shows what vanilla doesn't.",
    "horizon.pages.open.pvp": "PvP & HUD...",
@@ -6328,6 +7120,7 @@ index 7466983..07f9ec0 100644
 +  "horizon.pages.open.imc": "iMC Settings...",
 +  "horizon.imc.header.controls": "Touch controls",
 +  "horizon.imc.header.screen": "Screen",
++  "horizon.imc.header.cursor": "Cursor",
 +  "horizon.imc.reset": "Reset to defaults",
 +  "horizon.imc.mobile": "Mobile preset",
 +  "horizon.imc.mobile.tooltip": "One tap to settings that suit a phone: the Performance preset (render distance 8, simulation distance 6, no clouds, minimal particles), battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Every setting stays yours to change afterwards. The Auto Performance block below keeps its own limits.",
@@ -6367,6 +7160,10 @@ index 7466983..07f9ec0 100644
 +  "horizon.imc.doubleTapJump.tooltip": "Tap the world twice quickly to jump.",
 +  "horizon.imc.safeMargin": "Screen margin",
 +  "horizon.imc.safeMargin.tooltip": "Keeps the buttons away from the notch, the corners and the home bar.",
++  "horizon.imc.cursorInventory": "Cursor in inventory",
++  "horizon.imc.cursorInventory.tooltip": "Shows the cursor whenever an inventory is open (your bag, chests, crafting, creative), without switching the whole game to cursor mode. It goes away when you close it. The Cursor button on the screen still switches everything.",
++  "horizon.imc.cursorSpeed": "Cursor speed",
++  "horizon.imc.cursorSpeed.tooltip": "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots.",
 +  "horizon.imc.autoSprint": "Auto sprint",
 +  "horizon.imc.autoSprint.tooltip": "Push the stick forward to its edge and you sprint, without holding Run. Ease off and you walk.",
 +  "horizon.imc.greyUnused": "Grey out unused settings",
@@ -6404,19 +7201,20 @@ index 7466983..07f9ec0 100644
    "horizon.pvp.crosshair": "Custom crosshair",
    "horizon.pvp.crosshair_shape": "Shape",
 diff --git a/horizon/crates/horizon-client/src/game.rs b/horizon/crates/horizon-client/src/game.rs
-index b6efe77..03b6bb8 100644
+index b6efe77..a8e5aa6 100644
 --- a/horizon/crates/horizon-client/src/game.rs
 +++ b/horizon/crates/horizon-client/src/game.rs
-@@ -169,6 +169,8 @@ mod growth;
+@@ -169,6 +169,9 @@ mod growth;
  mod hand;
  mod headless;
  mod hud_editor;
 +mod touch_calibration;
++mod touch_cursor;
 +mod touch_editor;
  mod ime;
  mod initial_spawn;
  mod input_trace;
-@@ -426,9 +428,12 @@ mod test_instances;
+@@ -426,9 +429,12 @@ mod test_instances;
  mod text_displays;
  mod tick_profile;
  mod tick_script;
@@ -6429,7 +7227,7 @@ index b6efe77..03b6bb8 100644
  mod trading;
  mod transient_blocks;
  mod trial_spawner;
-@@ -976,6 +981,8 @@ enum Screen {
+@@ -976,6 +982,8 @@ enum Screen {
      Mod,
      /// PvP & HUD's widget editor (game/hud_editor.rs).
      HudEditor,
@@ -6438,7 +7236,7 @@ index b6efe77..03b6bb8 100644
  }
  impl Screen {
      /// The id native mods see for this screen (`NativeScreenView.id`, the
-@@ -1006,6 +1013,7 @@ impl Screen {
+@@ -1006,6 +1014,7 @@ impl Screen {
              Screen::DebugOptions => "debug_options",
              Screen::Mod => "mod",
              Screen::HudEditor => "hud_editor",
@@ -6446,7 +7244,7 @@ index b6efe77..03b6bb8 100644
          }
      }
  }
-@@ -2450,6 +2458,10 @@ struct Game<'a> {
+@@ -2450,6 +2459,10 @@ struct Game<'a> {
      focused: bool,
      /// Whether the window currently accepts input method events.
      ime_allowed: bool,
@@ -6457,12 +7255,14 @@ index b6efe77..03b6bb8 100644
      /// The candidate window's area last given to the window, in pixels.
      ime_area: Option<[i32; 4]>,
      /// When the window lost focus, while it is still without
-@@ -2684,6 +2696,12 @@ struct Game<'a> {
+@@ -2684,6 +2697,14 @@ struct Game<'a> {
      /// `MinecraftServer.ticksUntilAutosave`: the ticks left before the next
      /// autosave, counted down a tick at a time.
      ticks_until_autosave: i64,
 +    /// Fingers on a touch screen (the phone): see `game/touch.rs`.
 +    touch: touch::TouchState,
++    /// Cursor mode (`game/touch_cursor.rs`): the finger moves a drawn pointer like a trackpad.
++    cursor_mode: touch_cursor::CursorState,
 +    /// When the app last saved because it went inactive (`game/lifecycle.rs`).
 +    last_suspend_save: Option<Instant>,
 +    /// Auto Performance: the memory watcher and the caps it sets (`game/auto_performance.rs`).
@@ -6470,7 +7270,7 @@ index b6efe77..03b6bb8 100644
      applied_modifiers: Vec<(String, String)>,
      experience: Experience,
      orbs: horizon_client::join_seq::JoinList<ExperienceOrb>,
-@@ -7608,6 +7626,7 @@ impl Game<'_> {
+@@ -7608,6 +7629,7 @@ impl Game<'_> {
          self.frame_graph
              .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
          self.draw_pad_cursor(&mut batch);
@@ -6478,7 +7278,7 @@ index b6efe77..03b6bb8 100644
          batch
      }
      fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
-@@ -7992,6 +8011,7 @@ impl Game<'_> {
+@@ -7992,6 +8014,7 @@ impl Game<'_> {
              Screen::BlockEditor => self.draw_block_editor(&mut batch),
              Screen::DebugOptions => self.draw_debug_options(&mut batch),
              Screen::HudEditor => self.draw_hud_editor(&mut batch),
@@ -6486,7 +7286,7 @@ index b6efe77..03b6bb8 100644
              Screen::Inventory => {
                  let from = batch.vertices.len();
                  self.draw_inventory(&mut batch);
-@@ -14554,6 +14574,11 @@ impl Game<'_> {
+@@ -14554,6 +14577,11 @@ impl Game<'_> {
      /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
      /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
      fn handle_window_event_inner(&mut self, event_loop: &dyn EventLoopCtl, mut event: WindowEvent) {
@@ -6498,7 +7298,7 @@ index b6efe77..03b6bb8 100644
          if let WindowEvent::Focused(false) = &event {
              self.physical_keys.clear();
              self.physical_buttons.clear();
-@@ -15014,6 +15039,9 @@ impl Game<'_> {
+@@ -15014,6 +15042,9 @@ impl Game<'_> {
                          if self.screen == Screen::HudEditor {
                              self.hud_editor_drag();
                          }
@@ -6508,7 +7308,7 @@ index b6efe77..03b6bb8 100644
                          if self.screen == Screen::WorldOptions {
                              self.world_options_drag();
                          }
-@@ -15414,6 +15442,12 @@ impl Game<'_> {
+@@ -15414,6 +15445,12 @@ impl Game<'_> {
                          Screen::HudEditor if button == MouseButton::Left => {
                              self.hud_editor_release()
                          }
@@ -6521,7 +7321,7 @@ index b6efe77..03b6bb8 100644
                          Screen::ConfirmLink if pressed && button == MouseButton::Left => {
                              self.confirm_link_click()
                          }
-@@ -15515,6 +15549,16 @@ impl Game<'_> {
+@@ -15515,6 +15552,16 @@ impl Game<'_> {
                          } else {
                              self.keys.remove(&key);
                          }
@@ -6538,7 +7338,7 @@ index b6efe77..03b6bb8 100644
                      }
                  }
                  WindowEvent::KeyboardInput { event, .. } if self.sign_edit.is_some() => {
-@@ -15918,11 +15962,16 @@ impl Game<'_> {
+@@ -15918,11 +15965,16 @@ impl Game<'_> {
                      self.pause = self.pauses_game();
                      if let Some(server) = &self.integrated {
                          server.set_paused(self.pause);
@@ -6560,7 +7360,7 @@ index b6efe77..03b6bb8 100644
                          server.set_legacy_rules(self.settings.extras.pvp.combat.rules);
                      }
                      self.clock.end_frame(self.pause);
-@@ -16063,6 +16112,24 @@ impl<'a> Game<'a> {
+@@ -16063,6 +16115,24 @@ impl<'a> Game<'a> {
          audio: Audio,
          prepared: Option<GameCpuResources>,
      ) -> Result<Self> {
@@ -6585,7 +7385,7 @@ index b6efe77..03b6bb8 100644
          let root = options.resources.clone();
          let registry = pack.assets.registry;
          // Until a world is opened the streamer is idle.
-@@ -16095,7 +16162,7 @@ impl<'a> Game<'a> {
+@@ -16095,7 +16165,7 @@ impl<'a> Game<'a> {
              &gui.atlas.sprites,
              &gui.atlas.translucent,
          );
@@ -6594,7 +7394,7 @@ index b6efe77..03b6bb8 100644
              world_biomes: None,
              world_biomes_base: None,
              res: res.clone(),
-@@ -16188,6 +16255,8 @@ impl<'a> Game<'a> {
+@@ -16188,6 +16258,8 @@ impl<'a> Game<'a> {
              split_auth: None,
              focused: true,
              ime_allowed: false,
@@ -6603,17 +7403,18 @@ index b6efe77..03b6bb8 100644
              ime_area: None,
              focus_lost: None,
              modifiers: winit::keyboard::ModifiersState::empty(),
-@@ -16318,6 +16387,9 @@ impl<'a> Game<'a> {
+@@ -16318,6 +16390,10 @@ impl<'a> Game<'a> {
              autosaving: false,
              // `computeNextAutosaveInterval` at the clock's 20 ticks a second.
              ticks_until_autosave: 6000,
 +            touch: Default::default(),
++            cursor_mode: Default::default(),
 +            last_suspend_save: None,
 +            auto_performance: Default::default(),
              applied_modifiers: Vec::new(),
              experience: Experience::default(),
              orbs: Default::default(),
-@@ -16631,7 +16703,7 @@ impl<'a> Game<'a> {
+@@ -16631,7 +16707,7 @@ impl<'a> Game<'a> {
              camera_type: Default::default(),
              fangs: Default::default(),
              player_model: None,
@@ -6622,7 +7423,7 @@ index b6efe77..03b6bb8 100644
          if game.native_window() {
              game.native_client_start();
          }
-@@ -17211,6 +17283,21 @@ pub fn run_with() -> Result<()> {
+@@ -17211,6 +17287,21 @@ pub fn run_with() -> Result<()> {
      if !synchronous_startup(&options) {
          return run_loading(options, early_settings, vanilla_root, None, started);
      }
@@ -6644,7 +7445,7 @@ index b6efe77..03b6bb8 100644
      let mut pack_error = None;
      options.resources = packs::startup_root(&vanilla_root, &early_settings.resource_packs, &[])
          .unwrap_or_else(|e| {
-@@ -17265,7 +17352,7 @@ pub fn run_with() -> Result<()> {
+@@ -17265,7 +17356,7 @@ pub fn run_with() -> Result<()> {
              );
              game.settings.save(&Game::options_path());
          }
@@ -7621,10 +8422,10 @@ index 3fd7216..3219d79 100644
                  // and no music tracks to list or play).
 diff --git a/horizon/crates/horizon-client/src/game/touch.rs b/horizon/crates/horizon-client/src/game/touch.rs
 new file mode 100644
-index 0000000..ecb6470
+index 0000000..0967a8e
 --- /dev/null
 +++ b/horizon/crates/horizon-client/src/game/touch.rs
-@@ -0,0 +1,880 @@
+@@ -0,0 +1,896 @@
 +//! Touch on a phone: fingers become the inputs the game already has.
 +//!
 +//! The finger logic is `horizon_client_input::touch` (pure, unit tested). This file only
@@ -7851,7 +8652,7 @@ index 0000000..ecb6470
 +    /// Which on-screen button each finger holds.
 +    holding: Vec<(FingerId, usize)>,
 +    /// The last physical position of a menu finger, to send a release at the same place.
-+    pointer: (f32, f32),
++    pub(super) pointer: (f32, f32),
 +    /// Auto-sprint is holding the Run button down now (`touch_sprint`).
 +    sprint_held: bool,
 +    /// Touch was used since the app started: the controls draw only then, so a desktop run with
@@ -7948,6 +8749,14 @@ index 0000000..ecb6470
 +        if self.touch_back_event(event_loop, id, touch.phase, at, size) {
 +            return;
 +        }
++        // The Cursor/Touch button, kept from the pointer like Back.
++        if self.cursor_switch_event(id, touch.phase, at, size) {
++            return;
++        }
++        // Cursor mode: in a menu the finger moves a drawn pointer instead of being one.
++        if self.cursor_event(event_loop, id, touch.phase, at, size, now) {
++            return;
++        }
 +        let rects = self.touch_rects(size);
 +        if touch.phase == TouchPhase::Started && !rects.is_empty() {
 +            // In the world the buttons are hit by rectangle, not by the engine's pointer, so the
@@ -8035,6 +8844,7 @@ index 0000000..ecb6470
 +        self.settings.imc.apply(&mut self.touch.logic);
 +        self.touch_follow_mode(event_loop);
 +        let now = self.touch.started.elapsed().as_secs_f64();
++        self.cursor_frame(event_loop, now);
 +        let actions = self.touch.logic.tick(now);
 +        self.touch_apply(event_loop, actions);
 +        let stick = if self.touch.logic.mode() == Mode::Playing {
@@ -8085,6 +8895,7 @@ index 0000000..ecb6470
 +        }
 +        let actions = self.touch.logic.cancel_all();
 +        self.touch_apply(event_loop, actions);
++        self.cursor_release_all(event_loop);
 +        self.pad.set_injected_left([0.0; 2]);
 +        if std::mem::take(&mut self.touch.sprint_held) {
 +            self.touch_button(event_loop, Button::LeftStick, false);
@@ -8271,7 +9082,7 @@ index 0000000..ecb6470
 +        self.pad.inject_button(button, down);
 +    }
 +
-+    fn touch_apply(&mut self, event_loop: &dyn EventLoopCtl, actions: Vec<TouchAction>) {
++    pub(super) fn touch_apply(&mut self, event_loop: &dyn EventLoopCtl, actions: Vec<TouchAction>) {
 +        for action in actions {
 +            match action {
 +                TouchAction::Look { yaw, pitch } => {
@@ -8365,9 +9176,15 @@ index 0000000..ecb6470
 +            let tw = HudBatch::text_width(atlas, label);
 +            batch.text(atlas, label, x + (w - tw) / 2.0, y + (h - 8.0) / 2.0, 0xFFFF_FFFF, true);
 +        }
-+        if !self.touch_controls_visible() {
-+            return;
++        if self.touch_controls_visible() {
++            self.draw_touch_pads(batch);
 +        }
++        // The Cursor/Touch button and the pointer last, so nothing covers them.
++        self.draw_touch_cursor(batch);
++    }
++
++    /// The on-screen buttons and the steering stick, over the world.
++    fn draw_touch_pads(&self, batch: &mut HudBatch) {
 +        let atlas = &self.gui.atlas;
 +        let (w, h) = (batch.width, batch.height);
 +        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
@@ -8664,6 +9481,241 @@ index 0000000..14482c5
 +            let [x, y, w, h] = scaled(frac, size);
 +            ui::button(batch, atlas, x, y, w, h, &Text::literal(label), true, false);
 +        }
++    }
++}
+diff --git a/horizon/crates/horizon-client/src/game/touch_cursor.rs b/horizon/crates/horizon-client/src/game/touch_cursor.rs
+new file mode 100644
+index 0000000..8b3049e
+--- /dev/null
++++ b/horizon/crates/horizon-client/src/game/touch_cursor.rs
+@@ -0,0 +1,229 @@
++//! Cursor mode on the phone: the glue between `horizon_client_input::touch_cursor` (the pure
++//! trackpad logic, unit tested) and the game.
++//!
++//! In a menu, with the cursor on, a finger does not point where it lands. It moves a drawn
++//! pointer by how far it travels; a tap clicks where the pointer is. The pointer's actions go
++//! through the same `touch_apply` path as plain touch, so every widget, slider and inventory slot
++//! works with no per-screen code.
++//!
++//! The cursor is in use when [`touch_cursor::source_for`] says so: the player switched to it with
++//! the button on the screen, or an inventory is open and "Cursor in inventory" is on. In the
++//! world it plays no part: the world has its own controls, and the button there only chooses
++//! what the next menu will use.
++use super::event_loop::EventLoopCtl;
++use super::{Game, Screen};
++use horizon_client::hud::HudBatch;
++use horizon_client_input::touch::FingerId;
++use horizon_client_input::touch_cursor::{self, Cursor, Source, switch};
++use winit::event::TouchPhase;
++
++/// The cursor's state in the game.
++pub(super) struct CursorState {
++    logic: Cursor,
++    /// The player pressed the Cursor/Touch button: the cursor holds across screens.
++    pub(super) switched: bool,
++    /// The finger that went down on the switch button, and is not a pointer.
++    switch_finger: Option<FingerId>,
++    /// Whether the cursor was in use at the last look, to put the pointer in the middle when it
++    /// starts and to let go of what it held when it stops.
++    was_active: bool,
++}
++
++impl Default for CursorState {
++    fn default() -> Self {
++        CursorState {
++            logic: Cursor::new((1.0, 1.0)),
++            switched: false,
++            switch_finger: None,
++            was_active: false,
++        }
++    }
++}
++
++impl Game<'_> {
++    /// The screens that are an inventory: the bag and what opens through it (chests, furnaces,
++    /// crafting, villagers, horses) and creative.
++    fn touch_in_inventory(&self) -> bool {
++        self.title.is_none() && matches!(self.screen, Screen::Inventory | Screen::Creative)
++    }
++
++    /// How the cursor stands now. It only matters on a screen with a pointer.
++    pub(super) fn cursor_source(&self) -> Source {
++        if !self.pad_in_menu() || self.touch.calibrating.is_some() {
++            return Source::Off;
++        }
++        touch_cursor::source_for(
++            self.cursor_mode.switched,
++            self.settings.imc.cursor_inventory,
++            self.touch_in_inventory(),
++        )
++    }
++
++    /// The cursor is the pointer for the finger now.
++    pub(super) fn cursor_active(&self) -> bool {
++        self.touch.seen && self.cursor_source().active()
++    }
++
++    /// Where the Cursor/Touch button is wanted: on every screen with a pointer, and in the
++    /// world, so the player can choose before a menu opens. Not on the touch editor or
++    /// calibration, which use the finger as the finger.
++    fn cursor_switch_wanted(&self) -> bool {
++        self.touch.seen
++            && self.settings.imc.controls
++            && self.touch.calibrating.is_none()
++            && self.screen != Screen::TouchEditor
++            && !self.prompt_open()
++    }
++
++    /// Keeps the cursor's start and end in step with the screen: a new use starts in the middle
++    /// (or where the plain pointer last was), and ending one lets go of what it held.
++    /// Returns the actions to apply.
++    pub(super) fn cursor_follow(&mut self, size: (f32, f32)) -> Vec<horizon_client_input::touch::Action> {
++        self.cursor_mode.logic.resize(size);
++        self.cursor_mode.logic.speed = self.settings.imc.cursor_speed_scale();
++        let active = self.cursor_active();
++        let mut actions = Vec::new();
++        if active && !self.cursor_mode.was_active {
++            // The pointer starts where the plain pointer was, so the screen does not jump.
++            self.cursor_mode.logic.place(self.touch.pointer);
++        } else if !active && self.cursor_mode.was_active {
++            actions = self.cursor_mode.logic.cancel_all();
++        }
++        self.cursor_mode.was_active = active;
++        actions
++    }
++
++    /// A finger event while the cursor is in use. Returns `true` when the cursor took it.
++    pub(super) fn cursor_event(
++        &mut self,
++        event_loop: &dyn EventLoopCtl,
++        id: FingerId,
++        phase: TouchPhase,
++        at: (f32, f32),
++        size: (f32, f32),
++        now: f64,
++    ) -> bool {
++        let actions = self.cursor_follow(size);
++        self.touch_apply(event_loop, actions);
++        if !self.cursor_active() {
++            return false;
++        }
++        let actions = match phase {
++            TouchPhase::Started => self.cursor_mode.logic.down(id, at, now),
++            TouchPhase::Moved => self.cursor_mode.logic.moved(id, at, now),
++            TouchPhase::Ended => self.cursor_mode.logic.up(id, now, false),
++            TouchPhase::Cancelled => self.cursor_mode.logic.up(id, now, true),
++        };
++        // Where the pointer is now, so the next screen's plain pointer starts there too.
++        self.touch.pointer = self.cursor_mode.logic.position();
++        self.touch_apply(event_loop, actions);
++        true
++    }
++
++    /// Each frame: the right click of a finger held still, and the start or end of the cursor
++    /// when the screen changed with no finger on it (an inventory opened by the Inv button).
++    pub(super) fn cursor_frame(&mut self, event_loop: &dyn EventLoopCtl, now: f64) {
++        let Some(size) = self
++            .renderer
++            .as_ref()
++            .map(|r| (r.config.width as f32, r.config.height as f32))
++        else {
++            return;
++        };
++        let actions = self.cursor_follow(size);
++        self.touch_apply(event_loop, actions);
++        if self.cursor_active() {
++            let actions = self.cursor_mode.logic.tick(now);
++            self.touch_apply(event_loop, actions);
++        }
++    }
++
++    /// Everything the cursor holds is let go (the app is going to the background).
++    pub(super) fn cursor_release_all(&mut self, event_loop: &dyn EventLoopCtl) {
++        let actions = self.cursor_mode.logic.cancel_all();
++        self.touch_apply(event_loop, actions);
++        self.cursor_mode.switch_finger = None;
++        self.cursor_mode.was_active = false;
++    }
++
++    /// The switch button's finger: a press on the button is kept from the pointer, and
++    /// switches the mode when it lifts on it. Returns whether the event was the button's.
++    pub(super) fn cursor_switch_event(
++        &mut self,
++        id: FingerId,
++        phase: TouchPhase,
++        at: (f32, f32),
++        size: (f32, f32),
++    ) -> bool {
++        let rect = switch::rect(size);
++        let on_button = at.0 >= rect[0]
++            && at.0 < rect[0] + rect[2]
++            && at.1 >= rect[1]
++            && at.1 < rect[1] + rect[3];
++        match phase {
++            TouchPhase::Started => {
++                if self.cursor_switch_wanted() && on_button && self.cursor_mode.switch_finger.is_none() {
++                    self.cursor_mode.switch_finger = Some(id);
++                    return true;
++                }
++                false
++            }
++            TouchPhase::Moved => self.cursor_mode.switch_finger == Some(id),
++            TouchPhase::Ended | TouchPhase::Cancelled => {
++                if self.cursor_mode.switch_finger != Some(id) {
++                    return false;
++                }
++                self.cursor_mode.switch_finger = None;
++                if phase == TouchPhase::Ended && switch::fires(true, at, rect) {
++                    self.cursor_mode.switched = !self.cursor_mode.switched;
++                    // Switching from the middle of a screen starts the pointer where the plain
++                    // one last was; the next frame's `cursor_follow` does that.
++                }
++                true
++            }
++        }
++    }
++
++    /// The pointer, and the Cursor/Touch button. Over everything, like the touch controls.
++    pub(super) fn draw_touch_cursor(&self, batch: &mut HudBatch) {
++        if self.touch.calibrating.is_some() {
++            return;
++        }
++        if self.cursor_switch_wanted() {
++            let [x, y, w, h] = switch::rect((batch.width, batch.height));
++            let atlas = &self.gui.atlas;
++            let down = self.cursor_mode.switch_finger.is_some();
++            let on = self.cursor_mode.switched;
++            // A lit button says the cursor is the choice; the caption says what a tap does.
++            let fill = if down {
++                0xA0FF_FFFF
++            } else if on {
++                0x8030_90FF
++            } else {
++                0x7000_0000
++            };
++            batch.fill(atlas, x, y, w, h, fill);
++            let label = switch::caption(on);
++            let tw = HudBatch::text_width(atlas, label);
++            batch.text(atlas, label, x + (w - tw) / 2.0, y + (h - 8.0) / 2.0, 0xFFFF_FFFF, true);
++        }
++        if !self.cursor_active() {
++            return;
++        }
++        // The same crosshair the controller uses in inventories, centred on the point a tap
++        // would press. The logic's position is in physical pixels; the batch is in GUI units.
++        use horizon_client::pad_cursor;
++        let (px, py) = self.cursor_mode.logic.position();
++        let s = batch.scale;
++        let (left, top) = pad_cursor::origin((px / s, py / s));
++        batch.sprite_scaled(
++            &self.gui.atlas,
++            pad_cursor::SPRITE,
++            left,
++            top,
++            pad_cursor::DRAWN,
++            pad_cursor::DRAWN,
++            u32::MAX,
++        );
 +    }
 +}
 diff --git a/horizon/crates/horizon-client/src/game/touch_editor.rs b/horizon/crates/horizon-client/src/game/touch_editor.rs

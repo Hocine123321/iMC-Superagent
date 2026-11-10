@@ -2864,6 +2864,13 @@ impl OptionsUi {
                     imc(Item::GreyUnused),
                     Some(imc(Item::MenuTouch)),
                 ));
+                // The cursor: a pointer the finger moves like a trackpad. The button on the
+                // screen switches to it; this one brings it up in inventories by itself.
+                rows.push(Row::Header("horizon.imc.header.cursor"));
+                rows.push(Row::Buttons(
+                    imc(Item::CursorInventory),
+                    Some(imc(Item::CursorSpeed)),
+                ));
                 // Where a finger lands. Only needed if the touch is off on this phone.
                 rows.push(Row::Buttons(imc(Item::ShiftX), Some(imc(Item::ShiftY))));
                 // Where the on-screen buttons answer, for a phone where they sit off the finger.

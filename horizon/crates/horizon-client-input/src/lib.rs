@@ -20,6 +20,7 @@ pub mod mouse;
 pub mod snap;
 pub mod touch;
 pub mod touch_calibration;
+pub mod touch_cursor;
 pub mod touch_editor_tools;
 pub mod touch_extras;
 pub mod touch_layout;

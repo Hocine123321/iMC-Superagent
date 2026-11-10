@@ -348,3 +348,19 @@ engine's own on-screen keyboard from opening over the phone's.
    (`device ready; configuring the surface (WxH ...)`). Compare it with the 2532x1170 of a full
    iPhone 12 screen: if it is smaller, the first surface was the safe area, and if a later size
    change is missing the renderer may still be on it.
+
+## Cursor mode (2026-11-10)
+
+Cursor mode makes the finger a trackpad in menus: it moves a drawn crosshair by how far it
+travels, and the cursor is what a tap presses. See `HORIZON_CHANGES.md` section N for the files.
+
+- **Cursor / Touch button**, under Back, on every screen with a pointer and in the world. It
+  switches every menu to the cursor until pressed again. In the world it only chooses what the
+  next menu uses.
+- **Cursor in inventory** (iMC Settings > Cursor, off by default): the bag, chests, crafting and
+  creative open with the cursor and go back to plain touch on close, without pressing the button.
+- **Cursor speed**: how far it moves per bit of finger travel.
+- **Gestures:** drag moves; tap clicks; hold still is a right click; tap then drag holds the left
+  button (sliders, moving a stack); two fingers scroll.
+
+Not run on a phone. The gesture logic has unit tests; the game hookup compiles on CI only.

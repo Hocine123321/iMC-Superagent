@@ -352,6 +352,27 @@ branch and the `chat_unplaced_key` method.
 
 ---
 
+## N. Cursor mode (2026-11-10)
+
+A trackpad-style pointer for menus: the finger moves a drawn cursor by its travel instead of being
+the pointer. A tap clicks where the cursor is, holding still is a right click, tap then drag holds
+the left button, two fingers scroll. A Cursor/Touch button under Back switches it, and iMC
+Settings > Cursor has "Cursor in inventory" (off by default) and "Cursor speed". Written and
+unit tested for the pure part; the game glue is checked by the CI build only.
+
+| File | Change |
+|---|---|
+| `crates/horizon-client-input/src/touch_cursor.rs` | **New**, pure state machine, the switch button's place, `source_for` (the switch wins; the setting only helps in an inventory). 28 tests. |
+| `crates/horizon-client-input/src/lib.rs` | `pub mod touch_cursor;` |
+| `crates/horizon-client-input/src/imc_settings.rs` | Two `Item`s (`CursorInventory`, `CursorSpeed`, keys `cursorInventory`, `cursorSpeed`), their fields, parse, serialize, `value`, `cycle`, `cursor_speed_scale`. 3 tests. `Item::ALL` is 22. |
+| `crates/horizon-client-render/src/options_ui.rs` | A "Cursor" header and one row of the two settings on the iMC page. |
+| `crates/horizon-client/assets/horizon/lang/en_us.json` | Header, captions and tooltips for the two settings. |
+| `crates/horizon-client/src/game/touch_cursor.rs` | **New**, the glue: state, the switch finger, `cursor_event` (feeds the same `touch_apply` as plain touch), per-frame hold, drawing of the button and the crosshair. |
+| `crates/horizon-client/src/game.rs` | `mod touch_cursor;`, the `cursor_mode` field and its default. |
+| `crates/horizon-client/src/game/touch.rs` | Calls into the cursor from `touch_event` (after Back), `touch_frame`, `touch_release_all`; `draw_touch_controls` split so the cursor draws last (`draw_touch_pads`); `TouchState::pointer` and `touch_apply` are `pub(super)`. |
+
+**Re-apply:** copy the two new files, then re-do the small hooks by their anchors.
+
 ## F. Index: all 58 files
 
 `A` = new file, `M` = modified. Section in brackets.
@@ -366,6 +387,7 @@ A horizon/crates/horizon-client-input/src/imc_settings.rs         [D1]
 M horizon/crates/horizon-client-input/src/keybinds.rs             [A3]
 M horizon/crates/horizon-client-input/src/lib.rs                  [C2, I2]
 A horizon/crates/horizon-client-input/src/touch.rs                [C1]
+A horizon/crates/horizon-client-input/src/touch_cursor.rs         [N]
 A horizon/crates/horizon-client-input/src/touch_calibration.rs    [J1]
 A horizon/crates/horizon-client-input/src/touch_editor_tools.rs   [L1]
 A horizon/crates/horizon-client-input/src/touch_extras.rs         [K1]
@@ -408,6 +430,7 @@ M horizon/crates/horizon-client/src/game/split/players.rs         [B]
 M horizon/crates/horizon-client/src/game/startup_menu.rs          [B, I2]
 A horizon/crates/horizon-client/src/game/touch.rs                 [C1, I2]
 A horizon/crates/horizon-client/src/game/touch_calibration.rs     [J1]
+A horizon/crates/horizon-client/src/game/touch_cursor.rs          [N]
 A horizon/crates/horizon-client/src/game/touch_editor.rs          [I1]
 M horizon/crates/horizon-client/src/game/window_handler.rs        [A4, C2]
 M horizon/crates/horizon-hdr/Cargo.toml                           [A1]
