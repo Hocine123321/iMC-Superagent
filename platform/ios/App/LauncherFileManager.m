@@ -46,7 +46,7 @@ static const unsigned long long kPreviewLimit = 256 * 1024;   // text shown in t
     ]];
 }
 
-static NSString *Size(unsigned long long b) {
+static NSString *ByteText(unsigned long long b) {
     return [NSByteCountFormatter stringFromByteCount:(long long)b countStyle:NSByteCountFormatterCountStyleFile];
 }
 
@@ -82,7 +82,7 @@ static NSString *Size(unsigned long long b) {
     NSDictionary *fs = [[NSFileManager defaultManager] attributesOfFileSystemForPath:self.browser.root error:nil];
     free = [fs[NSFileSystemFreeSize] unsignedLongLongValue];
     return [NSString stringWithFormat:@"%lu items. %@ free on this phone. Everything here is inside the Horizon folder; nothing outside it can be reached.",
-            (unsigned long)self.entries.count, Size(free)];
+            (unsigned long)self.entries.count, ByteText(free)];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
@@ -94,8 +94,8 @@ static NSString *Size(unsigned long long b) {
     cell.textLabel.text = e.name;
     NSString *date = e.modified ? [NSDateFormatter localizedStringFromDate:e.modified dateStyle:NSDateFormatterMediumStyle timeStyle:NSDateFormatterShortStyle] : @"";
     NSString *size;
-    if (e.isFolder) { NSNumber *n = self.folderSizes[e.relativePath]; size = n ? Size(n.unsignedLongLongValue) : @"..."; }
-    else size = Size(e.size);
+    if (e.isFolder) { NSNumber *n = self.folderSizes[e.relativePath]; size = n ? ByteText(n.unsignedLongLongValue) : @"..."; }
+    else size = ByteText(e.size);
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@   %@", size, date];
     cell.imageView.image = [UIImage systemImageNamed:e.isFolder ? @"folder.fill" : @"doc"];
     cell.imageView.tintColor = e.isFolder ? [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1] : [UIColor colorWithWhite:0.7 alpha:1];
