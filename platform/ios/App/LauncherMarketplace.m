@@ -1,10 +1,11 @@
 #import "LauncherMarketplace.h"
+#import "LauncherTheme.h"
 #import "MarketClient.h"
 #import "LauncherModel.h"
 
 static NSString *const kGame = @"26.3";
 
-static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1]; }
+static UIColor *Accent(void) { return [HZTheme accent]; }
 
 static NSString *MarketSupportText(HZMarketSupport s) {
     switch (s) {
@@ -43,9 +44,9 @@ static NSString *MarketKindText(NSString *kind) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Marketplace";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
     self.tableView.backgroundColor = self.view.backgroundColor;
-    self.tableView.separatorColor = [UIColor colorWithWhite:1 alpha:0.12];
+    self.tableView.separatorColor = [HZTheme separator];
 
     self.filter = [[UISegmentedControl alloc] initWithItems:@[@"Works on iPhone", @"All", @"Mods", @"Packs", @"Shaders"]];
     self.filter.selectedSegmentIndex = 0;
@@ -64,7 +65,7 @@ static NSString *MarketKindText(NSString *kind) {
     self.banner = [UILabel new];
     self.banner.numberOfLines = 0;
     self.banner.font = [UIFont systemFontOfSize:12];
-    self.banner.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    self.banner.textColor = [HZTheme tertiaryText];
     [self load:NO];
 }
 
@@ -137,12 +138,12 @@ static NSString *MarketKindText(NSString *kind) {
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     HZMarketProject *p = self.shown[(NSUInteger)ip.row];
-    cell.backgroundColor = [UIColor colorWithWhite:1 alpha:0.07];
+    cell.backgroundColor = [HZTheme surface];
     cell.textLabel.text = p.name;
-    cell.textLabel.textColor = UIColor.whiteColor;
+    cell.textLabel.textColor = [HZTheme text];
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  |  %@\n%@", MarketKindText(p.kind), MarketSupportText(p.support), p.summary];
     cell.detailTextLabel.numberOfLines = 3;
-    cell.detailTextLabel.textColor = p.support == HZMarketInstallable ? Accent() : [UIColor colorWithWhite:0.65 alpha:1];
+    cell.detailTextLabel.textColor = p.support == HZMarketInstallable ? Accent() : [HZTheme secondaryText];
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
 }
@@ -159,7 +160,7 @@ static NSString *MarketKindText(NSString *kind) {
     vc.view.backgroundColor = self.view.backgroundColor;
     UITextView *tx = [UITextView new];
     tx.editable = NO;
-    tx.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+    tx.backgroundColor = [HZTheme codeBackground];
     tx.layer.cornerRadius = 10;
     tx.textContainerInset = UIEdgeInsetsMake(14, 14, 14, 14);
     tx.dataDetectorTypes = UIDataDetectorTypeLink;
@@ -170,13 +171,13 @@ static NSString *MarketKindText(NSString *kind) {
     void (^add)(NSString *, UIFont *, UIColor *) = ^(NSString *t, UIFont *f, UIColor *c) {
         [s appendAttributedString:[[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: f, NSForegroundColorAttributeName: c}]];
     };
-    UIColor *white = UIColor.whiteColor, *grey = [UIColor colorWithWhite:0.75 alpha:1];
+    UIColor *white = [HZTheme text], *grey = [HZTheme secondaryText];
     add([p.name stringByAppendingString:@"\n"], h1, white);
     add([NSString stringWithFormat:@"%@  |  %@\n\n", MarketKindText(p.kind), MarketSupportText(p.support)], h2, p.support == HZMarketInstallable ? Accent() : grey);
     if (p.summary.length) add([p.summary stringByAppendingString:@"\n\n"], body, white);
     if (p.support == HZMarketNeedsDesktop) add(@"This is a native mod. It changes the game's Rust source before the game is compiled, so it needs a desktop build and cannot be added on a phone.\n\n", body, grey);
     if (p.support == HZMarketNotYet) add(@"This kind of project cannot be installed by the app yet.\n\n", body, grey);
-    if (rev) add([NSString stringWithFormat:@"Taken down by the registry%@: %@\n\n", rev.date.length ? [@" on " stringByAppendingString:rev.date] : @"", rev.reason], body, [UIColor colorWithRed:1 green:0.55 blue:0.55 alpha:1]);
+    if (rev) add([NSString stringWithFormat:@"Taken down by the registry%@: %@\n\n", rev.date.length ? [@" on " stringByAppendingString:rev.date] : @"", rev.reason], body, [HZTheme danger]);
     add(@"Details\n", h2, white);
     NSMutableString *facts = [NSMutableString new];
     if (p.authors.count) [facts appendFormat:@"By %@\n", [p.authors componentsJoinedByString:@", "]];

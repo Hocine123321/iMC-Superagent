@@ -1,4 +1,5 @@
 #import "LauncherFileManager.h"
+#import "LauncherTheme.h"
 #import "FileBrowser.h"
 #import "LauncherModel.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -28,9 +29,9 @@ static const unsigned long long kPreviewLimit = 256 * 1024;   // text shown in t
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = self.path.length ? self.path.lastPathComponent : @"Files";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
     self.tableView.backgroundColor = self.view.backgroundColor;
-    self.tableView.separatorColor = [UIColor colorWithWhite:1 alpha:0.12];
+    self.tableView.separatorColor = [HZTheme separator];
     [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"c"];
     UIBarButtonItem *add = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"] menu:[self addMenu]];
     self.navigationItem.rightBarButtonItem = add;
@@ -88,9 +89,9 @@ static NSString *ByteText(unsigned long long b) {
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     HZFileEntry *e = self.entries[(NSUInteger)ip.row];
-    cell.backgroundColor = [UIColor colorWithWhite:1 alpha:0.07];
-    cell.textLabel.textColor = UIColor.whiteColor;
-    cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.65 alpha:1];
+    cell.backgroundColor = [HZTheme surface];
+    cell.textLabel.textColor = [HZTheme text];
+    cell.detailTextLabel.textColor = [HZTheme secondaryText];
     cell.textLabel.text = e.name;
     NSString *date = e.modified ? [NSDateFormatter localizedStringFromDate:e.modified dateStyle:NSDateFormatterMediumStyle timeStyle:NSDateFormatterShortStyle] : @"";
     NSString *size;
@@ -98,7 +99,7 @@ static NSString *ByteText(unsigned long long b) {
     else size = ByteText(e.size);
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@   %@", size, date];
     cell.imageView.image = [UIImage systemImageNamed:e.isFolder ? @"folder.fill" : @"doc"];
-    cell.imageView.tintColor = e.isFolder ? [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1] : [UIColor colorWithWhite:0.7 alpha:1];
+    cell.imageView.tintColor = e.isFolder ? [HZTheme accent] : [HZTheme secondaryText];
     cell.accessoryType = e.isFolder ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
     return cell;
 }
@@ -119,10 +120,10 @@ static NSString *ByteText(unsigned long long b) {
         handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) { [self confirmDelete:e done:done]; }];
     UIContextualAction *ren = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"Rename"
         handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) { [self rename:e]; done(YES); }];
-    ren.backgroundColor = [UIColor colorWithWhite:0.35 alpha:1];
+    ren.backgroundColor = [UIColor systemGrayColor];
     UIContextualAction *share = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:@"Share"
         handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) { [self share:e from:[tv cellForRowAtIndexPath:ip]]; done(YES); }];
-    share.backgroundColor = [UIColor colorWithRed:0.2 green:0.45 blue:0.8 alpha:1];
+    share.backgroundColor = [UIColor systemBlueColor];
     return [UISwipeActionsConfiguration configurationWithActions:@[del, ren, share]];
 }
 
@@ -202,8 +203,8 @@ static NSString *ByteText(unsigned long long b) {
     vc.view.backgroundColor = self.view.backgroundColor;
     UITextView *tv = [UITextView new];
     tv.editable = NO; tv.text = text;
-    tv.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
-    tv.textColor = [UIColor colorWithWhite:0.88 alpha:1];
+    tv.backgroundColor = [HZTheme codeBackground];
+    tv.textColor = [HZTheme text];
     tv.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
     tv.layer.cornerRadius = 10;
     tv.translatesAutoresizingMaskIntoConstraints = NO;

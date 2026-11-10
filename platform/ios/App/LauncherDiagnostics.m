@@ -1,4 +1,5 @@
 #import "LauncherDiagnostics.h"
+#import "LauncherTheme.h"
 #import "LauncherModel.h"
 
 @interface HZLauncherDiagnosticsController ()
@@ -11,7 +12,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Diagnostics";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction
                                                                                            target:self action:@selector(share:)];
     self.which = [[UISegmentedControl alloc] initWithItems:@[@"Crash report", @"Game log"]];
@@ -21,8 +22,8 @@
 
     self.text = [UITextView new];
     self.text.editable = NO;
-    self.text.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
-    self.text.textColor = [UIColor colorWithWhite:0.88 alpha:1];
+    self.text.backgroundColor = [HZTheme codeBackground];
+    self.text.textColor = [HZTheme text];
     self.text.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
     self.text.layer.cornerRadius = 10;
     self.text.translatesAutoresizingMaskIntoConstraints = NO;

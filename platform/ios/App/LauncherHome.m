@@ -7,40 +7,28 @@
 #import "LauncherFileManager.h"
 #import "LauncherAbout.h"
 #import "LauncherMarketplace.h"
+#import "LauncherTheme.h"
 #import "AccountClient.h"
 #import "AccountStore.h"
 #import "CrashReporter.h"
 
-static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1]; }
+static UIColor *Accent(void) { return [HZTheme accent]; }
 
 @interface HZLauncherHomeController ()
 @property (strong) UILabel *statusTitle, *statusDetail, *versionLabel;
-@property (strong) UIButton *playButton, *filesButton, *fileManagerButton, *downloadButton, *diagButton, *accountButton, *aboutButton, *marketButton;
-@property (strong) UISwitch *directSwitch;
+@property (strong) UIButton *playButton, *filesButton, *downloadButton, *accountButton, *marketButton, *moreButton;
 @property (strong) UIView *statusDot;
 @property (strong) UIActivityIndicatorView *spinner;
 @end
 
 @implementation HZLauncherHomeController
 
-- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleLightContent; }
+- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleDefault; }
 
-- (UIButton *)buttonWithTitle:(NSString *)title filled:(BOOL)filled action:(SEL)action {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    b.translatesAutoresizingMaskIntoConstraints = NO;
-    [b setTitle:title forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:filled ? 22 : 17 weight:filled ? UIFontWeightBold : UIFontWeightSemibold];
-    b.layer.cornerRadius = 14;
-    if (filled) {
-        b.backgroundColor = Accent();
-        [b setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
-        [b setTitleColor:[UIColor colorWithWhite:0.25 alpha:1] forState:UIControlStateDisabled];
-    } else {
-        b.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
-        [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    }
-    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
-    return b;
+// The status card and the "..." menu: a glass surface holding content. Plain card where there is no glass.
+- (UIVisualEffectView *)card {
+    UIVisualEffectView *v = [HZTheme glassViewWithTint:nil interactive:NO cornerRadius:24];
+    return v;
 }
 
 - (void)viewDidLoad {
@@ -51,99 +39,190 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     // The game itself never reaches the network for this: with "open straight into the game" on, the
     // launcher is skipped and the token is as fresh as the last time the launcher was open.
     if ([[HZAccountStore shared] account]) [[HZAccountClient shared] recheck:^(BOOL reachable, BOOL owns, NSString *error) {}];
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
+    [self addBackdrop];
 
-    UILabel *name = [UILabel new];
+    // ---- Left: who this is, and the state of the game files.
+    UILabel *name = [HZTheme labelWithSize:44 weight:UIFontWeightHeavy color:[HZTheme text]];
     name.text = @"iMC Horizon";
-    name.font = [UIFont systemFontOfSize:34 weight:UIFontWeightHeavy];
-    name.textColor = UIColor.whiteColor;
+    name.numberOfLines = 1; name.adjustsFontSizeToFitWidth = YES; name.minimumScaleFactor = 0.6;
 
-    self.versionLabel = [UILabel new];
-    self.versionLabel.font = [UIFont systemFontOfSize:14];
-    self.versionLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    self.versionLabel = [HZTheme labelWithSize:14 weight:UIFontWeightMedium color:[HZTheme secondaryText]];
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
-    self.versionLabel.text = [NSString stringWithFormat:@"Launcher %@   Minecraft 26.3",
+    self.versionLabel.text = [NSString stringWithFormat:@"Launcher %@  \u00B7  Minecraft 26.3",
                               info[@"CFBundleShortVersionString"] ?: @"?"];
 
-    UIStackView *titleBox = [[UIStackView alloc] initWithArrangedSubviews:@[name, self.versionLabel]];
-    titleBox.axis = UILayoutConstraintAxisVertical; titleBox.spacing = 2;
-
-    // The state of the game files: a coloured dot, one line, one line of detail.
     self.statusDot = [UIView new];
     self.statusDot.layer.cornerRadius = 6;
     self.statusDot.translatesAutoresizingMaskIntoConstraints = NO;
     [self.statusDot.widthAnchor constraintEqualToConstant:12].active = YES;
     [self.statusDot.heightAnchor constraintEqualToConstant:12].active = YES;
-    self.statusTitle = [UILabel new];
-    self.statusTitle.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-    self.statusTitle.textColor = UIColor.whiteColor;
-    self.statusDetail = [UILabel new];
-    self.statusDetail.font = [UIFont systemFontOfSize:14];
-    self.statusDetail.textColor = [UIColor colorWithWhite:0.7 alpha:1];
-    self.statusDetail.numberOfLines = 0;
+    self.statusTitle = [HZTheme labelWithSize:18 weight:UIFontWeightSemibold color:[HZTheme text]];
+    self.statusDetail = [HZTheme labelWithSize:14 weight:UIFontWeightRegular color:[HZTheme secondaryText]];
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
-    self.spinner.color = UIColor.whiteColor;
     UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[self.statusDot, self.statusTitle, self.spinner]];
     head.spacing = 10; head.alignment = UIStackViewAlignmentCenter;
-    UIStackView *status = [[UIStackView alloc] initWithArrangedSubviews:@[head, self.statusDetail]];
-    status.axis = UILayoutConstraintAxisVertical; status.spacing = 6;
+    UIStackView *statusText = [[UIStackView alloc] initWithArrangedSubviews:@[head, self.statusDetail]];
+    statusText.axis = UILayoutConstraintAxisVertical; statusText.spacing = 6;
+    statusText.translatesAutoresizingMaskIntoConstraints = NO;
+    UIVisualEffectView *statusCard = [self card];
+    [statusCard.contentView addSubview:statusText];
+    [NSLayoutConstraint activateConstraints:@[
+        [statusText.topAnchor constraintEqualToAnchor:statusCard.contentView.topAnchor constant:16],
+        [statusText.bottomAnchor constraintEqualToAnchor:statusCard.contentView.bottomAnchor constant:-16],
+        [statusText.leadingAnchor constraintEqualToAnchor:statusCard.contentView.leadingAnchor constant:18],
+        [statusText.trailingAnchor constraintEqualToAnchor:statusCard.contentView.trailingAnchor constant:-18],
+    ]];
 
-    self.playButton = [self buttonWithTitle:@"Play" filled:YES action:@selector(play)];
-    self.filesButton = [self buttonWithTitle:@"Game files" filled:NO action:@selector(openFiles)];
-    self.fileManagerButton = [self buttonWithTitle:@"File manager" filled:NO action:@selector(openFileManager)];
-    self.downloadButton = [self buttonWithTitle:@"Download Minecraft" filled:NO action:@selector(openDownload)];
-    self.diagButton = [self buttonWithTitle:@"Diagnostics" filled:NO action:@selector(openDiagnostics)];
-    self.accountButton = [self buttonWithTitle:@"Account" filled:NO action:@selector(openAccount)];
-    self.marketButton = [self buttonWithTitle:@"Marketplace" filled:NO action:@selector(openMarket)];
-    [self.marketButton.heightAnchor constraintEqualToConstant:48].active = YES;
-    self.aboutButton = [self buttonWithTitle:@"About" filled:NO action:@selector(openAbout)];
-    [self.aboutButton.heightAnchor constraintEqualToConstant:48].active = YES;
-    [self.accountButton.heightAnchor constraintEqualToConstant:48].active = YES;
-    [self.playButton.heightAnchor constraintEqualToConstant:64].active = YES;
-    [self.filesButton.heightAnchor constraintEqualToConstant:48].active = YES;
-    [self.diagButton.heightAnchor constraintEqualToConstant:48].active = YES;
-    [self.downloadButton.heightAnchor constraintEqualToConstant:48].active = YES;
-    [self.fileManagerButton.heightAnchor constraintEqualToConstant:48].active = YES;
+    UIStackView *left = [[UIStackView alloc] initWithArrangedSubviews:@[name, self.versionLabel, statusCard]];
+    left.axis = UILayoutConstraintAxisVertical; left.spacing = 6;
+    [left setCustomSpacing:22 afterView:self.versionLabel];
 
-    UIStackView *secondary = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesButton, self.fileManagerButton, self.accountButton, self.diagButton]];
-    secondary.spacing = 12; secondary.distribution = UIStackViewDistributionFillEqually;
-    // Getting the game onto the phone is the first thing a new install needs: its own full-width row.
+    // ---- Right: Play, then the four things a player reaches for, in a grid.
+    self.playButton = [HZTheme buttonWithTitle:@"Play" symbol:@"play.fill" prominent:YES target:self action:@selector(play)];
+    [self.playButton.heightAnchor constraintEqualToConstant:76].active = YES;
+    self.downloadButton = [HZTheme buttonWithTitle:@"Download" symbol:@"arrow.down.circle" prominent:NO target:self action:@selector(openDownload)];
+    self.marketButton = [HZTheme buttonWithTitle:@"Marketplace" symbol:@"square.grid.2x2" prominent:NO target:self action:@selector(openMarket)];
+    self.filesButton = [HZTheme buttonWithTitle:@"Game files" symbol:@"folder" prominent:NO target:self action:@selector(openFiles)];
+    self.accountButton = [HZTheme buttonWithTitle:@"Account" symbol:@"person.crop.circle" prominent:NO target:self action:@selector(openAccount)];
+    for (UIButton *b in @[self.downloadButton, self.marketButton, self.filesButton, self.accountButton])
+        [b.heightAnchor constraintEqualToConstant:56].active = YES;
 
-    // Skip this screen on the next opens: straight into the game when the files are ready.
-    UILabel *directLabel = [UILabel new];
-    directLabel.text = @"Open straight into the game";
-    directLabel.font = [UIFont systemFontOfSize:15];
-    directLabel.textColor = UIColor.whiteColor;
-    directLabel.numberOfLines = 0;
-    self.directSwitch = [UISwitch new];
-    self.directSwitch.onTintColor = Accent();
-    self.directSwitch.on = [HZLauncherModel shared].opensGameDirectly;
-    [self.directSwitch addTarget:self action:@selector(directChanged:) forControlEvents:UIControlEventValueChanged];
-    UIStackView *direct = [[UIStackView alloc] initWithArrangedSubviews:@[directLabel, self.directSwitch]];
-    direct.spacing = 12; direct.alignment = UIStackViewAlignmentCenter;
-    UILabel *directNote = [UILabel new];
-    directNote.text = @"Skips this screen when the game files are ready. Stopping the app (from Xcode, StikDebug or the app switcher) does not bring it back. It comes back after a crash, after the app ends four times in a row within 15 seconds, or when a file named open-launcher is in the Horizon folder.";
-    directNote.font = [UIFont systemFontOfSize:12];
-    directNote.textColor = [UIColor colorWithWhite:0.55 alpha:1];
-    directNote.numberOfLines = 0;
-
-    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, self.downloadButton, self.marketButton, secondary, self.aboutButton, direct, directNote]];
-    right.axis = UILayoutConstraintAxisVertical; right.spacing = 18;
+    UIStackView *r1 = [[UIStackView alloc] initWithArrangedSubviews:@[self.downloadButton, self.marketButton]];
+    UIStackView *r2 = [[UIStackView alloc] initWithArrangedSubviews:@[self.filesButton, self.accountButton]];
+    for (UIStackView *r in @[r1, r2]) { r.spacing = 12; r.distribution = UIStackViewDistributionFillEqually; }
+    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[self.playButton, r1, r2]];
+    right.axis = UILayoutConstraintAxisVertical; right.spacing = 12;
 
     // Landscape (the app is landscape-only): the name on the left, the controls on the right.
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[titleBox, right]];
-    row.spacing = 40; row.alignment = UIStackViewAlignmentCenter; row.distribution = UIStackViewDistributionFillEqually;
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[left, right]];
+    row.spacing = 48; row.alignment = UIStackViewAlignmentCenter; row.distribution = UIStackViewDistributionFillEqually;
     row.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:row];
+
+    // ---- Top right: the "..." button. Everything that is not needed every time lives behind it.
+    self.moreButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.moreButton.translatesAutoresizingMaskIntoConstraints = NO;
+    UIVisualEffectView *moreGlass = [HZTheme glassViewWithTint:nil interactive:YES cornerRadius:22];
+    moreGlass.userInteractionEnabled = NO;
+    [self.moreButton addSubview:moreGlass];
+    UIImageView *dots = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis"
+        withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightBold]]];
+    dots.tintColor = [HZTheme text];
+    dots.translatesAutoresizingMaskIntoConstraints = NO;
+    dots.userInteractionEnabled = NO;
+    [self.moreButton addSubview:dots];
+    self.moreButton.accessibilityLabel = @"More";
+    // A pull-down menu opened by a tap, rebuilt each time so the checkmarks are current.
+    self.moreButton.showsMenuAsPrimaryAction = YES;
+    self.moreButton.menu = [self buildMenu];
+    [self.view addSubview:self.moreButton];
+
     UILayoutGuide *g = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [row.centerYAnchor constraintEqualToAnchor:g.centerYAnchor],
         [row.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:40],
         [row.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
+        [self.moreButton.topAnchor constraintEqualToAnchor:g.topAnchor constant:12],
+        [self.moreButton.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-20],
+        [self.moreButton.widthAnchor constraintEqualToConstant:44],
+        [self.moreButton.heightAnchor constraintEqualToConstant:44],
+        [moreGlass.leadingAnchor constraintEqualToAnchor:self.moreButton.leadingAnchor],
+        [moreGlass.trailingAnchor constraintEqualToAnchor:self.moreButton.trailingAnchor],
+        [moreGlass.topAnchor constraintEqualToAnchor:self.moreButton.topAnchor],
+        [moreGlass.bottomAnchor constraintEqualToAnchor:self.moreButton.bottomAnchor],
+        [dots.centerXAnchor constraintEqualToAnchor:self.moreButton.centerXAnchor],
+        [dots.centerYAnchor constraintEqualToAnchor:self.moreButton.centerYAnchor],
     ]];
 }
 
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self refresh]; }
+// Soft colour behind the glass, so the glass has something to refract. Follows dark/light.
+- (void)addBackdrop {
+    CAGradientLayer *grad = [CAGradientLayer layer];
+    grad.name = @"backdrop";
+    grad.frame = self.view.bounds;
+    [self.view.layer insertSublayer:grad atIndex:0];
+    [self updateBackdrop];
+}
+- (void)updateBackdrop {
+    for (CALayer *l in self.view.layer.sublayers) {
+        if (![l.name isEqualToString:@"backdrop"]) continue;
+        CAGradientLayer *grad = (CAGradientLayer *)l;
+        UITraitCollection *t = self.traitCollection;
+        UIColor *top = [[HZTheme accent] resolvedColorWithTraitCollection:t];
+        grad.colors = @[(id)[top colorWithAlphaComponent:t.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.22 : 0.20].CGColor,
+                        (id)[[HZTheme background] resolvedColorWithTraitCollection:t].CGColor];
+        grad.startPoint = CGPointMake(0, 0); grad.endPoint = CGPointMake(0.9, 1);
+        grad.frame = self.view.bounds;
+    }
+}
+- (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; [self updateBackdrop]; }
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+    [super traitCollectionDidChange:previous];
+    [self updateBackdrop];
+}
+
+// The "..." menu. Appearance is a submenu with a check on the current choice; the switch for
+// "open straight into the game" is a menu item with a check. The long explanation moved to the
+// confirmation shown when it is turned on.
+- (UIMenu *)buildMenu {
+    HZAppearance current = [HZTheme appearance];
+    NSMutableArray *looks = [NSMutableArray array];
+    NSArray *choices = @[@(HZAppearanceSystem), @(HZAppearanceDark), @(HZAppearanceLight)];
+    NSArray *icons = @[@"circle.lefthalf.filled", @"moon.fill", @"sun.max.fill"];
+    for (NSUInteger i = 0; i < choices.count; i++) {
+        HZAppearance a = (HZAppearance)[choices[i] integerValue];
+        UIAction *act = [UIAction actionWithTitle:[HZTheme nameOfAppearance:a] image:[UIImage systemImageNamed:icons[i]]
+                                       identifier:nil handler:^(UIAction *x) {
+            [HZTheme setAppearance:a];
+            self.moreButton.menu = [self buildMenu];
+        }];
+        act.state = a == current ? UIMenuElementStateOn : UIMenuElementStateOff;
+        [looks addObject:act];
+    }
+    UIMenu *appearance = [UIMenu menuWithTitle:@"Appearance" image:[UIImage systemImageNamed:@"paintbrush"]
+                                    identifier:nil options:0 children:looks];
+
+    UIAction *fm = [UIAction actionWithTitle:@"File manager" image:[UIImage systemImageNamed:@"folder.badge.gearshape"]
+                                  identifier:nil handler:^(UIAction *x) { [self openFileManager]; }];
+    UIAction *diag = [UIAction actionWithTitle:@"Diagnostics" image:[UIImage systemImageNamed:@"stethoscope"]
+                                    identifier:nil handler:^(UIAction *x) { [self openDiagnostics]; }];
+    UIAction *about = [UIAction actionWithTitle:@"About" image:[UIImage systemImageNamed:@"info.circle"]
+                                     identifier:nil handler:^(UIAction *x) { [self openAbout]; }];
+    UIAction *direct = [UIAction actionWithTitle:@"Open straight into the game" image:[UIImage systemImageNamed:@"bolt.fill"]
+                                      identifier:nil handler:^(UIAction *x) { [self toggleDirect]; }];
+    direct.state = [HZLauncherModel shared].opensGameDirectly ? UIMenuElementStateOn : UIMenuElementStateOff;
+
+    UIMenu *tools = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[fm, diag]];
+    UIMenu *prefs = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[appearance, direct]];
+    UIMenu *info = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[about]];
+    return [UIMenu menuWithTitle:@"" children:@[tools, prefs, info]];
+}
+
+// Turning the shortcut on explains what it does once; turning it off is immediate.
+- (void)toggleDirect {
+    HZLauncherModel *m = [HZLauncherModel shared];
+    if (m.opensGameDirectly) {
+        m.opensGameDirectly = NO;
+        self.moreButton.menu = [self buildMenu];
+        return;
+    }
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Open straight into the game?"
+        message:@"Skips this screen when the game files are ready. Stopping the app (from Xcode, StikDebug or the app switcher) does not bring it back. It comes back after a crash, after the app ends four times in a row within 15 seconds, or when a file named open-launcher is in the Horizon folder."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Turn on" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+        m.opensGameDirectly = YES;
+        self.moreButton.menu = [self buildMenu];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.moreButton.menu = [self buildMenu];
+    [self refresh];
+}
 
 // Reads the disk and shows it. The size walk is off the main thread: it touches every file.
 - (void)refresh {
@@ -152,13 +231,13 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     HZFilesState state = [m checkFiles:&problem];
     switch (state) {
         case HZFilesMissing:
-            self.statusDot.backgroundColor = [UIColor colorWithRed:0.95 green:0.65 blue:0.2 alpha:1];
+            self.statusDot.backgroundColor = [HZTheme warning];
             self.statusTitle.text = @"No game files yet";
             self.statusDetail.text = @"Open Game files to import the folder you prepared on your computer.";
             [self.spinner stopAnimating];
             break;
         case HZFilesDamaged:
-            self.statusDot.backgroundColor = [UIColor colorWithRed:0.9 green:0.3 blue:0.3 alpha:1];
+            self.statusDot.backgroundColor = [HZTheme danger];
             self.statusTitle.text = @"Game files need attention";
             self.statusDetail.text = [problem stringByAppendingString:@" Open Game files to import them again."];
             [self.spinner stopAnimating];
@@ -180,15 +259,10 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     }
     // Who the game will play as: the signed-in profile (GameSession.h), else it plays offline.
     HZAccountState *signedIn = [[HZAccountStore shared] account];
-    [self.accountButton setTitle:signedIn.name.length ? [NSString stringWithFormat:@"Account: %@", signedIn.name] : @"Account"
-                        forState:UIControlStateNormal];
+    HZThemeSetButtonTitle(self.accountButton, signedIn.name.length ? signedIn.name : @"Account");
     BOOL ready = state == HZFilesReady;
     self.playButton.enabled = ready;
     self.playButton.alpha = ready ? 1 : 0.45;
-}
-
-- (void)directChanged:(UISwitch *)sender {
-    [HZLauncherModel shared].opensGameDirectly = sender.on;
 }
 
 // Play: the game is a different run of the app. Leave the flag, say what happens, and exit

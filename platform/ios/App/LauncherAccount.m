@@ -1,4 +1,5 @@
 #import "LauncherAccount.h"
+#import "LauncherTheme.h"
 #import "AccountClient.h"
 #import "AccountModel.h"
 #import "AccountStore.h"
@@ -17,8 +18,8 @@
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:title forState:UIControlStateNormal];
     b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-    [b setTitleColor:filled ? UIColor.blackColor : UIColor.whiteColor forState:UIControlStateNormal];
-    b.backgroundColor = filled ? [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1] : [UIColor colorWithWhite:1 alpha:0.10];
+    [b setTitleColor:filled ? [HZTheme onAccent] : [HZTheme text] forState:UIControlStateNormal];
+    b.backgroundColor = filled ? [HZTheme accent] : [HZTheme surface];
     b.layer.cornerRadius = 12;
     [b.heightAnchor constraintEqualToConstant:48].active = YES;
     [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
@@ -28,29 +29,29 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Account";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
 
     self.titleLabel = [UILabel new];
     self.titleLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightBold];
-    self.titleLabel.textColor = UIColor.whiteColor;
+    self.titleLabel.textColor = [HZTheme text];
     self.titleLabel.numberOfLines = 0;
     self.detailLabel = [UILabel new];
     self.detailLabel.font = [UIFont systemFontOfSize:14];
-    self.detailLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1];
+    self.detailLabel.textColor = [HZTheme secondaryText];
     self.detailLabel.numberOfLines = 0;
     // The code the player types on the Microsoft page: large, spaced, easy to read aloud.
     self.codeLabel = [UILabel new];
     self.codeLabel.font = [UIFont monospacedSystemFontOfSize:34 weight:UIFontWeightHeavy];
-    self.codeLabel.textColor = UIColor.whiteColor;
+    self.codeLabel.textColor = [HZTheme text];
     self.codeLabel.hidden = YES;
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
-    self.spinner.color = UIColor.whiteColor;
+    self.spinner.color = [HZTheme text];
     self.primary = [self button:@"Sign in" filled:YES action:@selector(primaryTapped)];
     self.secondary = [self button:@"Cancel" filled:NO action:@selector(secondaryTapped)];
     self.secondary.hidden = YES;
     self.noteLabel = [UILabel new];
     self.noteLabel.font = [UIFont systemFontOfSize:12];
-    self.noteLabel.textColor = [UIColor colorWithWhite:0.55 alpha:1];
+    self.noteLabel.textColor = [HZTheme tertiaryText];
     self.noteLabel.numberOfLines = 0;
     self.noteLabel.text = @"Signing in is needed only to download the game; playing files already on this phone never asks for it. When you are signed in, the game plays as your profile. The sign-in stays on this phone, in the Keychain, and is removed when you sign out.";
 

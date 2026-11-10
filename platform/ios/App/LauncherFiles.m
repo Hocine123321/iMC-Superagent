@@ -1,4 +1,5 @@
 #import "LauncherFiles.h"
+#import "LauncherTheme.h"
 #import "LauncherModel.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -15,9 +16,9 @@
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:title forState:UIControlStateNormal];
     b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-    [b setTitleColor:destructive ? [UIColor colorWithRed:1 green:0.45 blue:0.45 alpha:1] : UIColor.whiteColor forState:UIControlStateNormal];
-    [b setTitleColor:[UIColor colorWithWhite:0.4 alpha:1] forState:UIControlStateDisabled];
-    b.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+    [b setTitleColor:destructive ? [HZTheme danger] : [HZTheme text] forState:UIControlStateNormal];
+    [b setTitleColor:[HZTheme tertiaryText] forState:UIControlStateDisabled];
+    b.backgroundColor = [HZTheme surface];
     b.layer.cornerRadius = 12;
     [b.heightAnchor constraintEqualToConstant:46].active = YES;
     [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
@@ -27,26 +28,26 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Game files";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
 
     self.stateLabel = [UILabel new];
     self.stateLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightBold];
-    self.stateLabel.textColor = UIColor.whiteColor;
+    self.stateLabel.textColor = [HZTheme text];
     self.detailLabel = [UILabel new];
     self.detailLabel.font = [UIFont systemFontOfSize:14];
-    self.detailLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1];
+    self.detailLabel.textColor = [HZTheme secondaryText];
     self.detailLabel.numberOfLines = 0;
     self.progress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
     self.progress.hidden = YES;
     self.progressLabel = [UILabel new];
     self.progressLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
-    self.progressLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    self.progressLabel.textColor = [HZTheme tertiaryText];
     self.progressLabel.hidden = YES;
 
     UILabel *help = [UILabel new];
     help.numberOfLines = 0;
     help.font = [UIFont systemFontOfSize:13];
-    help.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    help.textColor = [HZTheme tertiaryText];
     help.text = @"Prepare the game on your computer with the Horizon launcher, copy the version folder "
                 @"(the one holding horizon-resources.json, for example 26.3) to the phone, then choose Import "
                 @"and pick that folder. About 500 MB; the phone needs room for the old and new copy while it works.";

@@ -1,4 +1,5 @@
 #import "LauncherDownload.h"
+#import "LauncherTheme.h"
 #import "LauncherModel.h"
 #import "Downloader.h"
 #import "AccountClient.h"
@@ -25,9 +26,9 @@ static NSString *const kVersion = @"26.3";
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:title forState:UIControlStateNormal];
     b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-    [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    [b setTitleColor:[UIColor colorWithWhite:0.4 alpha:1] forState:UIControlStateDisabled];
-    b.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+    [b setTitleColor:[HZTheme text] forState:UIControlStateNormal];
+    [b setTitleColor:[HZTheme tertiaryText] forState:UIControlStateDisabled];
+    b.backgroundColor = [HZTheme surface];
     b.layer.cornerRadius = 12;
     [b.heightAnchor constraintEqualToConstant:46].active = YES;
     [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
@@ -37,7 +38,7 @@ static NSString *const kVersion = @"26.3";
 - (UILabel *)label:(CGFloat)size weight:(UIFontWeight)w white:(CGFloat)white {
     UILabel *l = [UILabel new];
     l.font = [UIFont systemFontOfSize:size weight:w];
-    l.textColor = [UIColor colorWithWhite:white alpha:1];
+    l.textColor = white >= 0.95 ? [HZTheme text] : white >= 0.8 ? [HZTheme text] : white >= 0.7 ? [HZTheme secondaryText] : [HZTheme tertiaryText];
     l.numberOfLines = 0;
     return l;
 }
@@ -45,7 +46,7 @@ static NSString *const kVersion = @"26.3";
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Download Minecraft";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
 
     self.titleLabel = [self label:22 weight:UIFontWeightBold white:1];
     self.detailLabel = [self label:14 weight:UIFontWeightRegular white:0.72];

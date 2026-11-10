@@ -41,8 +41,11 @@ If the flag is set but the files fail the check, the launcher opens instead of t
 
 ## Screens
 
-- **Home**: name, versions, the state of the game files (ready, missing, damaged), **Play**,
-  and the way to the other two screens.
+- **Home** (redesigned 2026-11-10, never run): name and versions, a status card for the game files,
+  a large **Play**, and a 2x2 grid of the things needed most (Download, Marketplace, Game files,
+  Account). Everything else is behind the **...** button at the top right: File manager,
+  Diagnostics, About, Appearance (System, Dark, Light) and the "open straight into the game"
+  switch (its long explanation is now shown when it is turned on).
 - **Game files**: **Import a folder** (the system folder picker; the copy is made beside the old
   files and swapped in only when complete, with a free-space check first), **Check**, **Delete**.
   The check is the engine's own rule (`missing_resources` and `damaged_prepared` in
@@ -109,3 +112,21 @@ If the flag is set but the files fail the check, the launcher opens instead of t
 Compiled on the Mac runner by `ios-shell-check.yml` (syntax only, against the iOS SDK). Not yet run
 on a phone, so the layout (landscape, two columns) and the folder picker's behaviour with the Files
 app are untested.
+
+
+## Look: dark and light, Liquid Glass (written 2026-11-10, never run)
+
+`LauncherTheme.{h,m}` is the one place for colours and controls. Every colour is dynamic, so all
+screens follow dark or light. The choice is the line `appearance:system|dark|light` in
+`Documents/Horizon/launcher.txt` (the same file as `openGame:`; both setters keep the other's line)
+and is applied to the window with `overrideUserInterfaceStyle`.
+
+**Liquid Glass** (`UIGlassEffect`, iOS 26 and later). CI builds with the iOS 18.5 SDK
+(Xcode 16.4 on `macos-15`), which does not have the class, and workflow files are off limits. So the
+class is found at run time (`NSClassFromString`) and called through the Objective-C runtime. On iOS 26
+and later (the test phone runs 27.2) the buttons and cards are real glass; elsewhere they are a
+system blur material. Two things taken from Apple's documentation, not yet seen working: the
+initialiser `initWithStyle:` (style 0 is `regular`; the enum is `regular`, `clear`) and the
+`interactive` and `tintColor` properties, set through key-value coding inside a try block so a
+missing property gives plain glass instead of a crash. When the runner gets an iOS 26 SDK, the
+runtime lookup can become a normal `UIGlassEffect` call.

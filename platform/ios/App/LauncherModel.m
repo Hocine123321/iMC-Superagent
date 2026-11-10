@@ -95,7 +95,15 @@
 }
 
 - (void)setOpensGameDirectly:(BOOL)on {
-    NSString *text = [NSString stringWithFormat:@"openGame:%d\n", on ? 1 : 0];
+    // Keeps the other lines of launcher.txt (the appearance choice lives there too).
+    NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    NSMutableArray *kept = [NSMutableArray array];
+    for (NSString *line in [old componentsSeparatedByString:@"\n"]) {
+        if (line.length && ![line hasPrefix:@"openGame:"]) [kept addObject:line];
+    }
+    [kept insertObject:[NSString stringWithFormat:@"openGame:%d", on ? 1 : 0] atIndex:0];
+    NSString *text = [[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:_root withIntermediateDirectories:YES attributes:nil error:nil];
     [text writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 

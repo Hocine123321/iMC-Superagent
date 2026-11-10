@@ -1,5 +1,6 @@
 #import "Launcher.h"
 #import "LauncherHome.h"
+#import "LauncherTheme.h"
 #import <UIKit/UIKit.h>
 
 @interface HZLauncherDelegate : UIResponder <UIApplicationDelegate, UINavigationControllerDelegate>
@@ -10,12 +11,15 @@
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:[HZLauncherHomeController new]];
-    nav.navigationBar.barStyle = UIBarStyleBlack;
-    nav.navigationBar.tintColor = [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1];
+    [HZTheme styleNavigationBar:nav.navigationBar];
     // The home screen has its own title; the bar appears only on the screens pushed over it.
     nav.delegate = self;
     self.window.rootViewController = nav;
     [self.window makeKeyAndVisible];
+    // The saved System / Dark / Light choice, applied before the first frame is seen.
+    [HZTheme applyAppearanceToWindows];
+    self.window.overrideUserInterfaceStyle = [HZTheme appearance] == HZAppearanceDark ? UIUserInterfaceStyleDark
+        : [HZTheme appearance] == HZAppearanceLight ? UIUserInterfaceStyleLight : UIUserInterfaceStyleUnspecified;
     return YES;
 }
 - (void)navigationController:(UINavigationController *)nav willShowViewController:(UIViewController *)vc animated:(BOOL)animated {

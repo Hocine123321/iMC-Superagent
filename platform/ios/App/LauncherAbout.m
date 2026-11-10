@@ -1,4 +1,5 @@
 #import "LauncherAbout.h"
+#import "LauncherTheme.h"
 
 // Horizon's licence, copied byte for byte from horizon/LICENSE (the MIT licence requires the notice to
 // travel with copies). tests/about_check.py compares this text with that file.
@@ -35,12 +36,12 @@ static NSString *const kHorizonLicense =
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"About";
-    self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
+    [HZTheme styleScreen:self];
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
     NSString *version = info[@"CFBundleShortVersionString"] ?: @"?";
 
     NSMutableAttributedString *s = [NSMutableAttributedString new];
-    UIColor *white = UIColor.whiteColor, *grey = [UIColor colorWithWhite:0.75 alpha:1];
+    UIColor *white = [HZTheme text], *grey = [HZTheme secondaryText];
     void (^add)(NSString *, UIFont *, UIColor *) = ^(NSString *t, UIFont *f, UIColor *c) {
         [s appendAttributedString:[[NSAttributedString alloc] initWithString:t attributes:@{NSFontAttributeName: f, NSForegroundColorAttributeName: c}]];
     };
@@ -83,8 +84,8 @@ static NSString *const kHorizonLicense =
     self.text = [UITextView new];
     self.text.editable = NO;
     self.text.dataDetectorTypes = UIDataDetectorTypeLink;
-    self.text.linkTextAttributes = @{NSForegroundColorAttributeName: [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1]};
-    self.text.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+    self.text.linkTextAttributes = @{NSForegroundColorAttributeName: [HZTheme accent]};
+    self.text.backgroundColor = [HZTheme codeBackground];
     self.text.textContainerInset = UIEdgeInsetsMake(16, 16, 16, 16);
     self.text.layer.cornerRadius = 10;
     self.text.attributedText = s;
