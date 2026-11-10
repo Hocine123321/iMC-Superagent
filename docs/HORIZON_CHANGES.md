@@ -91,6 +91,15 @@ screen's corner, so a desktop-sized request hangs off the edges. Three call site
 **Re-apply:** wherever upstream calls `Window::default_attributes()....with_inner_size(...)`.
 (`05cda51`)
 
+### A5. The game window is landscape only (iOS), 2026-11-10
+`crates/horizon-client-input/src/window.rs`, in `with_horizon_icon` (which every window goes through),
+adds under `#[cfg(target_os = "ios")]` a call to winit's `WindowAttributesExtIOS::with_valid_orientations`
+with `ValidOrientations::Landscape`. Why: the launcher is portrait (M24), so the app's Info.plist now lists
+portrait as well as the two landscapes, and winit's default for a window is "landscape and portrait", which
+would let the game turn upright. **7 lines, iOS only, no dependency change** (winit's own `platform::ios`).
+**Re-apply:** in whatever upstream function builds every window's attributes. **Risk:** low; desktop builds
+do not compile it. (Owner approved editing `horizon/` on 2026-11-10.)
+
 ### A5. The bridge crate (the C entry point the iOS app calls)
 - **New** `platform/ios-bridge/Cargo.toml` (19 lines) and `src/lib.rs` (45 lines): a `staticlib`
   exporting `horizon_ios_main`; it hands the shell's crash-reporter function to

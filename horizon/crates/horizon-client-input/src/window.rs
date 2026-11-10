@@ -674,6 +674,13 @@ pub fn with_horizon_icon(
     #[cfg(target_os = "windows")]
     let attributes =
         winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attributes, icon);
+    // iMC (iOS): the app's Info.plist allows portrait for the launcher, so the game window says it is
+    // landscape only. winit's default would let the game turn upright.
+    #[cfg(target_os = "ios")]
+    let attributes = winit::platform::ios::WindowAttributesExtIOS::with_valid_orientations(
+        attributes,
+        winit::platform::ios::ValidOrientations::Landscape,
+    );
     attributes
 }
 
