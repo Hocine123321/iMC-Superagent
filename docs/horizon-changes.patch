@@ -5802,7 +5802,7 @@ index 0000000..83dfc58
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-input/src/window.rs b/horizon/crates/horizon-client-input/src/window.rs
-index 4848eea..fff1225 100644
+index 4848eea..e020657 100644
 --- a/horizon/crates/horizon-client-input/src/window.rs
 +++ b/horizon/crates/horizon-client-input/src/window.rs
 @@ -601,6 +601,13 @@ pub fn borderless_fullscreen(window: &winit::window::Window) -> winit::window::F
@@ -5819,7 +5819,21 @@ index 4848eea..fff1225 100644
  /// A window created fullscreen that the system also marked maximized enters it again
  /// unmaximized ([`enter_fullscreen`]); only Windows does that.
  pub fn settle_created_fullscreen(window: &winit::window::Window, fullscreen: bool) {
-@@ -674,6 +681,15 @@ pub fn with_horizon_icon(
+@@ -667,6 +674,13 @@ pub fn with_horizon_icon(
+     #[cfg(target_os = "windows")]
+     let attributes =
+         winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attributes, icon);
++    // iMC (iOS): the app's Info.plist allows portrait for the launcher, so the game window says it is
++    // landscape only. winit's default would let the game turn upright.
++    #[cfg(target_os = "ios")]
++    let attributes = winit::platform::ios::WindowAttributesExtIOS::with_valid_orientations(
++        attributes,
++        winit::platform::ios::ValidOrientations::Landscape,
++    );
+     attributes
+ }
+ 
+@@ -674,6 +688,15 @@ pub fn with_horizon_icon(
  mod tests {
      use super::*;
  
