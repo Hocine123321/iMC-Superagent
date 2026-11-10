@@ -72,7 +72,10 @@ static UIColor *RGB(CGFloat r, CGFloat g, CGFloat b, CGFloat a) { return [UIColo
         }
     }
     // This app has no scene manifest, so its window may not be in a scene's list yet.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     for (UIWindow *w in UIApplication.sharedApplication.windows) w.overrideUserInterfaceStyle = style;
+#pragma clang diagnostic pop
 }
 
 #pragma mark - Glass
