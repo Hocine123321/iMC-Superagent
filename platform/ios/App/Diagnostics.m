@@ -143,6 +143,7 @@ NSString *HorizonWriteDiagnostics(NSString *root) {
     line(@"");
     line(@"-- signing and entitlements of THIS app --");
     line([NSString stringWithFormat:@"get-task-allow: %@   (needed for StikDebug to list the app)", Entitlement(@"get-task-allow")]);
+    line([NSString stringWithFormat:@"com.apple.developer.cs.allow-jit: %@   (asked for by this build; absent means the signing tool removed it)", Entitlement(@"com.apple.developer.cs.allow-jit")]);
     line([NSString stringWithFormat:@"dynamic-codesigning: %@", Entitlement(@"dynamic-codesigning")]);
     line([NSString stringWithFormat:@"com.apple.developer.kernel.increased-memory-limit: %@", Entitlement(@"com.apple.developer.kernel.increased-memory-limit")]);
     line([NSString stringWithFormat:@"com.apple.developer.kernel.extended-virtual-addressing: %@", Entitlement(@"com.apple.developer.kernel.extended-virtual-addressing")]);
@@ -189,19 +190,49 @@ NSString *HorizonWriteDiagnostics(NSString *root) {
     // The executable-memory probes are finished (all four failed on the iPhone 12, iOS 27.2) and
     // two of them kill the app, so they no longer run on their own. Create an empty file named
     // run-probes.txt in this folder to run them again.
-    NSString *marker = [root stringByAppendingPathComponent:@"run-probes.txt"];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:marker]) {
-        line(@"probes are switched off (create run-probes.txt in this folder to run them).");
-    } else if (!(cs & CS_DEBUGGED)) {
-        line(@"CS_DEBUGGED is not set: probes skipped (they would be killed). Enable JIT in StikDebug and relaunch.");
-    } else if (next >= 4) {
-        line(@"all four probes have been tried; delete probe-state.txt in this folder to run them again.");
+    // probes-ad.txt: run only the two MAP_JIT probes, A then D (one per launch). B and C kill the app and already
+    // gave their answer. Its own state keys (startAD / doneAD), so the state file of the earlier four-probe run
+    // does not matter.
+    NSFileManager *fm = NSFileManager.defaultManager;
+    BOOL onlyMapJit = [fm fileExistsAtPath:[root stringByAppendingPathComponent:@"probes-ad.txt"]];
+    if (onlyMapJit) {
+        for (int i = 0; i < 4; i += 3) {
+            NSString *sk = [NSString stringWithFormat:@"startAD %d\n", i], *dk = [NSString stringWithFormat:@"doneAD %d\n", i];
+            if ([state containsString:sk] && ![state containsString:dk]) {
+                line([NSString stringWithFormat:@"probe %@: KILLED the app (started, never finished)", names[i]]);
+                DurableAppend(stateFile, dk);
+                state = [state stringByAppendingString:dk];
+            }
+        }
+        int pick = -1;
+        for (int i = 0; i < 4; i += 3) {
+            if (![state containsString:[NSString stringWithFormat:@"startAD %d\n", i]]) { pick = i; break; }
+        }
+        if (!(cs & CS_DEBUGGED)) {
+            line(@"CS_DEBUGGED is not set: probes skipped (they would be killed). Enable JIT in StikDebug and relaunch.");
+        } else if (pick < 0) {
+            line(@"A and D have both been tried; delete probe-state.txt in this folder to run them again.");
+        } else {
+            line([NSString stringWithFormat:@"running probe %@ now (launch the app again afterwards for the next one)", names[pick]]);
+            DurableAppend(stateFile, [NSString stringWithFormat:@"startAD %d\n", pick]);
+            line([NSString stringWithFormat:@"probe result: %@", fns[pick]()]);
+            DurableAppend(stateFile, [NSString stringWithFormat:@"doneAD %d\n", pick]);
+        }
     } else {
-        line([NSString stringWithFormat:@"running probe %@ now (launch the app again afterwards for the next one)", names[next]]);
-        DurableAppend(stateFile, [NSString stringWithFormat:@"start %d\n", next]);
-        NSString *res = fns[next]();
-        line([NSString stringWithFormat:@"probe result: %@", res]);
-        DurableAppend(stateFile, [NSString stringWithFormat:@"done %d\n", next]);
+        NSString *marker = [root stringByAppendingPathComponent:@"run-probes.txt"];
+        if (![fm fileExistsAtPath:marker]) {
+            line(@"probes are switched off (create run-probes.txt, or probes-ad.txt for only A and D, in this folder).");
+        } else if (!(cs & CS_DEBUGGED)) {
+            line(@"CS_DEBUGGED is not set: probes skipped (they would be killed). Enable JIT in StikDebug and relaunch.");
+        } else if (next >= 4) {
+            line(@"all four probes have been tried; delete probe-state.txt in this folder to run them again.");
+        } else {
+            line([NSString stringWithFormat:@"running probe %@ now (launch the app again afterwards for the next one)", names[next]]);
+            DurableAppend(stateFile, [NSString stringWithFormat:@"start %d\n", next]);
+            NSString *res = fns[next]();
+            line([NSString stringWithFormat:@"probe result: %@", res]);
+            DurableAppend(stateFile, [NSString stringWithFormat:@"done %d\n", next]);
+        }
     }
     line(@"");
     line(@"end of report");

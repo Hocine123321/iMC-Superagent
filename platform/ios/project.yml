@@ -19,7 +19,7 @@ targets:
     platform: iOS
     sources:
       - path: App
-        excludes: ["Info.plist"]
+        excludes: ["Info.plist", "Horizon.entitlements"]
       # The app icon (light, dark and tinted), drawn by tools/make_app_icon.py (python3 tools/make_app_icon.py regenerates the PNGs).
       - path: Assets.xcassets
       # Horizon's third-party notices travel with the app (docs/IOS_FEASIBILITY_REPORT.md 11.3, item 12:
@@ -70,6 +70,7 @@ targets:
         LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(SRCROOT)/build/rust/sim"
         OTHER_LDFLAGS: ["-lhorizon_ios_bridge", "-lc++"]
         # The SwiftUI launcher (App/Swift) calls the Objective-C launcher logic through this header.
+        CODE_SIGN_ENTITLEMENTS: App/Horizon.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: App/HorizonApp-Bridging-Header.h
         SWIFT_VERSION: "5.0"
         # Swift's runtime libraries are in the OS from iOS 12.2, so the deployment target of 16 needs none embedded.

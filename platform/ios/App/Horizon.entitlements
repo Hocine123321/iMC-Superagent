@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Asked for so the JIT probes (Diagnostics.m) can show whether MAP_JIT is allowed with a debugger attached.
+	     The unsigned IPA is re-signed by the owner's tool, which may keep or replace these; the diagnostics report
+	     says which entitlements the running app really has. -->
+	<key>com.apple.developer.cs.allow-jit</key>
+	<true/>
+	<key>get-task-allow</key>
+	<true/>
+</dict>
+</plist>
