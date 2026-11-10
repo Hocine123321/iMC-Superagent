@@ -11,6 +11,8 @@
 // Written 2026-11-10 against Apple's documentation (UIGlassEffect, iOS 26.0+): never run on a phone.
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef NS_ENUM(NSInteger, HZAppearance) {
     HZAppearanceSystem = 0,
     HZAppearanceDark = 1,
@@ -53,7 +55,7 @@ extern NSNotificationName const HZThemeChanged;
 
 // A view that draws glass (or a blur material where there is none). Put content in `contentView`.
 // `tint` may be nil. `interactive` makes it react to touch on iOS 26 and later.
-+ (UIVisualEffectView *)glassViewWithTint:(UIColor *)tint interactive:(BOOL)interactive cornerRadius:(CGFloat)radius;
++ (UIVisualEffectView *)glassViewWithTint:(nullable UIColor *)tint interactive:(BOOL)interactive cornerRadius:(CGFloat)radius;
 
 // A button. `prominent` is the green Play-style one. On iOS 26 and later it is the system's own glass
 // button (UIButtonConfiguration glassButtonConfiguration / prominentGlassButtonConfiguration, found at run
@@ -83,3 +85,4 @@ extern NSNotificationName const HZThemeChanged;
 + (void)styleNavigationBar:(UINavigationBar *)bar;
 @end
 
+NS_ASSUME_NONNULL_END
