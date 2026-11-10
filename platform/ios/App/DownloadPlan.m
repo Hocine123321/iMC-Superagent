@@ -23,7 +23,7 @@ static NSString *Str(id d, NSString *key) {
     return [v isKindOfClass:NSString.class] && [v length] > 0 ? v : nil;
 }
 
-static unsigned long long Size(id d) {
+static unsigned long long ListedSize(id d) {
     if (![d isKindOfClass:NSDictionary.class]) return 0;
     id v = d[@"size"];
     if (![v isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)v) == CFBooleanGetTypeID()) return 0;
@@ -114,7 +114,7 @@ static BOOL NativeMatches(NSDictionary *library, NSSet<NSString *> *names) {
     NSString *safe = [self safeRelativePath:path];
     if (!safe) { *error = [NSString stringWithFormat:@"Unsafe path %@ in the version file.", path]; return nil; }
     HZDownloadFile *f = [HZDownloadFile new];
-    f.url = url; f.sha1 = sha1; f.size = Size(entry); f.path = safe;
+    f.url = url; f.sha1 = sha1; f.size = ListedSize(entry); f.path = safe;
     return f;
 }
 
@@ -177,7 +177,7 @@ static BOOL NativeMatches(NSDictionary *library, NSSet<NSString *> *names) {
         NSString *hash = Str(o, @"hash");
         if (!hash) continue;
         if (!IsHex40(hash)) { if (error) *error = [NSString stringWithFormat:@"Bad asset hash %@ in the asset index.", hash]; return NO; }
-        bySha[hash] = @(Size(o));
+        bySha[hash] = @(ListedSize(o));
     }
     NSMutableArray<HZDownloadFile *> *out = [NSMutableArray new];
     for (NSString *hash in [bySha.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
