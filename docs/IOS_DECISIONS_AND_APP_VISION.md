@@ -88,8 +88,8 @@ on the phone from your own Minecraft account.
 | M8b | Download and prepare on the phone | **Download built, not run** (plan, downloader and screen, `IOS_DOWNLOAD_PLAN.md`; CI-compiled only). Preparation PLANNED, depends on M8a |
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
-| M12 | Real launcher pages: Settings, Library, Worlds, Screenshots, Logs, About (added 2026-11-10) | PLANNED |
-| M13 | In-app file manager, limited to the app's own folder (added 2026-11-10) | PLANNED |
+| M12 | Real launcher pages: Settings, Library, Worlds, Screenshots, Logs, About (added 2026-11-10) | **About written, not run.** The rest PLANNED |
+| M13 | In-app file manager, limited to the app's own folder (added 2026-11-10) | **Written, not run** (browse, preview, share, rename, delete with warnings, new folder, add files). Zip export and folder import PLANNED |
 | M14 | Horizon Marketplace: browse and install from Horizon's registry (added 2026-11-10). Only about 25 of the 158 registry projects can work on a phone (133 are native mods that need a desktop build) | PLANNED |
 
 **The honest summary:** the engine runs on iOS and the app has a launcher, touch controls and a settings page. What is not yet shown is a game you can play: no run has got past the title screen on the phone, and whether Java can run on the phone at all is open.

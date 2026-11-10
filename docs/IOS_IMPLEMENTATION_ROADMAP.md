@@ -503,6 +503,8 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 
 **Success test.** Each page opens, shows real data from a phone, and every destructive action asks first. Nothing the page writes breaks `--check`.
 
+**Progress (2026-11-10).** **About** is written (not run on a phone): the app's purpose, the non-affiliation statement, Horizon's MIT licence in full (a test keeps it identical to `horizon/LICENSE`), links, and what the game sends. Not started: Settings, Library, Worlds, Screenshots, Logs. **Open item:** Horizon's `THIRD_PARTY_NOTICES.md` (18 KB) is not bundled in the app; About points to the source repository for it. Bundling it needs a copy step in the build (`project.yml` or the workflow), which has not been tried; the feasibility report (11.3, item 12) says a binary distribution must carry the notices, so this must be done before the IPA is shared with anyone else.
+
 **Depends on.** M3b (launcher exists). Settings and Library benefit from M8b.
 
 ---
@@ -524,6 +526,8 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 **Risks.** A delete is permanent and saves are the user's work: confirm, and offer a backup copy for `saves/`. Large folders need background enumeration so the UI does not freeze.
 
 **Success test.** Walk the tree, import a resource pack, export a world as a zip and re-import it, try `../` and symlink escapes (refused), delete with and without confirmation.
+
+**Progress (2026-11-10).** The core is written and the rules are tested (`FileBrowser.m`, 61 offline checks including planted links, `..`, renames onto taken names and the delete warnings), and a screen is wired to Home > **File manager** (browse, text preview, share, rename, delete with the warnings above, new folder, add files). **Never run on a phone.** Not built: zip export, folder import, a backup offer before deleting a world, quick links.
 
 **Depends on.** M3b. Pairs with M12 Worlds and M14.
 

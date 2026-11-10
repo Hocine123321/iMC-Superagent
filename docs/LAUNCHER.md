@@ -48,8 +48,33 @@ If the flag is set but the files fail the check, the launcher opens instead of t
   The check is the engine's own rule (`missing_resources` and `damaged_prepared` in
   `loading_screen.rs`): `horizon-resources.json` present, not blank, valid JSON, and no other
   top-level `.json` empty.
+- **Download Minecraft** (written 2026-11-10, never run): downloads the game from Mojang with a progress
+  bar, behind the sign-in check. See `IOS_DOWNLOAD_PLAN.md`.
+- **File manager** (M13, written 2026-11-10, never run): browses `Documents/Horizon` and nothing else.
+  Folders first, sizes (folder sizes fill in as they are measured), dates and free space; tap a folder to
+  open it, a small text file to read it, any other file to share it; swipe a row for Delete, Rename and
+  Share; the **+** menu makes a folder or copies files in from the Files app (refusing a name already
+  taken and a copy that would leave less than 100 MB free). Rules in `FileBrowser.m`: see below.
+- **About** (M12, written 2026-11-10, never run): what the app is, that it is not a Minecraft product,
+  the Horizon MIT licence in full, links, and what the game sends.
 - **Diagnostics**: the newest crash report (native `crash.txt` or the engine's
   `home/crash-reports/`, whichever is newer) and `home/logs/latest.log`, with a Share button.
+
+## The file manager's rules (`FileBrowser.m`, checked by `tests/file_browser_check.py`, 61 checks)
+
+- **Confinement.** A path is refused if it is absolute, has `..`, a backslash or an empty part. Otherwise
+  the folder holding it is resolved through links and must still be inside the Horizon folder. A link
+  planted inside pointing out is shown as a file, never opened as a folder, never counted for size, and
+  deleting it removes the link only.
+- **What a delete says first.** An ordinary file or folder: its size and "cannot be undone". Worlds
+  (`home`, `home/saves`, anything under it): a strong warning that they cannot come back. Game files
+  (`resources`, `minecraft`): the game will not start until downloaded or imported again. The sign-in
+  record (`account.txt`): refused, with a pointer to the Account screen. The Horizon folder itself:
+  refused. Names that only start like these (`homework`, `resources2`) are ordinary.
+- **Names.** Not empty, not `.` or `..`, no slash, backslash or control character, at most 255 bytes, so
+  a rename cannot move a file out of its folder.
+- **Not there yet.** Exporting a folder as a zip (the Share swipe says so for folders), importing a
+  folder, a backup copy offered before deleting a world, and Quick links to saves and packs.
 
 ## Not built yet
 
