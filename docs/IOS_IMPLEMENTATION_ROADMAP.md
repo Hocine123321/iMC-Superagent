@@ -44,18 +44,15 @@
 | M13 | **In-app file manager** (added 2026-11-10) | Device | no | medium |
 | M14 | **Horizon Marketplace** (added 2026-11-10): browse and install from Horizon's registry | Device | no | large |
 | M15 | **iOS optimisation** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | Device | no | large |
-| M16 | **World safety**: back up, restore, export and import worlds (added 2026-11-10) | Device | no | medium |
 | M17 | **Smooth and efficient rendering**: frame pacing, 60/120 Hz, battery modes (added 2026-11-10) | Device | no | medium |
 | M18 | **Controller support on iOS** (added 2026-11-10) | Device | no | medium |
 | M19 | **Touch comfort and accessibility**: haptics, one-handed layout, screenshot and chat buttons, text size (added 2026-11-10) | Device | no | medium |
 | M20 | **Reliability and diagnostics**: clean exit, crash recovery, in-app bug report (added 2026-11-10) | Device | no | medium |
-| M21 | **Content trust**: minisign verification, update checks, revocation (added 2026-11-10) | Device | dependency | medium |
 | M22 | **Test and release pipeline**: on-device test route, regression numbers in CI, signed-IPA guide (added 2026-11-10) | Mac+device | no | medium |
-| M23 | **Multiplayer on a phone**: join by address, reconnect after sleep, mobile-data safety (added 2026-11-10) | Device | no | medium |
 
 The state of every milestone is in the table of `IOS_DECISIONS_AND_APP_VISION.md` (section 3); the sections below carry dated progress notes.
 
-The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a can start now and gates M8b; M8b and M9 ship after M5. M10 and M11 follow. After the game ran (2026-11-10) the order is M15 first, then M20 and M16 (they protect the player), then M17 and M19 (they need M15's numbers), then M18, M21, M23 and M22. Each of M16 to M23 can be done on its own.
+The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a can start now and gates M8b; M8b and M9 ship after M5. M10 and M11 follow. After the game ran (2026-11-10) the order is M15 first, then M20 (it protects the player), then M17 and M19 (they need M15's numbers), then M18 and M22. Each of M17 to M20 and M22 can be done on its own. M16, M21 and M23 were proposed and removed by the owner on 2026-11-10 as not important enough (world backup and export, signature checks and update checks, multiplayer polish); the numbers are not reused.
 
 ---
 
@@ -589,7 +586,7 @@ So the first release is honest and small: about 25 installable projects, with th
 2. **Measure (M6, finish it).** A fixed route on the phone with `session-log.csv` and `latest.log`: a new world, three render distances (4, 8, 12), walking and flying, five minutes each, plus one background and return. Record footprint, free memory, thermal state, battery drop per 10 minutes, and frame time (frame time is not yet logged and is the gap: it needs a counter in the session log or the engine's own frame stats). Output: a table in `benchmarks/ios/` with the device, iOS version, commit and settings.
 3. **Tune (M7) from the table.** Defaults for render distance, resolution scale, Auto Performance thresholds, Mobile preset. Only measured contributors.
 4. **Touch polish.** Drag to spread a held stack across slots (competes with scrolling, so it needs a hold-first rule), haptics on hit, break and place (`UIImpactFeedbackGenerator`, behind a setting), a better inventory layout, and a controller layout when one is paired.
-5. **Launcher extras (M12).** Worlds (list with size and date, back up, export as a zip), Screenshots, Logs, update checks for installed content, removal of revoked files, and the minisign check so signed Marketplace projects install (a dependency, so the owner decides).
+5. **Launcher extras (M12).** Worlds (list with size and date), Screenshots and Logs. Signature checks, update checks and world backup were considered and removed by the owner on 2026-11-10; signed Marketplace projects stay refused for now.
 
 **Not in M15, still open.** Play without the relaunch (winit upgrade or a launcher window inside winit's run, both risky, see `LAUNCHER.md`), preparing the game files on the phone (M8a/M8b, needs the JIT test), Mojang's approval for sign-in (M9), multiplayer polish (M10), distribution (M11).
 
@@ -599,28 +596,9 @@ So the first release is honest and small: about 25 installable projects, with th
 
 ---
 
-## Milestones M16 to M23 (added 2026-11-10, after the game ran on the phone)
+## Milestones M17 to M20 and M22 (added 2026-11-10, after the game ran on the phone)
 
 These come after M15. They were chosen because each one removes a real risk or a real annoyance for someone who plays on an iPhone, not because the engine has a feature to show off. Facts about the engine below were read from the source on 2026-11-10; things not yet checked are marked **to check**. None of them has been built or run.
-
-### M16. World safety: back up, restore, export, import
-
-**Why.** A world is hours of someone's play, and it lives in the app's own folder. Deleting the app, a bad update, or a crash during a save can lose it, and iOS gives no undo. Today the only tools are the file manager (copy by hand) and the delete warning.
-
-**Work.**
-- Worlds page in the launcher (this finishes the Worlds part of M12): list of `home/saves/*` with name, size, last played and the game version.
-- **Back up** a world to `Documents/Horizon/backups/<world>-<date>.zip` before any risky action, and on request. **Restore** from a backup under a new name, never over a world without a warning that names it.
-- **Export** as a zip through the system share sheet (AirDrop, Files, iCloud Drive), **import** a zip or a folder from the Files app, refusing paths with `..`, absolute paths or links (the rules from `FileBrowser.m`).
-- **Automatic backup** of a world the first time it is opened after an update of the app, with a limit (keep the last 3) and a free-space check. Off by default if space is under 2 GB.
-- Zip export of a folder is already on the not-done list of M13; this milestone does it once for both.
-
-**Standing rules.** Confined to `Documents/Horizon`. Every delete asks first and names what will be lost. No Mojang files in a backup of a world; the game files (`resources`, `minecraft`) are never part of it.
-
-**Risks.** A zip of a large world on a phone with little free space: stream it, check space first, and cancel cleanly. A backup taken while the game runs could be inconsistent, so back up only while the game is not running (the launcher and the game are separate runs, which makes this easy).
-
-**Success test.** Back up a world, delete it, restore it, open it, and find the same blocks; export it, import it on a second device or folder, and find the same world; try a zip with `../` paths and get a refusal; run out of space on purpose and get a clear message, no partial file left.
-
-**Depends on.** M13 (file rules). Not on the game running, so it can start now.
 
 ### M17. Smooth and efficient rendering
 
@@ -677,7 +655,7 @@ These come after M15. They were chosen because each one removes a real risk or a
 
 **Work.**
 - **Clean exit** (the first step of M15) so a normal exit does not look like a crash.
-- **Crash recovery**: after a crash, offer to open the last world from its backup (M16) if the world is damaged, and show the cause in plain language where it is known (out of memory, out of disk space, corrupt resource).
+- **Crash explanation**: after a crash, show the cause in plain language where it is known (out of memory, out of disk space, corrupt resource).
 - **Out-of-memory story**: iOS kills an app silently; use the session log's last footprint and available memory to say "the game was likely closed by iOS because it used too much memory" and offer to lower the render distance. This is the single most common iOS failure to explain.
 - **Disk space guard**: warn when free space is under 1 GB and before a download; never let a save fail silently.
 - **Bug report bundle**: one button that makes a zip of `latest.log`, `crash.txt`, `session-log.csv`, the settings and device info, with no account tokens and no world data, and opens the share sheet. The existing Diagnostics share only sends one file.
@@ -685,23 +663,7 @@ These come after M15. They were chosen because each one removes a real risk or a
 
 **Success test.** Force each failure on purpose (low memory by a high render distance, a full disk, a corrupt setting file, a swipe-away) and see a correct message and a working way out for each.
 
-**Depends on.** M15 step 1, M16.
-
-### M21. Content trust: signatures, updates, revocation
-
-**Why.** The Marketplace installs files from the internet. Checking a hash proves the file is the one the registry lists; a signature proves the author made it. Two signed projects are refused today for this reason (`IOS_MARKETPLACE.md`).
-
-**Work.**
-- **Minisign verification** (Ed25519 and BLAKE2b). Two ways: a dependency (needs the owner's approval, `Cargo.lock` or a Swift/ObjC package) or a few hundred lines of code written in-repo and tested against the desktop's test vectors. The owner decides.
-- **Update checks** for installed content: a badge on Installed and one line on Home, once a day on Wi-Fi at most, never automatic installs.
-- **Revocation**: when the registry lists an installed file as revoked, say so and offer one-tap removal with the reason (the rule exists for new installs; this adds it for existing ones).
-- **Deep content check** after the hash, as the desktop does (a mod's manifest against the index, a resource pack's `pack.mcmeta`).
-
-**Standing rule.** The Marketplace stays read-only for native mods.
-
-**Success test.** Install a signed project, tamper with one byte, and get a refusal; revoke a test entry and see the removal offer; an update appears after the registry publishes one.
-
-**Depends on.** M14. Needs the owner's approval for a dependency.
+**Depends on.** M15 step 1.
 
 ### M22. Test and release pipeline
 
@@ -720,24 +682,9 @@ These come after M15. They were chosen because each one removes a real risk or a
 
 **Depends on.** none; can run any time.
 
-### M23. Multiplayer on a phone
-
-**Why.** M10 lists multiplayer in one line. A phone is different from a PC: it sleeps, changes network, and has a data plan.
-
-**Work.**
-- **Join by address** screen that works with the iOS keyboard, remembers servers, and shows the version match before connecting.
-- **Reconnect after sleep or network change**: when the app returns from the background (M4) or Wi-Fi switches to mobile data, rejoin the same server instead of dropping to the title screen (to check what the engine does today).
-- **Mobile-data awareness**: show the connection type and a data counter for the session (the owner decided no prompts for downloads; this is about play, and it should only inform, never block).
-- **LAN worlds** over the local network: the Local Network permission text is already in the Info.plist, and the engine's LAN announcement is UDP multicast on 224.0.2.60:4445 (no Bonjour entries needed, per the comment in `project.yml`). **To check**: iOS may also require the multicast networking entitlement for multicast to work, which a free signing certificate may not allow.
-- **Safety**: nothing is sent to a server except what the game protocol needs; the Horizon telemetry ping stays as it is, and is not toggled.
-
-**Success test.** Join a real server, lock the phone for two minutes, unlock and find yourself still in; switch Wi-Fi off and on and recover; find and join a LAN world from a second device.
-
-**Depends on.** M4, M5.
-
 ### What was left out on purpose
 
 - **iPad layout and Apple Pencil**: possible later, but the owner's device is an iPhone 12 and nothing can be tested on an iPad.
-- **iCloud sync of worlds**: tempting, but iCloud Drive is not reachable from a sideloaded app signed with a free certificate, and sync conflicts can destroy worlds. M16's export covers the real need.
+- **iCloud sync of worlds**: tempting, but iCloud Drive is not reachable from a sideloaded app signed with a free certificate, and sync conflicts can destroy worlds.
 - **A custom render backend or shaders for Metal**: the engine already renders through wgpu on Metal; changing that is a research project, not a milestone.
 - **App Store distribution**: ruled out in the decisions doc.

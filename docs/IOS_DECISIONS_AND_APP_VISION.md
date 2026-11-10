@@ -89,14 +89,11 @@ on the phone from your own Minecraft account.
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
 | **M15** | **iOS optimisation: make it feel made for iOS** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | **NEXT.** First step below |
-| M16 | World safety: back up, restore, export, import worlds | PLANNED (added 2026-11-10) |
 | M17 | Frame pacing, 60/120 Hz, battery and thermal modes | PLANNED, needs M15 numbers |
 | M18 | Controller support through iOS's GameController | PLANNED, **to check** what the engine sees first |
 | M19 | Haptics, one-handed layout, screenshot and chat buttons, text size | PLANNED |
 | M20 | Clean exit, crash recovery, out-of-memory explanation, bug report bundle, log viewer | PLANNED |
-| M21 | Minisign verification, update checks, revocation of installed content | PLANNED, a dependency needs your approval |
 | M22 | Objective-C tests in CI, simulator smoke test, signing guide, version in About | PLANNED |
-| M23 | Multiplayer on a phone: reconnect after sleep, LAN, data counter | PLANNED |
 | M12 | Real launcher pages: Settings, Library, Worlds, Screenshots, Logs, About (added 2026-11-10) | **Written, not run:** Home, Settings (Look, Marketplace, Start-up), Game files, Account, Diagnostics and About. Worlds, Screenshots and Logs pages PLANNED |
 | M13 | In-app file manager, limited to the app's own folder (added 2026-11-10) | **Written, not run** (browse, preview, share, rename, delete with warnings, new folder, add files). Zip export and folder import PLANNED |
 | M14 | Horizon Marketplace: browse and install from Horizon's registry (added 2026-11-10). Only about 25 of the 158 registry projects can work on a phone (133 are native mods that need a desktop build) | **Browse, install, update and remove written, not run** (`IOS_MARKETPLACE.md`); SHA-256 checked, projects whose author signs their files are refused until a minisign check exists. Modrinth resource packs are an opt-in extra in Settings |
@@ -136,7 +133,7 @@ The game runs, so the question is no longer "does it work" but "is it good on an
 2. **Measure before tuning.** Play a fixed route (a new world, walking and flying at three render distances, five minutes each) and send the `session-log.csv` and `latest.log`. This gives the real memory, heat and battery numbers that M7 needs. Nothing gets tuned without a before and after.
 3. **Tune from the numbers** (M7): defaults for render distance, resolution scale and Auto Performance's thresholds.
 4. **Touch polish**: drag to spread a held stack, haptics, a better inventory.
-5. **Launcher extras**: Worlds (list, backup, export), Screenshots, Logs, update checks for installed content, and the minisign check so the two signed Marketplace projects can install (that one needs a dependency, so your approval).
+5. **Launcher extras**: Worlds (list with size and date), Screenshots and Logs. World backup, signature checks, update checks and multiplayer polish were removed from the plan by the owner on 2026-11-10 as not important enough; the two signed Marketplace projects stay refused for now.
 
 Still open and not blocking: **Play without relaunching** (needs a winit upgrade or a launcher window inside winit's run, see `LAUNCHER.md`), the JIT/Java test (M8a, only matters for preparing the files on the phone), and Mojang's approval for sign-in.
 
