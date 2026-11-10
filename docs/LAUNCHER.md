@@ -55,6 +55,7 @@ If the flag is set but the files fail the check, the launcher opens instead of t
   open it, a small text file to read it, any other file to share it; swipe a row for Delete, Rename and
   Share; the **+** menu makes a folder or copies files in from the Files app (refusing a name already
   taken and a copy that would leave less than 100 MB free). Rules in `FileBrowser.m`: see below.
+- **Marketplace** (M14, written 2026-11-10, never run): browses Horizon's registry (tabs, search, project pages). It does not install anything yet. See `IOS_MARKETPLACE.md`.
 - **About** (M12, written 2026-11-10, never run): what the app is, that it is not a Minecraft product,
   the Horizon MIT licence in full, Horizon's third-party notices (bundled from `horizon/THIRD_PARTY_NOTICES.md`), links, and what the game sends.
 - **Diagnostics**: the newest crash report (native `crash.txt` or the engine's

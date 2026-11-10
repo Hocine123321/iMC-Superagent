@@ -6,6 +6,7 @@
 #import "LauncherDownload.h"
 #import "LauncherFileManager.h"
 #import "LauncherAbout.h"
+#import "LauncherMarketplace.h"
 #import "AccountClient.h"
 #import "AccountStore.h"
 #import "CrashReporter.h"
@@ -14,7 +15,7 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
 @interface HZLauncherHomeController ()
 @property (strong) UILabel *statusTitle, *statusDetail, *versionLabel;
-@property (strong) UIButton *playButton, *filesButton, *fileManagerButton, *downloadButton, *diagButton, *accountButton, *aboutButton;
+@property (strong) UIButton *playButton, *filesButton, *fileManagerButton, *downloadButton, *diagButton, *accountButton, *aboutButton, *marketButton;
 @property (strong) UISwitch *directSwitch;
 @property (strong) UIView *statusDot;
 @property (strong) UIActivityIndicatorView *spinner;
@@ -93,6 +94,8 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     self.downloadButton = [self buttonWithTitle:@"Download Minecraft" filled:NO action:@selector(openDownload)];
     self.diagButton = [self buttonWithTitle:@"Diagnostics" filled:NO action:@selector(openDiagnostics)];
     self.accountButton = [self buttonWithTitle:@"Account" filled:NO action:@selector(openAccount)];
+    self.marketButton = [self buttonWithTitle:@"Marketplace" filled:NO action:@selector(openMarket)];
+    [self.marketButton.heightAnchor constraintEqualToConstant:48].active = YES;
     self.aboutButton = [self buttonWithTitle:@"About" filled:NO action:@selector(openAbout)];
     [self.aboutButton.heightAnchor constraintEqualToConstant:48].active = YES;
     [self.accountButton.heightAnchor constraintEqualToConstant:48].active = YES;
@@ -124,7 +127,7 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
     directNote.textColor = [UIColor colorWithWhite:0.55 alpha:1];
     directNote.numberOfLines = 0;
 
-    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, self.downloadButton, secondary, self.aboutButton, direct, directNote]];
+    UIStackView *right = [[UIStackView alloc] initWithArrangedSubviews:@[status, self.playButton, self.downloadButton, self.marketButton, secondary, self.aboutButton, direct, directNote]];
     right.axis = UILayoutConstraintAxisVertical; right.spacing = 18;
 
     // Landscape (the app is landscape-only): the name on the left, the controls on the right.
@@ -213,6 +216,9 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
 - (void)openFiles {
     [self.navigationController pushViewController:[HZLauncherFilesController new] animated:YES];
+}
+- (void)openMarket {
+    [self.navigationController pushViewController:[HZLauncherMarketplaceController new] animated:YES];
 }
 - (void)openAbout {
     [self.navigationController pushViewController:[HZLauncherAboutController new] animated:YES];

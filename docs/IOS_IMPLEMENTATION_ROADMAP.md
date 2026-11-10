@@ -560,6 +560,8 @@ So the first release is honest and small: about 25 installable projects, with th
 
 **Risks.** Third-party code and content from the internet: the checksum, signature and host rules above are the safety net, and installs stay off by default as in the engine. Mod licences and Mojang's usage rules apply to what the registry lists (the registry's own review covers that; we only display it). Registry terms for third-party apps are unverified, so check them before a public release. `ludovic111/horizon-mods` appears as a second allowed release host in the desktop code; take the host list from the source, not from memory.
 
+**Progress (2026-11-10).** Step 1 is written and step 2 started: the index client (`MarketIndex.m`, `MarketClient.m`) and a browse screen (Home > Marketplace) with tabs, search and project pages, no install. Rules read from the desktop source, three of them stricter on purpose; 92 offline checks pass against the real index. Never run on a phone. Install waits on a minisign verifier (a dependency, so your decision) and on `api_level`. Details and the full not-done list: `IOS_MARKETPLACE.md`.
+
 **Success test.** Install one content mod, one resource pack and one shader from a clean app on a phone, see them in Options > Mods or the pack list in the game, remove them, corrupt a download and confirm it is refused, and confirm a revoked entry is refused.
 
 **Depends on.** M13 (folders), M12 (a tab to live in). The game must start (M5 confirmed on a phone) before any install can be called working.
