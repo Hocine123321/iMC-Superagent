@@ -53,7 +53,8 @@ No file under `horizon/` is changed. `project.yml` picks up the new files by its
 ## What it does not do
 
 - **No frame times.** Those live in the engine; the `--benchmark` scenarios and an in-game frame
-  recorder are the rest of M6 and need engine hooks.
+  recorder are the rest of M6 and need engine hooks. This is the main gap before tuning (M15 step 2 in
+  `IOS_IMPLEMENTATION_ROADMAP.md`).
 - **No GPU memory by category**, which M6 also lists.
 - **Not tested on a phone.** The line format has a test (a C copy of the logic, 4 cases), but the
   Objective-C itself is only compiled by the CI macOS runner.

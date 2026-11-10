@@ -78,27 +78,28 @@ on the phone from your own Minecraft account.
 | Milestone | What it is | State |
 |---|---|---|
 | M1 | Fix the code so the engine compiles for iOS | **DONE** |
-| M2 | App shell, Metal surface, memory reporting | **Done in CI.** On the owner's phone the app reached the title artwork, then hit a stack overflow that is now fixed (`IOS_CRASH_STACK.md`); the fixed build has not been confirmed on a phone. |
+| M2 | App shell, Metal surface, memory reporting | **DONE.** The early stack overflow was fixed (`IOS_CRASH_STACK.md`) and the game now runs on the owner's phone (confirmed 2026-11-10). |
 | M8a step 1 | Build a Java 25 runtime for iOS in CI | **DONE** (24 MB compressed, 134 MB unpacked, device-only) |
-| M8a step 2 | Show that the phone can run it | **IN TEST.** A diagnostics screen is in the IPA you are installing now. |
+| M8a step 2 | Show that the phone can run it | **OPEN.** The 2026-11-08 run set `CS_DEBUGGED` but refused the `MAP_JIT` page; the test is to be repeated with JIT enabled before launch (`IOS_DEVICE_TEST_M8A.md`). Only matters for preparing files on the phone, since the game already runs from files prepared on a computer. |
 | M3 / M3b | Load the game files, reach the title screen, and the native launcher (home, import/check/delete, diagnostics, Play) | **Built and published** (v2 onward; the latest release is v33). The launcher has since been rebuilt (Home, Marketplace, Settings, Files, Game files, Account, Diagnostics, About, see `LAUNCHER.md`); none of it is confirmed on a phone |
-| M4 | Pause, resume and memory warnings | **Built**, untested on a phone |
-| M5 | Touch controls, playable singleplayer | **Built; first phone test found the touch offset** (right and a little down), fix and the **iMC Settings** page built and published (`IMC_SETTINGS.md`). Since then: Mobile preset, touch controls editor, Back button, touch calibration, Cursor mode (a trackpad-style pointer for menus), and the iMC Settings moved into a page of Video Settings. The custom extra buttons were abandoned (the code stays). All untested on a phone. |
+| M4 | Pause, resume and memory warnings | **Built**; the game runs, but suspend and memory-warning behaviour has not been tested on purpose |
+| M5 | Touch controls, playable singleplayer | **DONE: the game runs and is playable on the phone (owner, 2026-11-10).** The first test found the touch offset (right and a little down), fix and the **iMC Settings** page built and published (`IMC_SETTINGS.md`). Fixes and additions since: Mobile preset, touch controls editor, Back button, touch calibration, Cursor mode (a trackpad-style pointer for menus), and the iMC Settings moved into a page of Video Settings. The custom extra buttons were abandoned (the code stays). The newer additions have had less testing than the core. |
 | M6 / M7 | Measure on the phone, then tune memory and heat | **M6 started:** a local session log (memory, heat, battery) is built, untested on a phone (`SESSION_LOG.md`). Benchmarks and frame times are PLANNED. M7 PLANNED. |
 | M8b | Download and prepare on the phone | **Download built, not run** (plan, downloader and screen, `IOS_DOWNLOAD_PLAN.md`; CI-compiled only). Preparation PLANNED, depends on M8a |
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
+| **M15** | **iOS optimisation: make it feel made for iOS** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | **NEXT.** First step below |
 | M12 | Real launcher pages: Settings, Library, Worlds, Screenshots, Logs, About (added 2026-11-10) | **Written, not run:** Home, Settings (Look, Marketplace, Start-up), Game files, Account, Diagnostics and About. Worlds, Screenshots and Logs pages PLANNED |
 | M13 | In-app file manager, limited to the app's own folder (added 2026-11-10) | **Written, not run** (browse, preview, share, rename, delete with warnings, new folder, add files). Zip export and folder import PLANNED |
 | M14 | Horizon Marketplace: browse and install from Horizon's registry (added 2026-11-10). Only about 25 of the 158 registry projects can work on a phone (133 are native mods that need a desktop build) | **Browse, install, update and remove written, not run** (`IOS_MARKETPLACE.md`); SHA-256 checked, projects whose author signs their files are refused until a minisign check exists. Modrinth resource packs are an opt-in extra in Settings |
 
-**The honest summary:** the engine runs on iOS and the app has a launcher, touch controls and a settings page. What is not yet shown is a game you can play: no run has got past the title screen on the phone, and whether Java can run on the phone at all is open.
+**The honest summary (2026-11-10):** the game runs on the owner's iPhone without issues, so the first goal, making Horizon work on iOS, is **done**. What was built around it (launcher, Marketplace, file manager, download, sign-in code) is written and compiled in CI but mostly not yet tried on the phone. The work now is making it feel made for iOS: features, speed, battery and touch comfort. The plan for that is `IOS_IMPLEMENTATION_ROADMAP.md`, milestone M15.
 
 ---
 
 ## 4. What is still unknown
 
-These decide whether the plan above works. None has been tested on your phone yet.
+These decide whether the preparation-on-the-phone part of the plan works. The game itself already runs from a folder prepared on a computer, so none of them blocks playing; they decide whether the phone can do everything without a computer.
 
 1. **Can the phone load the Java runtime?** JIT working is necessary, but not enough. The app must
    also load the runtime's libraries, which iOS restricts. Amethyst solves this with its own
@@ -119,19 +120,16 @@ finished folder to the phone. You chose not to rely on this, so it stays a backu
 
 ---
 
-## 5. The next three steps
+## 5. The next step (2026-11-10)
 
-1. **Phone-test the next build** (the one with the touch fix and iMC Settings). Check that a finger
-   lands under itself in menus and in the world, that the buttons react where they are drawn, and
-   that **Options > Video Settings > iMC** (a page of Video Settings) opens and each choice does something. Send
-   `latest.log` and `crash.txt` if anything is off.
-2. **Settle JIT.** The 2026-11-08 run showed `CS_DEBUGGED` set but the `MAP_JIT` page refused
-   (`errno 1`). Repeat the M8a test (`IOS_DEVICE_TEST_M8A.md`) with JIT enabled in StikDebug before
-   launch, and keep both `diagnostics.txt` files. If the page is refused again, the Java plan stops
-   there and the fallback (prepare on a computer, copy the folder over) becomes the product.
-3. **Only if JIT works:** put the Java runtime on the phone, load its library and print
-   `java -version`, then run one exporter, then the one-JVM preparation, then the downloader.
+The game runs, so the question is no longer "does it work" but "is it good on an iPhone". The plan is milestone **M15** in `IOS_IMPLEMENTATION_ROADMAP.md`. In order:
 
-See `IOS_DEVICE_TEST_M8A.md` for the exact test, `IOS_IMPLEMENTATION_ROADMAP.md` for every
-milestone, `IMC_SETTINGS.md` for the settings page and the touch fix, and
-`IOS_FEASIBILITY_REPORT.md` for the evidence behind each claim.
+1. **Leave the game for the launcher without force-closing it.** A "Back to launcher" entry in the pause menu First I check what the game's own Save and Quit does on iOS; if it does not end the app cleanly, the fix is a small iOS-only edit under `horizon/` (listed in `HORIZON_CHANGES.md`), which needs your approval because `horizon/` is normally off limits. Swiping the app away makes the launcher show a crash notice next time. This is the smallest change that fixes something you hit every session.
+2. **Measure before tuning.** Play a fixed route (a new world, walking and flying at three render distances, five minutes each) and send the `session-log.csv` and `latest.log`. This gives the real memory, heat and battery numbers that M7 needs. Nothing gets tuned without a before and after.
+3. **Tune from the numbers** (M7): defaults for render distance, resolution scale and Auto Performance's thresholds.
+4. **Touch polish**: drag to spread a held stack, haptics, a better inventory.
+5. **Launcher extras**: Worlds (list, backup, export), Screenshots, Logs, update checks for installed content, and the minisign check so the two signed Marketplace projects can install (that one needs a dependency, so your approval).
+
+Still open and not blocking: **Play without relaunching** (needs a winit upgrade or a launcher window inside winit's run, see `LAUNCHER.md`), the JIT/Java test (M8a, only matters for preparing the files on the phone), and Mojang's approval for sign-in.
+
+See `IOS_IMPLEMENTATION_ROADMAP.md` for every milestone, `IMC_SETTINGS.md` for the settings page, and `IOS_FEASIBILITY_REPORT.md` for the evidence behind earlier claims.

@@ -2,7 +2,7 @@
 
 > **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
 
-**Status (2026-11-10):** M1 to M5 and M3b are built and published as *iMC Horizon* releases (v33 is the latest), and the M8b download, M9 sign-in, M12 launcher pages, M13 file manager and M14 Marketplace are written into them but never run; none has been confirmed end to end on a phone. M8a is open: the one device run showed `CS_DEBUGGED` but a refused `MAP_JIT` page. See the table in `IOS_DECISIONS_AND_APP_VISION.md` for the current state of every milestone, and `IMC_SETTINGS.md` for the touch offset fix and the iMC Settings page. The sections below are the original plan; where work has happened a section carries a dated progress note. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
+**Status (2026-11-10):** M1 to M5 and M3b are built and published as *iMC Horizon* releases (v33 is the latest) and **the game runs on the owner's phone without issues (confirmed 2026-11-10)**, so the first goal is met and the plan moves to M15 (iOS optimisation, below). The M8b download, M9 sign-in, M12 launcher pages, M13 file manager and M14 Marketplace are written into them but never run; the extras around the game have had little phone testing. M8a is open: the one device run showed `CS_DEBUGGED` but a refused `MAP_JIT` page. See the table in `IOS_DECISIONS_AND_APP_VISION.md` for the current state of every milestone, and `IMC_SETTINGS.md` for the touch offset fix and the iMC Settings page. The sections below are the original plan; where work has happened a section carries a dated progress note. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
 **Base:** `horizon-rust/horizon` `77af961`, Minecraft 26.3, protocol 777.
 
 ## Ordering principles
@@ -43,6 +43,7 @@
 | M12 | **Real launcher pages** (added 2026-11-10): Library, Settings, Worlds, Screenshots, About | Device | no | medium |
 | M13 | **In-app file manager** (added 2026-11-10) | Device | no | medium |
 | M14 | **Horizon Marketplace** (added 2026-11-10): browse and install from Horizon's registry | Device | no | large |
+| M15 | **iOS optimisation** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | Device | no | large |
 
 The state of every milestone is in the table of `IOS_DECISIONS_AND_APP_VISION.md` (section 3); the sections below carry dated progress notes.
 
@@ -567,3 +568,23 @@ So the first release is honest and small: about 25 installable projects, with th
 **Success test.** Install one content mod, one resource pack and one shader from a clean app on a phone, see them in Options > Mods or the pack list in the game, remove them, corrupt a download and confirm it is refused, and confirm a revoked entry is refused.
 
 **Depends on.** M13 (folders), M12 (a tab to live in). The game must start (M5 confirmed on a phone) before any install can be called working.
+
+---
+
+## M15. iOS optimisation (added 2026-11-10)
+
+**Why.** The game runs on the phone (owner, 2026-11-10). M1 to M5 did their job. What is left is the difference between "runs on iOS" and "feels made for iOS". The rule from M7 stays: **no change without a before and after.**
+
+**Order and why.**
+
+1. **Back to the launcher from the pause menu (small, do first).** The game and the launcher are two runs of the app (`LAUNCHER.md`). Swiping the app away leaves the `.running` marker, so the launcher shows a crash notice next time (`LAUNCHER.md`). **First find out what the game's own Save and Quit / Quit Game do on iOS** (they call winit's `event_loop.exit()`, and whether that ends the process on iOS is not verified here): if it ends the app cleanly, the fix may be only to make the launcher treat that exit as clean. If not, add a pause menu entry that saves the world (as `suspended` does), clears the marker and exits. The second case is an `horizon/` edit (the pause screen is `game/screens.rs`), which needs the owner's approval and goes in `HORIZON_CHANGES.md`. Success test: Play, enter a world, use the entry, reopen the app: launcher shows, no crash notice, the world saved.
+2. **Measure (M6, finish it).** A fixed route on the phone with `session-log.csv` and `latest.log`: a new world, three render distances (4, 8, 12), walking and flying, five minutes each, plus one background and return. Record footprint, free memory, thermal state, battery drop per 10 minutes, and frame time (frame time is not yet logged and is the gap: it needs a counter in the session log or the engine's own frame stats). Output: a table in `benchmarks/ios/` with the device, iOS version, commit and settings.
+3. **Tune (M7) from the table.** Defaults for render distance, resolution scale, Auto Performance thresholds, Mobile preset. Only measured contributors.
+4. **Touch polish.** Drag to spread a held stack across slots (competes with scrolling, so it needs a hold-first rule), haptics on hit, break and place (`UIImpactFeedbackGenerator`, behind a setting), a better inventory layout, and a controller layout when one is paired.
+5. **Launcher extras (M12).** Worlds (list with size and date, back up, export as a zip), Screenshots, Logs, update checks for installed content, removal of revoked files, and the minisign check so signed Marketplace projects install (a dependency, so the owner decides).
+
+**Not in M15, still open.** Play without the relaunch (winit upgrade or a launcher window inside winit's run, both risky, see `LAUNCHER.md`), preparing the game files on the phone (M8a/M8b, needs the JIT test), Mojang's approval for sign-in (M9), multiplayer polish (M10), distribution (M11).
+
+**Risks.** Tuning to one device (the owner's iPhone 12, 4 GB); thermal throttling makes runs hard to compare, so each run records its starting thermal state; an `horizon/` edit for item 1 adds to the rebase list.
+
+**Depends on.** M5 (done). Item 1 needs the owner's approval to edit `horizon/`.

@@ -21,11 +21,11 @@ The engine builds, links and starts on iOS. Each CI run of the `iOS app` workflo
 unsigned IPA as a release named *iMC Horizon vN*, which you sign yourself.
 
 What exists: a native launcher (Home, Marketplace, Settings, file manager, game files, Account, diagnostics, About), touch controls and app lifecycle
-(M4/M5), a crash reporter, and the in-game **iMC Settings** page. What does not: a verified
-playable run on a phone, preparing the game files on the phone (M8: the download is written but has never run on a phone; the Java preparation is not), and a working sign-in (M9: the code and
-Account screen exist, but they need your own Azure app and Mojang's approval, see
-`docs/IOS_SIGN_IN.md`). You bring
-the prepared game files yourself for now.
+(M4/M5), a crash reporter, and the in-game **iMC Settings** page. The game itself **runs on a phone without issues**
+(confirmed by the owner, 2026-11-10), so the port works; the work now is making it feel made for iOS (milestone M15 in
+the roadmap). What does not exist yet: preparing the game files on the phone (M8: the download is written but has never
+run on a phone; the Java preparation is not), and a working sign-in (M9: the code and Account screen exist, but they need
+your own Azure app and Mojang's approval, see `docs/IOS_SIGN_IN.md`). You bring the prepared game files yourself for now.
 
 Where to read next:
 - [`docs/IOS_DECISIONS_AND_APP_VISION.md`](docs/IOS_DECISIONS_AND_APP_VISION.md): the decisions and what is proven.
