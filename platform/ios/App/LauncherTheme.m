@@ -107,7 +107,7 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
 // dark mode, white on the dark green in light mode), a secondary one is the surface colour with the normal text.
 // The first pass asked iOS 26 for its glass button style; on the owner's phone that did not read as glass and put
 // white text on a green-tinted pane, so contrast was left to chance. This is the same in both themes and on every iOS.
-+ (UIButtonConfiguration *)configurationProminent:(BOOL)prominent title:(NSString *)title symbol:(NSString *)symbolName {
++ (UIButtonConfiguration *)configurationProminent:(BOOL)prominent title:(NSString *)title symbol:(nullable NSString *)symbolName {
     UIButtonConfiguration *cfg = prominent ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
     cfg.title = title;
     cfg.cornerStyle = UIButtonConfigurationCornerStyleLarge;
@@ -124,7 +124,7 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
     return cfg;
 }
 
-+ (UIButton *)buttonWithTitle:(NSString *)title symbol:(NSString *)symbolName prominent:(BOOL)prominent target:(id)target action:(SEL)action {
++ (UIButton *)buttonWithTitle:(NSString *)title symbol:(nullable NSString *)symbolName prominent:(BOOL)prominent target:(id)target action:(SEL)action {
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     b.translatesAutoresizingMaskIntoConstraints = NO;
     b.configuration = [self configurationProminent:prominent title:title symbol:symbolName];

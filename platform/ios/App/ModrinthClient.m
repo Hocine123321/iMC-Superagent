@@ -194,7 +194,7 @@ static NSArray *List(id d, NSString *k) {
     }] resume];
 }
 
-- (void)searchText:(NSString *)text offset:(NSUInteger)offset completion:(void (^)(NSArray *, NSUInteger, NSString *))done {
+- (void)searchText:(NSString *)text offset:(NSUInteger)offset completion:(void (^)(NSArray<HZModrinthProject *> *_Nullable, NSUInteger, NSString *_Nullable))done {
     [self get:[HZModrinthClient searchURLForText:text game:@"26.3" offset:offset limit:30] completion:^(NSData *d, NSString *err) {
         if (!d) { done(nil, 0, err); return; }
         NSString *perr = nil; NSUInteger total = 0;
@@ -203,7 +203,7 @@ static NSArray *List(id d, NSString *k) {
     }];
 }
 
-- (void)newestVersionOf:(HZModrinthProject *)project completion:(void (^)(HZModrinthVersion *, NSString *))done {
+- (void)newestVersionOf:(HZModrinthProject *)project completion:(void (^)(HZModrinthVersion *_Nullable, NSString *_Nullable))done {
     [self get:[HZModrinthClient versionsURLForProject:project.projectId] completion:^(NSData *d, NSString *err) {
         if (!d) { done(nil, err); return; }
         NSString *why = nil;

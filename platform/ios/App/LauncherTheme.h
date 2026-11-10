@@ -48,7 +48,7 @@ extern NSNotificationName const HZThemeChanged;
 // A button. `prominent` is the accent-filled Play-style one (dark text on the light green, white on the dark
 // green); the other is a quiet surface-coloured one. Both are solid, so contrast is the same everywhere.
 + (UIButton *)buttonWithTitle:(NSString *)title
-                         symbol:(NSString *)symbolName
+                         symbol:(nullable NSString *)symbolName
                       prominent:(BOOL)prominent
                          target:(id)target
                          action:(SEL)action;

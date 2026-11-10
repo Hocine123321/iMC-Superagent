@@ -16,22 +16,6 @@ static HZMarketInstaller *Installer(void) {
     return [[HZMarketInstaller alloc] initWithHome:[HZLauncherModel shared].home];
 }
 
-static UIColor *Accent(void) { return [HZTheme accent]; }
-
-static NSString *MarketSupportText(HZMarketSupport s) {
-    switch (s) {
-        case HZMarketInstallable: return @"Works on iPhone";
-        case HZMarketNeedsDesktop: return @"Needs a desktop build";
-        case HZMarketNotYet: return @"Not supported yet";
-    }
-}
-
-static NSString *MarketKindText(NSString *kind) {
-    NSDictionary *names = @{@"mod": @"Mod", @"native-mod": @"Native mod", @"resourcepack": @"Resource pack", @"shader": @"Shader",
-                            @"modpack": @"Modpack", @"shaderpack": @"Shader pack", @"datapack": @"Data pack"};
-    return names[kind] ?: kind;
-}
-
 // Which tabs exist depends on Settings: resource packs and Installed always; Mods, Shaders and Everything else
 // only once turned on there; Modrinth only once turned on (it reaches another company's server).
 typedef NS_ENUM(NSInteger, HZTab) { HZTabPacks, HZTabModrinth, HZTabMods, HZTabShaders, HZTabAll, HZTabInstalled };
