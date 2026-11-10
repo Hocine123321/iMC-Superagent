@@ -52,7 +52,7 @@
     self.noteLabel.font = [UIFont systemFontOfSize:12];
     self.noteLabel.textColor = [UIColor colorWithWhite:0.55 alpha:1];
     self.noteLabel.numberOfLines = 0;
-    self.noteLabel.text = @"Signing in is needed only to download the game. Playing files already on this phone never asks for it. The sign-in stays on this phone, in the Keychain, and is removed when you sign out.";
+    self.noteLabel.text = @"Signing in is needed only to download the game; playing files already on this phone never asks for it. When you are signed in, the game plays as your profile. The sign-in stays on this phone, in the Keychain, and is removed when you sign out.";
 
     UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[self.primary, self.secondary]];
     buttons.spacing = 12; buttons.distribution = UIStackViewDistributionFillEqually;

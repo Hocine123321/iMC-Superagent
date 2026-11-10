@@ -3,6 +3,8 @@
 #import "LauncherFiles.h"
 #import "LauncherDiagnostics.h"
 #import "LauncherAccount.h"
+#import "AccountClient.h"
+#import "AccountStore.h"
 #import "CrashReporter.h"
 
 static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue:0.33 alpha:1]; }
@@ -39,6 +41,12 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    // Once per run of the launcher: renews a saved sign-in in the background, so the game that
+    // starts next has a Minecraft token that is not a day old (GameSession.h). Silent: it shows
+    // nothing, and a network failure keeps the last answer instead of signing the player out.
+    // The game itself never reaches the network for this: with "open straight into the game" on, the
+    // launcher is skipped and the token is as fresh as the last time the launcher was open.
+    if ([[HZAccountStore shared] account]) [[HZAccountClient shared] recheck:^(BOOL reachable, BOOL owns, NSString *error) {}];
     self.view.backgroundColor = [UIColor colorWithRed:0.07 green:0.09 blue:0.11 alpha:1];
 
     UILabel *name = [UILabel new];
@@ -157,6 +165,10 @@ static UIColor *Accent(void) { return [UIColor colorWithRed:0.36 green:0.74 blue
             });
             break;
     }
+    // Who the game will play as: the signed-in profile (GameSession.h), else it plays offline.
+    HZAccountState *signedIn = [[HZAccountStore shared] account];
+    [self.accountButton setTitle:signedIn.name.length ? [NSString stringWithFormat:@"Account: %@", signedIn.name] : @"Account"
+                        forState:UIControlStateNormal];
     BOOL ready = state == HZFilesReady;
     self.playButton.enabled = ready;
     self.playButton.alpha = ready ? 1 : 0.45;

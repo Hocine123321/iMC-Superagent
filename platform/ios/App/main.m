@@ -6,6 +6,7 @@
 // or `.local/horizon-client/26.3` relative to the working directory (here `/`). So the paths
 // are worked out here, from the sandbox, and passed as arguments.
 #import <Foundation/Foundation.h>
+#import "GameSession.h"
 #import "Diagnostics.h"
 #import "CrashReporter.h"
 #import "SessionLog.h"
@@ -63,15 +64,28 @@ int main(int argc, char *argv[]) {
         // which the desktop launcher sets. An iOS app starts in "/", which is read-only.
         [fm changeCurrentDirectoryPath:home];
 
+        // The signed-in account, if there is one, becomes the game's account: its profile name, UUID
+        // and token, through the engine's session file (GameSession.h). Written now, not earlier,
+        // because the engine refuses a file older than two minutes, and it deletes the file as it
+        // reads it. No account, or a file that cannot be written safely, means the game starts
+        // offline as before. This never stops the game from starting.
+        HZRemoveStaleGameSession(root);
+        NSString *session = HZWriteGameSession(root);
+        HZNoteGameSession(root, session != nil);
+        horizon_ios_breadcrumb(session ? "main: signed-in account handed to the game"
+                                       : "main: no account for the game, offline");
+
         // A new argv: the program name, then ours, then anything the system passed (a debugger's,
         // or a launch argument from a developer's scheme).
         const char *extra[] = { "--resources", resources.fileSystemRepresentation,
-                                "--home", home.fileSystemRepresentation };
-        int n = 1 + 4 + (argc > 1 ? argc - 1 : 0);
+                                "--home", home.fileSystemRepresentation,
+                                "--session-file", session ? session.fileSystemRepresentation : "" };
+        int extras = session ? 6 : 4;
+        int n = 1 + extras + (argc > 1 ? argc - 1 : 0);
         char **args = calloc((size_t)n + 1, sizeof(char *));
         int i = 0;
         args[i++] = argv[0];
-        for (int k = 0; k < 4; k++) args[i++] = strdup(extra[k]);
+        for (int k = 0; k < extras; k++) args[i++] = strdup(extra[k]);
         for (int k = 1; k < argc; k++) args[i++] = argv[k];
         args[i] = NULL;
 

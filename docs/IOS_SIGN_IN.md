@@ -7,7 +7,10 @@ the Account screen says "Sign-in is not set up yet" and nothing is sent.
 ## What it is for
 
 Decided 2026-11-09: **sign-in gates the download of the game (M8b) and nothing else.** Playing game
-files that are already on the phone never asks for it. The desktop launcher is stricter (no owner, no
+files that are already on the phone never asks for it.
+
+Decided 2026-11-10: **when someone is signed in, the game plays as that profile.** It is an identity,
+not a gate: see "The game's account" below. The desktop launcher is stricter (no owner, no
 Play); this port is not, because its files can also come from a computer through Game files.
 
 The gate is a policy control, not copy protection. The engine does not enforce it.
@@ -70,6 +73,37 @@ Account screen says "test mode" while it is on.
   signing in as the official launcher.
 - Remove it (delete the file, ignore this section) as soon as the registered app is approved.
 
+## The game's account
+
+The engine takes an account from a *session file* (`--session-file`, `AuthSession` in
+`horizon-client-render/src/auth.rs`): JSON with the profile name, UUID and Minecraft access token.
+With one the game plays under that name and UUID and can join online-mode servers; without one it
+plays offline under a generated name, as before.
+
+`main.m` writes that file just before it starts the engine (`GameSession.m`) and adds
+`--session-file <path>` to the engine's arguments, only when an account is saved. The engine's own
+rules, each checked by `platform/ios/tests/game_session_check.py` against a copy of its parser:
+
+- **Read once and deleted** by the engine, so the token does not stay on the disk. A leftover from a
+  run that ended before the engine started is deleted at the next launch.
+- **Refused if older than 120 seconds**, which is why it is written in `main()` and not earlier.
+- **Refused if group or others can read it**, so it is created with mode 0600.
+- Name 1 to 16 characters, UUID 32 hex digits, token not empty. Anything less and the file is not
+  written, and the game starts offline.
+
+**What this does not do.** It never blocks playing: a signed-in account that is offline, expired or
+not confirmed as an owner still starts the game. Owning the game gates only the download.
+
+**Token freshness.** The Minecraft token lasts about a day. It is renewed (`recheck`) silently once
+each time the launcher opens, and at sign-in. The game run does not renew it: with "Open straight
+into the game" on, the launcher is skipped, so the token is as old as the last launcher visit. A stale
+token makes online servers refuse the player. Singleplayer and LAN do not use it.
+
+**Not verified on a phone**, and not verifiable here: that the engine accepts the file on iOS
+(the Unix permission check should apply, as iOS is Unix), that the in-game name and skin become the
+profile's, and that an online server accepts the token. The first check is the name on the Account
+button and, in the game, the player name.
+
 ## The files
 
 | File | What it does |
@@ -77,6 +111,7 @@ Account screen says "test mode" while it is on.
 | `AccountModel.h/.m` | The rules, with no network and no UIKit: reading each reply, the refusal messages (the desktop launcher's words), whether the account owns Java Edition, and `HZMayDownload`, the one place the gate lives. |
 | `AccountClient.h/.m` | The requests, in the order of the doc: device code, poll, Xbox Live, XSTS, `login_with_xbox`, entitlements, profile. An ephemeral `NSURLSession` (no cookies, no cache, nothing on disk). No body is ever logged. |
 | `AccountStore.h/.m` | The Keychain (two items) and `<Documents>/Horizon/account.txt` (name, UUID, last answer; no secret). |
+| `GameSession.h/.m` | Hands the signed-in account to the engine as its session file (below). Called from `main.m`. |
 | `LauncherAccount.h/.m` | The Account screen, reached from a new *Account* button on the launcher. |
 
 ## Decisions

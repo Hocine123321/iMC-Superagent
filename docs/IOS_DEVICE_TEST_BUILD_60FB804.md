@@ -55,6 +55,20 @@ This borrows another launcher's app ID, for your own phone only. See `docs/IOS_S
   - "The sign-in code expired": you took longer than 15 minutes. Start again.
 - To turn test mode off, delete the file and restart the app.
 
+### 3c. The game plays as your profile (needs a successful sign-in from 3b)
+
+1. After signing in, go back. The launcher's button should read **Account: <your Minecraft name>**.
+2. Tap Play, close the app, open it again so the game starts.
+3. In the game, open chat or the player list and look at your name. Or join a LAN world and see it.
+
+- **Good:** the game uses your Minecraft profile name.
+- **Not good:** it shows a generated name (offline). Send Diagnostics. If the engine refused the
+  session file, it says so on its error output, which on iOS is **not** known to reach the shared
+  game log. What does reach Diagnostics is the last line of `diagnostics.txt` for that launch,
+  starting `game account:`. It says whether the app handed your profile over, or why it did not.
+- Joining an online-mode server needs a fresh token (about a day old at most). Open the launcher
+  screen once first.
+
 ## 4. Earlier features nobody has confirmed on a phone yet
 
 Tell me for each: works, doesn't, or didn't try.
