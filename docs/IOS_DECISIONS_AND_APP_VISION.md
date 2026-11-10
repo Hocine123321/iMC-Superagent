@@ -28,10 +28,10 @@ will be when it is done, and how much of that is real today.
 | 5 | **Distribute as an IPA you sign yourself.** No App Store, no TestFlight, no verification by Apple. | Removes App Store review and its rules from the plan. | DONE (decision); IPA builds |
 | 6 | **User-owned assets, processed locally.** Nothing from Mojang is committed, hosted or shared by this project. | The player's own copy is downloaded to their own phone from Mojang's servers. | PLANNED (M8b) |
 | 7 | **Prepare the game files on the phone**, not on a computer. | No Mac or PC is needed after install. | PLANNED, **UNKNOWN** (see section 4) |
-| 8 | **Use JIT to do that preparation, with a Java 25 runtime.** | The data generator is Java and needs JIT to run at a usable speed. | IN TEST, and **at risk**: the one device run so far could not make a JIT page (see 11) |
+| 8 | **Use JIT to do that preparation, with a Java 25 runtime.** | The data generator is Java and needs JIT to run at a usable speed. | IN TEST, and **at risk**: two device runs (2026-11-08, 2026-11-10) could not make a JIT page (see 11) |
 | 9 | **One JVM only** (`HORIZON_PREPARE_JOBS=1`). | A phone has limited memory; one JVM is also all that can exist in-process. | PLANNED |
 | 10 | **Pin the Java build to tag `jdk-25.0.5.0.3-ga`.** | The iOS patches apply cleanly to that tag and fail on newer ones. | DONE |
-| 11 | **Test device: iPhone 12 (A14), iOS 27.2, JIT through StikDebug.** | The A14 has no TXM, so JIT only needs a debugger attached. | **Partly shown.** The 2026-11-08 diagnostics report `CS_DEBUGGED` set (a debugger is attached), but the `MAP_JIT` test page was refused: `errno 1 (Operation not permitted)`. So a JIT page could not be made by this app in that run. Earlier text here said "JIT works (owner-confirmed)"; the log does not show that. See `ios-evidence/diagnostics-2026-11-08-run1.txt`. |
+| 11 | **Test device: iPhone 12 (A14), iOS 27.2, JIT through StikDebug.** | The A14 has no TXM, so JIT only needs a debugger attached. | **Partly shown.** The 2026-11-08 diagnostics report `CS_DEBUGGED` set (a debugger is attached), but the `MAP_JIT` test page was refused: `errno 1 (Operation not permitted)`. So a JIT page could not be made by this app in that run. Earlier text here said "JIT works (owner-confirmed)"; the log does not show that. **Second run, 2026-11-10 (v33, probes B, C, D with a debugger attached): B and C killed the app, D was refused with `errno 1`; A was not re-run.** No executable page was possible. The app has no `com.apple.developer.cs.allow-jit` entitlement, which is the next thing to try (`ios-evidence/diagnostics-2026-11-10-run2-probes.txt`). See `ios-evidence/diagnostics-2026-11-08-run1.txt`. |
 | 12 | **Repository: `Hocine123321/iMC-Superagent`**, upstream in `horizon/`, port in the root. | Keeps the port and the clone separate. | DONE |
 
 ---
@@ -89,7 +89,7 @@ on the phone from your own Minecraft account.
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
 | **M15** | **iOS optimisation: make it feel made for iOS** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | **NEXT.** First step below |
-| **M24** | **Launcher v2**: SwiftUI, real system Liquid Glass, portrait, Play and Quit Game in one process (owner decisions, 2026-11-10; `horizon/` editing approved) | **NEXT.** Stage 1: move CI to Xcode 26 |
+| **M24** | **Launcher v2**: SwiftUI, real system Liquid Glass, portrait, Play and Quit Game in one process (owner decisions, 2026-11-10; `horizon/` editing approved) | **IN PROGRESS.** Stage 1 (CI on Xcode 26) pushed; plan in `NEXT_STEPS.md` |
 | M17 | Frame pacing, 60/120 Hz, battery and thermal modes | PLANNED, needs M15 numbers |
 | M18 | Controller support through iOS's GameController | PLANNED, **to check** what the engine sees first |
 | M19 | Haptics, one-handed layout, screenshot and chat buttons, text size | PLANNED |

@@ -1,0 +1,14 @@
+Horizon diagnostics, 2026-11-10, iPhone 12 (iPhone13,2), iOS 27.2, build v33, JIT through StikDebug.
+Condensed from the owner's report (four launches, pasted in chat). Entitlements in every launch:
+get-task-allow 1; dynamic-codesigning absent; increased-memory-limit absent; extended-virtual-addressing absent.
+
+21:11:40  CS_DEBUGGED=1 (flags 0x32003005)  ran probe B: mmap(RWX) without MAP_JIT
+21:11:58  CS_DEBUGGED=0 (flags 0x22003305)  B recorded as KILLED the app (started, never finished); probes skipped, no debugger
+21:12:05  CS_DEBUGGED=1                      ran probe C: mmap(RW), write, mprotect(RX)
+21:12:11  CS_DEBUGGED=1                      C recorded as KILLED the app; ran probe D: mmap(MAP_JIT, RW)
+          D result: refused, errno 1 (Operation not permitted)
+21:13:39  CS_DEBUGGED=1                      all four probes tried
+
+Probe A (mmap MAP_JIT, RWX) is not in this log. The 2026-11-08 run (diagnostics-2026-11-08-run1.txt) got errno 1 on it.
+Java runtime: jre25 not present (expected).
+Result: no executable page could be made. B and C killed the app, A and D were refused.
