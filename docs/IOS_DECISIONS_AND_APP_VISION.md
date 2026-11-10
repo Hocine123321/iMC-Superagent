@@ -89,6 +89,7 @@ on the phone from your own Minecraft account.
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
 | **M15** | **iOS optimisation: make it feel made for iOS** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | **NEXT.** First step below |
+| **M24** | **Launcher v2**: SwiftUI, real system Liquid Glass, portrait, Play and Quit Game in one process (owner decisions, 2026-11-10; `horizon/` editing approved) | **NEXT.** Stage 1: move CI to Xcode 26 |
 | M17 | Frame pacing, 60/120 Hz, battery and thermal modes | PLANNED, needs M15 numbers |
 | M18 | Controller support through iOS's GameController | PLANNED, **to check** what the engine sees first |
 | M19 | Haptics, one-handed layout, screenshot and chat buttons, text size | PLANNED |

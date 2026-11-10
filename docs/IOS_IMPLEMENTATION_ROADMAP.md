@@ -49,6 +49,7 @@
 | M19 | **Touch comfort and accessibility**: haptics, one-handed layout, screenshot and chat buttons, text size (added 2026-11-10) | Device | no | medium |
 | M20 | **Reliability and diagnostics**: clean exit, crash recovery, in-app bug report (added 2026-11-10) | Device | no | medium |
 | M22 | **Test and release pipeline**: on-device test route, regression numbers in CI, signed-IPA guide (added 2026-11-10) | Mac+device | no | medium |
+| M24 | **Launcher v2** (added 2026-11-10): SwiftUI, system Liquid Glass and floating tab bar, portrait, then Play and Quit Game inside one process | Device | horizon/ edit (approved) | large |
 
 The state of every milestone is in the table of `IOS_DECISIONS_AND_APP_VISION.md` (section 3); the sections below carry dated progress notes.
 
@@ -688,3 +689,26 @@ These come after M15. They were chosen because each one removes a real risk or a
 - **iCloud sync of worlds**: tempting, but iCloud Drive is not reachable from a sideloaded app signed with a free certificate, and sync conflicts can destroy worlds.
 - **A custom render backend or shaders for Metal**: the engine already renders through wgpu on Metal; changing that is a research project, not a milestone.
 - **App Store distribution**: ruled out in the decisions doc.
+
+---
+
+## M24. Launcher v2 (added 2026-11-10, owner decisions)
+
+**Decisions (owner, 2026-11-10).**
+- The launcher becomes **SwiftUI**, modelled on the layout of the `heyskylo/horizon-ios` fork (Play, Packs, Settings tabs, a large title with a small eyebrow line, a round account button, a hero card on Play) but with its own look, not a copy.
+- **Portrait by default** for the launcher. The game stays landscape.
+- **Real Liquid Glass or none.** Glass is drawn only by the system: SwiftUI `glassEffect`, `.glass` and `.glassProminent` button styles and the system `TabView` bar on iOS 26 and later; on older systems the controls use the system's own materials and bordered buttons. No hand-drawn imitation. If a piece cannot be done natively, it is left plain and this is said, not hidden. (The earlier attempts failed because the CI used Xcode 16 and the hand-built UIKit glass sat on a near-black background; see `LAUNCHER.md`.)
+- **Play and Quit Game inside one process** (the fork's design), so Play is instant and the game can return to the launcher. This edits `horizon/` (approved by the owner on 2026-11-10), kept small, iOS-gated, and listed in `HORIZON_CHANGES.md`.
+
+**Verified before starting (2026-11-10).**
+- The fork keeps one winit loop alive and swaps the engine in and out (`enum App { Loading, Ready }`), with a launcher request channel in `game/launcher.rs` (601 lines) and a `horizon-ios-launcher` crate (593 lines). Our snapshot has the same `enum App` skeleton in `game/loading_screen.rs` but is a **different engine revision** (about 5,000 lines apart in `game.rs`), so the fork's files cannot be copied; the change is written against our code with the fork as the blueprint. The fork is MIT licensed; copied ideas keep its notice.
+- **Preparing the game files on the phone is not available**, in the fork either. Their one-tap download fetches a ready-made archive from a third-party server (`cdn.gayfeet.lol`), which would break the rule against distributing Mojang-derived files. Ours downloads from Mojang (5,215 files) and the Java preparation still waits on the JIT test (M8a). The Play screen therefore says plainly that the files must be prepared on a computer and imported until M8a is proven.
+- Native glass needs the iOS 26 SDK. The `macos-15` runner has Xcode 16; `macos-26` has Xcode 26.6 and the iOS 26 SDK.
+
+**Stages (each ends in a build you can test on the phone).**
+1. **Toolchain.** CI moves to `macos-26` and Xcode 26.6, deployment target stays iOS 16. The existing UIKit launcher must build and behave the same. Success test: the build passes and the IPA runs as before.
+2. **SwiftUI launcher, still with the relaunch.** Play, Packs and Settings tabs with the system tab bar, portrait; the existing Objective-C logic (downloader, Marketplace client, file rules, accounts, settings) is reused through a bridge. Success test: every screen reachable, the tab bar is the system's, nothing hand-drawn.
+3. **Engine: Play and Quit Game in one process.** The launcher is presented over the game window; Play starts a fresh engine, Quit Game tears it down and shows the launcher. Memory after repeated cycles is measured on the phone (the fork measured only on a simulator).
+4. **Polish.** Download screen with speed and time left, button states that say what is happening, empty states, screenshots.
+
+**Risks.** Stage 3 is the risky one: the engine tear-down must release GPU and memory on a 4 GB phone, and a mistake can crash or leak. It is kept behind a flag until the repeated-cycle numbers are good. Moving to Xcode 26 may expose compile errors in code written under Xcode 16; stage 1 isolates that.
