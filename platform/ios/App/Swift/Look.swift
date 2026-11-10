@@ -65,3 +65,11 @@ extension View {
         if #available(iOS 26.0, *) { self.buttonStyle(.glass) } else { self.buttonStyle(.bordered) }
     }
 }
+
+extension View {
+    /// A round button. `buttonBorderShape(.circle)` needs iOS 17; the deployment target is 16, so before that the
+    /// button keeps the system's default shape.
+    @ViewBuilder func circleShape() -> some View {
+        if #available(iOS 17.0, *) { self.buttonBorderShape(.circle) } else { self }
+    }
+}

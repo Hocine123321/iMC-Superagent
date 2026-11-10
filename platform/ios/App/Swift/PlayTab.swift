@@ -48,7 +48,7 @@ struct PlayTab: View {
                     .font(.title2).frame(width: 44, height: 44)
             }
             .secondaryAction()
-            .buttonBorderShape(.circle)
+            .circleShape()
             .accessibilityLabel(state.accountName.map { "Account, signed in as \($0)" } ?? "Account, not signed in")
         }
     }

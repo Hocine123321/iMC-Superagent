@@ -20,7 +20,6 @@ struct HostedPage: View {
     let make: () -> UIViewController
     var body: some View {
         HostedPlain(make: make)
-            .ignoresSafeArea()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
     }
@@ -39,7 +38,6 @@ struct HostedNav: View {
     let make: () -> UIViewController
     var body: some View {
         HostedNavPlain(make: make)
-            .ignoresSafeArea()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
     }

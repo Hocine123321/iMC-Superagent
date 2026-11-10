@@ -31,7 +31,6 @@ struct RootView: View {
             .tag(Tab.play)
 
             Hosted { HZLauncherMarketplaceController() }
-                .ignoresSafeArea()
                 .tabItem { Label("Packs", systemImage: "shippingbox.fill") }
                 .tag(Tab.packs)
 
