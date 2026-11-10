@@ -90,6 +90,10 @@
         self.detailLabel.text = a.owns ? @"Owns Minecraft: Java Edition. You can download the game."
                                        : @"This account was not confirmed as an owner. Check again, or sign in with another account.";
         [self.primary setTitle:@"Sign out" forState:UIControlStateNormal];
+    } else if (HZSignInIsTestMode()) {
+        self.titleLabel.text = @"Not signed in (test mode)";
+        self.detailLabel.text = @"Test mode: signing in with another launcher's app ID, set on this phone only. It can stop working at any time and is not for sharing. Sign in with the Microsoft account that owns Minecraft: Java Edition.";
+        [self.primary setTitle:@"Sign in" forState:UIControlStateNormal];
     } else if (!HZMicrosoftClientID()) {
         self.titleLabel.text = @"Sign-in is not set up yet";
         self.detailLabel.text = HZSignInNotConfigured;
@@ -99,7 +103,7 @@
         self.detailLabel.text = @"Sign in with the Microsoft account that owns Minecraft: Java Edition.";
         [self.primary setTitle:@"Sign in" forState:UIControlStateNormal];
     }
-    BOOL canSignIn = a || HZMicrosoftClientID();
+    BOOL canSignIn = a || HZActiveClientID();
     self.primary.enabled = canSignIn;
     self.primary.alpha = canSignIn ? 1 : 0.45;
 }

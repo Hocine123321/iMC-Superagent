@@ -33,7 +33,42 @@ are in `horizon/docs/microsoft-account.md` ("What Ludovic registers"); for this 
    as it is). For a quick test on a device, the environment variable `HORIZON_MSA_CLIENT_ID` overrides
    the built-in value.
 
-Never use another application's client ID (the official launcher's or another launcher's).
+A build never carries another application's client ID. The one exception is the private test mode below, which reads one from the phone and is off by default.
+
+## Test mode (a fallback while Mojang has not approved the app)
+
+Decided 2026-11-10: while the app-ID review is pending, the owner can sign in on his own phone with
+another launcher's app ID. This is **a private test aid, not a release feature.**
+
+**What was checked (2026-11-10, live against Microsoft).** The official Minecraft Launcher's ID
+`00000000402b5328` (the one Amethyst and PojavLauncher send) is a *legacy* Microsoft app:
+- The v2 endpoint this project normally uses **refuses it**: `AADSTS700016`, application not found.
+  So setting an environment variable on the normal path would not have worked.
+- The legacy `login.live.com/oauth20_connect.srf` device-code endpoint **accepts it** and returns a
+  code for `microsoft.com/link`. Polling answers `authorization_pending`; a bad refresh token answers
+  `invalid_grant`. Same field names as v2, so the same parser reads them.
+- **Not checked:** a real sign-in end to end, Xbox Live accepting the token as a bare `RpsTicket`
+  (Amethyst sends it bare; v2 tokens need `d=`), and whether Mojang's `login_with_xbox` returns a
+  token for a device-code login with that ID. Only a real sign-in on a phone settles these.
+
+**What test mode changes** (only when no registered `HZ_MSA_CLIENT_ID` is in the build, so a
+registered ID always wins):
+- device code and token requests go to `login.live.com` instead of the v2 endpoint;
+- scope `service::user.auth.xboxlive.com::MBI_SSL` instead of `XboxLive.signin offline_access`;
+- the Xbox ticket is the bare token, with no `d=` in front.
+
+**How to turn it on.** Put one line, the ID, in `Documents/Horizon/test-client-id.txt` (Files app, On
+My iPhone, iMC Horizon, Horizon), then restart the app. (The environment variable
+`HORIZON_MSA_LEGACY_CLIENT_ID` also works, but a LiveContainer launch cannot set one.) To turn it
+off, delete the file. It is read once per run, never saved by the app and never put in a build. The
+Account screen says "test mode" while it is on.
+
+**Why it is only a fallback.**
+- It borrows another app's identity. Mojang's rules for third-party launchers say to register your
+  own, and an ID that is abused can be blocked, which would break every launcher using it.
+- Do not ship a build with it, and do not share the file. Anyone you give the app to would be
+  signing in as the official launcher.
+- Remove it (delete the file, ignore this section) as soon as the registered app is approved.
 
 ## The files
 

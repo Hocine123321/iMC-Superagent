@@ -48,7 +48,8 @@ targets:
         # Without this text iOS 14 and later blocks local traffic and shows no prompt.
         # The owner's own Azure app (docs/IOS_SIGN_IN.md). Empty until it is registered and Mojang has
         # approved it; the Account screen says so. A GitHub repository variable HZ_MSA_CLIENT_ID fills it
-        # (a client ID is public, not a secret). Never another application's ID.
+        # (a client ID is public, not a secret). A build never carries another application's ID; the owner's
+        # private test mode (docs/IOS_SIGN_IN.md, "Test mode") reads one from the phone, not from here.
         HZMicrosoftClientID: "$(HZ_MSA_CLIENT_ID)"
         NSLocalNetworkUsageDescription: iMC Horizon uses your local network to find and join Minecraft worlds hosted on other devices in your home.
     settings:

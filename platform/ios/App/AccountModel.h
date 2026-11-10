@@ -8,7 +8,8 @@
 //
 // What this project does NOT have: its own Azure app. The client ID is the owner's to register
 // (docs/IOS_SIGN_IN.md), and until Mojang approves it the last step answers 403. A build with no
-// client ID says so and nothing else is attempted. Never use another application's client ID.
+// client ID says so and nothing else is attempted. A build never carries another application's client ID; the
+// private test mode below is the one exception, read from the phone, off by default.
 //
 // Tokens are never logged, never put in an error and never shown. Everything below that carries one
 // is a plain NSString the caller keeps out of NSLog.
@@ -20,6 +21,21 @@ NS_ASSUME_NONNULL_BEGIN
 // there is none. The environment variable HORIZON_MSA_CLIENT_ID wins, as on desktop; an empty
 // value means none.
 NSString *_Nullable HZMicrosoftClientID(void);
+
+// TEST MODE, for the owner's own phone only. The environment variable HORIZON_MSA_LEGACY_CLIENT_ID,
+// or the file Documents/Horizon/test-client-id.txt (never filled by a build, never saved by the
+// app), names another launcher's app ID to sign in with while
+// Mojang has not approved this project's own. Those IDs are legacy Microsoft apps: they are refused
+// by the v2 endpoint this project uses and work only on login.live.com, with the old scope and a bare
+// Xbox ticket. It is used ONLY when HZMicrosoftClientID() is nil, so a registered ID always wins.
+// Returns nil when it is not set. See docs/IOS_SIGN_IN.md, "Test mode".
+NSString *_Nullable HZLegacyTestClientID(void);
+
+// YES when sign-in will run in test mode (no registered ID, a legacy test ID set).
+BOOL HZSignInIsTestMode(void);
+
+// The ID a request should send: the registered one, else the test one, else nil.
+NSString *_Nullable HZActiveClientID(void);
 
 // Said while there is no client ID, in place of a sign-in.
 extern NSString *const HZSignInNotConfigured;

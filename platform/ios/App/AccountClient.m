@@ -7,6 +7,16 @@ static NSString *const kXboxUser = @"https://user.auth.xboxlive.com/user/authent
 static NSString *const kXsts = @"https://xsts.auth.xboxlive.com/xsts/authorize";
 static NSString *const kMinecraft = @"https://api.minecraftservices.com";
 static NSString *const kScope = @"XboxLive.signin offline_access";
+// Test mode only (HZSignInIsTestMode): the legacy live.com endpoints a legacy app ID needs.
+static NSString *const kLiveDeviceCode = @"https://login.live.com/oauth20_connect.srf";
+static NSString *const kLiveToken = @"https://login.live.com/oauth20_token.srf";
+static NSString *const kLegacyScope = @"service::user.auth.xboxlive.com::MBI_SSL";
+
+static NSString *DeviceCodeURL(void) { return HZSignInIsTestMode() ? kLiveDeviceCode : [kMicrosoft stringByAppendingString:@"/devicecode"]; }
+static NSString *TokenURL(void) { return HZSignInIsTestMode() ? kLiveToken : [kMicrosoft stringByAppendingString:@"/token"]; }
+static NSString *ScopeForRequests(void) { return HZSignInIsTestMode() ? kLegacyScope : kScope; }
+// The ticket Xbox Live wants: v2 tokens carry "d=" in front, the legacy ones go bare.
+static NSString *RpsTicket(NSString *msAccess) { return HZSignInIsTestMode() ? msAccess : [@"d=" stringByAppendingString:msAccess]; }
 
 // One answer. `reached` is NO for a request that went nowhere (no network, a timeout), as against
 // one that got an answer of any status. (A class, not a struct: ARC does not allow objects in one.)
@@ -91,11 +101,12 @@ static NSString *const kOffline = @"Could not reach Microsoft. Check your intern
 - (void)cancel { self.cancelled = YES; }
 
 - (void)requestDeviceCode:(HZDeviceCodeDone)done {
-    NSString *client = HZMicrosoftClientID();
+    NSString *client = HZActiveClientID();
     if (!client) { Main(^{ done(nil, HZSignInNotConfigured); }); return; }
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        Reply *r = [self send:@"POST" url:[kMicrosoft stringByAppendingString:@"/devicecode"]
-                        form:@{ @"client_id": client, @"scope": kScope } json:nil bearer:nil];
+        NSMutableDictionary *form = [@{ @"client_id": client, @"scope": ScopeForRequests() } mutableCopy];
+        if (HZSignInIsTestMode()) form[@"response_type"] = @"device_code";   // live.com asks for it
+        Reply *r = [self send:@"POST" url:DeviceCodeURL() form:form json:nil bearer:nil];
         if (!r.reached) { Main(^{ done(nil, kOffline); }); return; }
         NSString *error = nil;
         HZDeviceCode *code = r.status == 200 ? [HZDeviceCode parse:r.body error:&error] : nil;
@@ -108,7 +119,7 @@ static NSString *const kOffline = @"Could not reach Microsoft. Check your intern
 - (NSString *)minecraftTokenFromMicrosoft:(NSString *)msAccess error:(NSString **)error {
     Reply *xbl = [self send:@"POST" url:kXboxUser form:nil json:@{
         @"Properties": @{ @"AuthMethod": @"RPS", @"SiteName": @"user.auth.xboxlive.com",
-                          @"RpsTicket": [@"d=" stringByAppendingString:msAccess] },
+                          @"RpsTicket": RpsTicket(msAccess) },
         @"RelyingParty": @"http://auth.xboxlive.com", @"TokenType": @"JWT" } bearer:nil];
     if (!xbl.reached) { *error = @"Could not reach Xbox Live. Check your internet connection."; return nil; }
     // The first Xbox Live reply has only the token we send on to XSTS (the user hash comes with XSTS).
@@ -154,7 +165,7 @@ static NSString *const kOffline = @"Could not reach Microsoft. Check your intern
 }
 
 - (void)completeSignIn:(HZDeviceCode *)code status:(void (^)(NSString *))status done:(HZSignInDone)done {
-    NSString *client = HZMicrosoftClientID();
+    NSString *client = HZActiveClientID();
     self.cancelled = NO;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         void (^fail)(NSString *) = ^(NSString *m) { Main(^{ done(nil, m); }); };
@@ -170,7 +181,7 @@ static NSString *const kOffline = @"Could not reach Microsoft. Check your intern
                 [NSThread sleepForTimeInterval:0.2];
             }
             if ([deadline timeIntervalSinceNow] < 0) { fail(@"The sign-in code expired. Start again."); return; }
-            Reply *r = [self send:@"POST" url:[kMicrosoft stringByAppendingString:@"/token"] form:@{
+            Reply *r = [self send:@"POST" url:TokenURL() form:@{
                 @"grant_type": @"urn:ietf:params:oauth:grant-type:device_code",
                 @"client_id": client, @"device_code": code.deviceCode } json:nil bearer:nil];
             if (!r.reached) continue;   // a dropped request while waiting is not the end of the sign-in
@@ -201,12 +212,12 @@ static NSString *const kOffline = @"Could not reach Microsoft. Check your intern
 }
 
 - (void)recheck:(void (^)(BOOL, BOOL, NSString *))done {
-    NSString *client = HZMicrosoftClientID();
+    NSString *client = HZActiveClientID();
     NSString *refresh = [[HZAccountStore shared] refreshToken];
     if (!client || !refresh) { Main(^{ done(YES, NO, HZSignInAgain); }); return; }
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        Reply *r = [self send:@"POST" url:[kMicrosoft stringByAppendingString:@"/token"] form:@{
-            @"grant_type": @"refresh_token", @"client_id": client, @"refresh_token": refresh, @"scope": kScope } json:nil bearer:nil];
+        Reply *r = [self send:@"POST" url:TokenURL() form:@{
+            @"grant_type": @"refresh_token", @"client_id": client, @"refresh_token": refresh, @"scope": ScopeForRequests() } json:nil bearer:nil];
         // No answer at all is offline: the last answer stands (HZMayDownload).
         if (!r.reached) { Main(^{ done(NO, NO, nil); }); return; }
         HZPollOutcome *o = [HZPollOutcome parse:r.body status:r.status];
