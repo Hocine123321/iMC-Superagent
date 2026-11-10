@@ -25,7 +25,10 @@ concurrency:
 jobs:
   app:
     name: Horizon.app (${{ matrix.sdk }})
-    runs-on: macos-15
+    # macos-26 carries Xcode 26.x and the iOS 26 SDK, which the system Liquid Glass (glassEffect, the
+    # glass button styles and the floating tab bar) needs. macos-15 has Xcode 16 and cannot compile it.
+    # The deployment target below stays iOS 16: the glass code is guarded by #available(iOS 26).
+    runs-on: macos-26
     timeout-minutes: 90
     env:
       IPHONEOS_DEPLOYMENT_TARGET: "16.0"
@@ -37,6 +40,12 @@ jobs:
         include: ${{ fromJSON(inputs.simulator && '[{"sdk":"iphoneos","rust":"aarch64-apple-ios","dir":"device","dest":"generic/platform=iOS"},{"sdk":"iphonesimulator","rust":"aarch64-apple-ios-sim","dir":"sim","dest":"generic/platform=iOS Simulator"}]' || '[{"sdk":"iphoneos","rust":"aarch64-apple-ios","dir":"device","dest":"generic/platform=iOS"}]') }}
     steps:
       - uses: actions/checkout@v4
+      - name: Show the Xcode and SDK this build uses
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          SDK=$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)
+          if [ "$SDK" -lt 26 ]; then echo "The iOS SDK is $SDK; the launcher's system Liquid Glass needs 26."; exit 1; fi
       - name: Tools
         run: |
           rustup toolchain install stable --profile minimal
@@ -61,7 +70,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: platform/ios/build/rust/${{ matrix.dir }}
-          key: horizon-lib-${{ matrix.rust }}-${{ steps.rustkey.outputs.hash }}
+          key: horizon-lib-macos26-${{ matrix.rust }}-${{ steps.rustkey.outputs.hash }}
       - uses: Swatinem/rust-cache@v2
         if: steps.lib.outputs.cache-hit != 'true'
         with:
