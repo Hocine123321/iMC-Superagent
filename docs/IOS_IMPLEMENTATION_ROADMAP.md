@@ -40,6 +40,9 @@
 | M9 | Microsoft sign-in and ownership gate | Device | Mojang app-ID | medium |
 | M10 | Multiplayer, audio polish, mobile UI | Device | no | large |
 | M11 | Distribution as a downloadable IPA | Device | no | small |
+| M12 | **Real launcher pages** (added 2026-11-10): Library, Settings, Worlds, Screenshots, About | Device | no | medium |
+| M13 | **In-app file manager** (added 2026-11-10) | Device | no | medium |
+| M14 | **Horizon Marketplace** (added 2026-11-10): browse and install from Horizon's registry | Device | no | large |
 
 The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a can start now and gates M8b; M8b and M9 ship after M5. M10 and M11 follow.
 
@@ -478,3 +481,81 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 **Owner's decision (2026-11-08): prepare on the phone.** Option B is not the path. The work is A or C, and it starts only after the device test shows the Java runtime loads at all (M8a). Option B stays as a fallback only if that test fails.
 
 **Recommendation before that decision.** Keep **B (M3)** as the path that gets the real game running, and keep **A or C** as the later on-device goal. Neither needs a decision until the device test shows the runtime loads at all.
+
+---
+
+## M12. Real launcher pages (added 2026-11-10)
+
+**Objective.** Turn the three-screen launcher (Home, Game files, Diagnostics, plus Account) into a launcher a player lives in. The desktop launcher has Home, Instances, Mods, Packs, Servers, Screenshots, Settings, Console, Language and more (`horizon/launcher/src/*_page.rs`); this takes the ones that make sense on a phone.
+
+**Pages, in the order they pay off.**
+1. **Settings.** Open straight into the game (exists as a switch on Home, moves here), render preset, language, and the launcher-written options file the engine reads at start (the "Not built yet" item in `LAUNCHER.md`). Needs a small, documented engine read of a launcher file; if that needs a `horizon/` change it goes on the rebase list first.
+2. **Library / Versions.** What is installed (26.3 only, decision ADR-5), disk used, the download and preparation state from M8b, update and repair actions.
+3. **Worlds.** List the saves in `home/saves`, size and last played, rename, duplicate, export as a zip through the share sheet, delete with confirmation. Backup before delete.
+4. **Screenshots.** Grid of `home/screenshots`, share and delete.
+5. **Console / Logs.** Diagnostics grows into a log viewer with search and Share (the crash report is already there).
+6. **About.** Version, licences (MIT for Horizon, the Java runtime's licence once settled), links from `launcher/links.json` (website, Discord), and the plain statement that this is not an official Minecraft product.
+7. **Servers** (with M10): saved server list. Later.
+
+**Design.** Native UIKit like the existing screens. A tab bar replaces the current "way to the other screens" on Home. Landscape and portrait both work in the launcher (the game stays landscape). No tracking is added. Every page is reachable without a signed-in account, except what M9 gates.
+
+**Risks.** The launcher and the game are two runs of the app (`LAUNCHER.md`), so anything the game must obey has to travel through a file. Each page is untested until a phone run; keep each page small enough to review in one commit.
+
+**Success test.** Each page opens, shows real data from a phone, and every destructive action asks first. Nothing the page writes breaks `--check`.
+
+**Depends on.** M3b (launcher exists). Settings and Library benefit from M8b.
+
+---
+
+## M13. In-app file manager (added 2026-11-10)
+
+**Objective.** See and manage the app's own folder (`Documents/Horizon`) without leaving the app, because the Files app is awkward for deep folders and cannot show sizes or free space.
+
+**Scope.**
+- Browse folders, show size, modified date and free space on the phone.
+- **Inside `Documents/Horizon` only.** The manager never leaves that root; paths are resolved and refused if they escape it (same rule as `DownloadPlan.m`: no absolute paths, no `..`).
+- Actions: open a text or log file, **Share** (system share sheet), rename, delete a file or folder (confirmation, with the size shown), create a folder, import files or a folder through the document picker (the copy-then-swap and free-space check from `LauncherFiles.m` is reused), export a folder as a zip.
+- Quick links: saves, resource packs, shader packs, mods, screenshots, logs.
+- **Protected items.** Deleting `horizon-resources.json` or the prepared folder, or the Keychain-backed account files, shows a stronger warning and points to the proper screen (Game files, Account).
+- Never shows tokens: the session file is deleted on read and the account store lives in the Keychain, not in this folder.
+
+**Out of scope.** Editing arbitrary files in place, anything outside the sandbox, and reading other apps' data.
+
+**Risks.** A delete is permanent and saves are the user's work: confirm, and offer a backup copy for `saves/`. Large folders need background enumeration so the UI does not freeze.
+
+**Success test.** Walk the tree, import a resource pack, export a world as a zip and re-import it, try `../` and symlink escapes (refused), delete with and without confirmation.
+
+**Depends on.** M3b. Pairs with M12 Worlds and M14.
+
+---
+
+## M14. Horizon Marketplace (added 2026-11-10)
+
+**Objective.** A Marketplace page in the launcher that browses and installs from **Horizon's own registry** (`horizon-rust/horizon-mods`), the same source as the desktop launcher's mod browser (`docs/mod-browser.md`, `launcher/src/browser/horizon.rs`). "Org app" is read here as the Horizon organization's registry. If something else was meant (for example an app of your own organization), say so before M14 starts.
+
+**What the registry holds (checked live 2026-11-10).** `https://horizon-rust.github.io/horizon-mods/index.json`: schema 1, 158 projects, 208 versions, all for 26.3, 3 revoked entries, about 0.5 MB.
+
+| Kind | Projects | Works on iOS? |
+|---|---|---|
+| `native-mod` (`.hnmod`) | 133 | **No, not on the phone.** A native mod changes the game's Rust source before it is compiled (`docs/native-mods.md`); a phone has no toolchain. Shown as "needs a desktop build" and never offered for install |
+| `mod` (`.hmod`, content) | 11 | **Yes.** Data and assets read at game start |
+| `shader` (`.hshader`) | 12 | **Yes**, if the shader checks pass on Metal. Needs a device test |
+| `resourcepack` | 2 | **Yes** |
+| `shaderpack`, `datapack`, `modpack` | 0 today | Later; the schema allows them |
+
+So the first release is honest and small: about 25 installable projects, with the rest listed and marked.
+
+**Work, in order.**
+1. **Index client.** Fetch `index.json` over HTTPS from the registry host only; refuse a higher `schema` with "update the app"; cache it with its date; works offline from the cache.
+2. **Browse and search.** Kind tabs, categories, search, sort, project page (description as Markdown, icon, screenshots, owners, licence, source link, downloads, stars). Images only from the hosts `launcher/src/browser/images.rs` allows.
+3. **Install.** Download the file, check **size and SHA-256** against the index, and verify the **minisign signature** where the version has one (61 of 208 do today). Hosts limited to the registry's release URLs. Write into the right folder (`horizon-mods/`, `resourcepacks/`, `shaderpacks/`) and enable through `horizon-mods.txt` as the desktop does. Remove and update-check.
+4. **Revocation.** Honour the index's `revoked` list: a revoked file is removed or refused with the reason shown.
+5. **Honest labels.** Say "restart the game" where the engine needs it (`docs/mods.md`), and never claim a mod works on iOS beyond what a device test showed.
+
+**Not in scope yet.** Modrinth and CurseForge (Java mods are ported by `horizon-port-pack`, a tool that needs a JVM, so it depends on M8a), and publishing from the phone.
+
+**Risks.** Third-party code and content from the internet: the checksum, signature and host rules above are the safety net, and installs stay off by default as in the engine. Mod licences and Mojang's usage rules apply to what the registry lists (the registry's own review covers that; we only display it). Registry terms for third-party apps are unverified, so check them before a public release. `ludovic111/horizon-mods` appears as a second allowed release host in the desktop code; take the host list from the source, not from memory.
+
+**Success test.** Install one content mod, one resource pack and one shader from a clean app on a phone, see them in Options > Mods or the pack list in the game, remove them, corrupt a download and confirm it is refused, and confirm a revoked entry is refused.
+
+**Depends on.** M13 (folders), M12 (a tab to live in). The game must start (M5 confirmed on a phone) before any install can be called working.

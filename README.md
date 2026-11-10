@@ -22,7 +22,7 @@ unsigned IPA as a release named *iMC Horizon vN*, which you sign yourself.
 
 What exists: a native launcher (home, game files, diagnostics), touch controls and app lifecycle
 (M4/M5), a crash reporter, and the in-game **iMC Settings** page. What does not: a verified
-playable run on a phone, preparing the game files on the phone (M8), and a working sign-in (M9: the code and
+playable run on a phone, preparing the game files on the phone (M8: the download is written but has never run on a phone; the Java preparation is not), and a working sign-in (M9: the code and
 Account screen exist, but they need your own Azure app and Mojang's approval, see
 `docs/IOS_SIGN_IN.md`). You bring
 the prepared game files yourself for now.
