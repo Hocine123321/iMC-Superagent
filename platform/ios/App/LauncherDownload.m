@@ -1,5 +1,6 @@
 #import "LauncherDownload.h"
 #import "LauncherTheme.h"
+#import "GlassControls.h"
 #import "LauncherModel.h"
 #import "Downloader.h"
 #import "AccountClient.h"
@@ -10,7 +11,7 @@ static NSString *const kVersion = @"26.3";
 
 @interface HZLauncherDownloadController ()
 @property (strong) UILabel *titleLabel, *detailLabel, *numbersLabel, *fileLabel, *gateLabel;
-@property (strong) UIProgressView *bar;
+@property (strong) HZGlassProgress *bar;
 @property (strong) UIButton *startButton, *stopButton;
 @property (strong) HZDownloader *downloader;
 @property (nonatomic) BOOL busy;
@@ -23,15 +24,8 @@ static NSString *const kVersion = @"26.3";
 - (BOOL)overrideOn { return [[NSFileManager defaultManager] fileExistsAtPath:[self overridePath]]; }
 
 - (UIButton *)button:(NSString *)title action:(SEL)action {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    [b setTitle:title forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-    [b setTitleColor:[HZTheme text] forState:UIControlStateNormal];
-    [b setTitleColor:[HZTheme tertiaryText] forState:UIControlStateDisabled];
-    b.backgroundColor = [HZTheme surface];
-    b.layer.cornerRadius = 12;
-    [b.heightAnchor constraintEqualToConstant:46].active = YES;
-    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    UIButton *b = [HZTheme buttonWithTitle:title symbol:nil prominent:NO target:self action:action];
+    [b.heightAnchor constraintEqualToConstant:52].active = YES;
     return b;
 }
 
@@ -55,7 +49,7 @@ static NSString *const kVersion = @"26.3";
     self.fileLabel = [self label:11 weight:UIFontWeightRegular white:0.6];
     self.fileLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
     self.fileLabel.numberOfLines = 1;
-    self.bar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+    self.bar = (HZGlassProgress *)[HZTheme glassProgressView];
     self.bar.hidden = YES;
 
     self.startButton = [self button:@"Download Minecraft 26.3" action:@selector(start)];
@@ -180,7 +174,7 @@ static NSString *Bytes(unsigned long long b) {
             self.detailLabel.text = p.message;
             self.stopButton.hidden = YES;
             self.startButton.enabled = YES;
-            [self.startButton setTitle:@"Check again" forState:UIControlStateNormal];
+            [HZTheme setTitle:@"Check again" onButton:self.startButton];
             self.fileLabel.text = @"";
             break;
         case HZPhaseFailed:
@@ -190,7 +184,7 @@ static NSString *Bytes(unsigned long long b) {
             self.detailLabel.text = [p.error stringByAppendingString:@"\n\nStart again to carry on: files that finished are kept."];
             self.stopButton.hidden = YES;
             self.startButton.enabled = YES;
-            [self.startButton setTitle:@"Try again" forState:UIControlStateNormal];
+            [HZTheme setTitle:@"Try again" onButton:self.startButton];
             self.fileLabel.text = @"";
             break;
         case HZPhaseCancelled:
@@ -200,7 +194,7 @@ static NSString *Bytes(unsigned long long b) {
             self.detailLabel.text = p.message;
             self.stopButton.hidden = YES;
             self.startButton.enabled = YES;
-            [self.startButton setTitle:@"Continue" forState:UIControlStateNormal];
+            [HZTheme setTitle:@"Continue" onButton:self.startButton];
             self.fileLabel.text = @"";
             break;
         case HZPhaseIdle: break;

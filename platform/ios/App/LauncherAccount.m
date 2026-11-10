@@ -15,14 +15,8 @@
 @implementation HZLauncherAccountController
 
 - (UIButton *)button:(NSString *)title filled:(BOOL)filled action:(SEL)action {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    [b setTitle:title forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-    [b setTitleColor:filled ? [HZTheme onAccent] : [HZTheme text] forState:UIControlStateNormal];
-    b.backgroundColor = filled ? [HZTheme accent] : [HZTheme surface];
-    b.layer.cornerRadius = 12;
-    [b.heightAnchor constraintEqualToConstant:48].active = YES;
-    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    UIButton *b = [HZTheme buttonWithTitle:title symbol:nil prominent:filled target:self action:action];
+    [b.heightAnchor constraintEqualToConstant:filled ? 60 : 52].active = YES;
     return b;
 }
 
@@ -90,19 +84,19 @@
         self.titleLabel.text = a.name;
         self.detailLabel.text = a.owns ? @"Owns Minecraft: Java Edition. You can download the game."
                                        : @"This account was not confirmed as an owner. Check again, or sign in with another account.";
-        [self.primary setTitle:@"Sign out" forState:UIControlStateNormal];
+        [HZTheme setTitle:@"Sign out" onButton:self.primary];
     } else if (HZSignInIsTestMode()) {
         self.titleLabel.text = @"Not signed in (test mode)";
         self.detailLabel.text = @"Test mode: signing in with another launcher's app ID, set on this phone only. It can stop working at any time and is not for sharing. Sign in with the Microsoft account that owns Minecraft: Java Edition.";
-        [self.primary setTitle:@"Sign in" forState:UIControlStateNormal];
+        [HZTheme setTitle:@"Sign in" onButton:self.primary];
     } else if (!HZMicrosoftClientID()) {
         self.titleLabel.text = @"Sign-in is not set up yet";
         self.detailLabel.text = HZSignInNotConfigured;
-        [self.primary setTitle:@"Sign in" forState:UIControlStateNormal];
+        [HZTheme setTitle:@"Sign in" onButton:self.primary];
     } else {
         self.titleLabel.text = @"Not signed in";
         self.detailLabel.text = @"Sign in with the Microsoft account that owns Minecraft: Java Edition.";
-        [self.primary setTitle:@"Sign in" forState:UIControlStateNormal];
+        [HZTheme setTitle:@"Sign in" onButton:self.primary];
     }
     BOOL canSignIn = a || HZActiveClientID();
     self.primary.enabled = canSignIn;
@@ -143,7 +137,7 @@
         me.codeLabel.hidden = NO;
         me.detailLabel.text = [NSString stringWithFormat:@"Open %@ and type the code there. The code is copied for you.", code.verificationURI];
         UIPasteboard.generalPasteboard.string = code.userCode;
-        [me.primary setTitle:@"Open the page" forState:UIControlStateNormal];
+        [HZTheme setTitle:@"Open the page" onButton:me.primary];
         me.primary.enabled = YES;
         me.secondary.hidden = NO;
         [[HZAccountClient shared] completeSignIn:code

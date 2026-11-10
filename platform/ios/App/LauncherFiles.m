@@ -1,11 +1,12 @@
 #import "LauncherFiles.h"
 #import "LauncherTheme.h"
+#import "GlassControls.h"
 #import "LauncherModel.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface HZLauncherFilesController ()
 @property (strong) UILabel *stateLabel, *detailLabel, *progressLabel;
-@property (strong) UIProgressView *progress;
+@property (strong) HZGlassProgress *progress;
 @property (strong) UIButton *importButton, *checkButton, *deleteButton;
 @property (nonatomic) BOOL busy;
 @end
@@ -13,15 +14,9 @@
 @implementation HZLauncherFilesController
 
 - (UIButton *)button:(NSString *)title action:(SEL)action destructive:(BOOL)destructive {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    [b setTitle:title forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
-    [b setTitleColor:destructive ? [HZTheme danger] : [HZTheme text] forState:UIControlStateNormal];
-    [b setTitleColor:[HZTheme tertiaryText] forState:UIControlStateDisabled];
-    b.backgroundColor = [HZTheme surface];
-    b.layer.cornerRadius = 12;
-    [b.heightAnchor constraintEqualToConstant:46].active = YES;
-    [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    UIButton *b = [HZTheme buttonWithTitle:title symbol:destructive ? @"trash" : nil prominent:NO target:self action:action];
+    if (destructive) { UIButtonConfiguration *c = b.configuration; c.baseForegroundColor = [HZTheme danger]; b.configuration = c; }
+    [b.heightAnchor constraintEqualToConstant:52].active = YES;
     return b;
 }
 
@@ -37,7 +32,7 @@
     self.detailLabel.font = [UIFont systemFontOfSize:14];
     self.detailLabel.textColor = [HZTheme secondaryText];
     self.detailLabel.numberOfLines = 0;
-    self.progress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+    self.progress = (HZGlassProgress *)[HZTheme glassProgressView];
     self.progress.hidden = YES;
     self.progressLabel = [UILabel new];
     self.progressLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];

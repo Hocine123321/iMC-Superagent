@@ -37,6 +37,12 @@ typedef NS_ENUM(NSInteger, HZAppearance) {
 + (void)applyAppearanceToWindows;
 + (NSString *)nameOfAppearance:(HZAppearance)appearance;
 
+// How strongly the colour behind the glass shows, 0...1 (default 0.5). It is what makes glass look like
+// glass, so a person can turn it down. Kept as "glass:" in launcher.txt. Posts HZThemeChanged when set.
++ (float)glassStrength;
++ (void)setGlassStrength:(float)strength;
+extern NSNotificationName const HZThemeChanged;
+
 // Whether this phone can draw real Liquid Glass (the class exists at run time).
 + (BOOL)hasLiquidGlass;
 
@@ -44,12 +50,27 @@ typedef NS_ENUM(NSInteger, HZAppearance) {
 // `tint` may be nil. `interactive` makes it react to touch on iOS 26 and later.
 + (UIVisualEffectView *)glassViewWithTint:(UIColor *)tint interactive:(BOOL)interactive cornerRadius:(CGFloat)radius;
 
-// A pill/rounded button. `prominent` is the green Play-style one. Glass behind it where available.
+// A button. `prominent` is the green Play-style one. On iOS 26 and later it is the system's own glass
+// button (UIButtonConfiguration glassButtonConfiguration / prominentGlassButtonConfiguration, found at run
+// time), so it gets the real press, morph and highlight behaviour; elsewhere it is a tinted plain button.
 + (UIButton *)buttonWithTitle:(NSString *)title
                          symbol:(NSString *)symbolName
                       prominent:(BOOL)prominent
                          target:(id)target
                          action:(SEL)action;
+// Same for a button that only shows a symbol (the "..." button).
++ (UIButton *)iconButtonWithSymbol:(NSString *)symbolName label:(NSString *)label;
+// Changes the title of a button made by the two methods above.
++ (void)setTitle:(NSString *)title onButton:(UIButton *)button;
+
+// Glass controls the iOS 18.5 SDK cannot give us. The system only turns UISlider, UISwitch and
+// UISegmentedControl into glass when an app is BUILT with the iOS 26 SDK, which CI does not have. These
+// are drawn by the app on a glass surface instead, and behave like their UIKit twins (target-action,
+// value, accessibility, dragging).
++ (UIControl *)glassSegmentedWithItems:(NSArray<NSString *> *)items selected:(NSInteger)selected;
++ (UIControl *)glassSliderMin:(float)min max:(float)max value:(float)value;
++ (UIControl *)glassSwitchOn:(BOOL)on;
++ (UIView *)glassProgressView;
 
 // Standard text styles.
 + (UILabel *)labelWithSize:(CGFloat)size weight:(UIFontWeight)weight color:(UIColor *)color;
@@ -59,15 +80,3 @@ typedef NS_ENUM(NSInteger, HZAppearance) {
 + (void)styleNavigationBar:(UINavigationBar *)bar;
 @end
 
-// Used by the buttons above for the press response.
-@interface UIButton (HZTheme)
-- (void)hz_down;
-- (void)hz_up;
-@end
-
-// Change the title of a button made by +buttonWithTitle:...
-static inline void HZThemeSetButtonTitle(UIButton *b, NSString *title) {
-    UILabel *l = (UILabel *)[b viewWithTag:7001];
-    if ([l isKindOfClass:[UILabel class]]) l.text = title;
-    b.accessibilityLabel = title;
-}

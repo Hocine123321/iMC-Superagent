@@ -1,10 +1,11 @@
 #import "LauncherDiagnostics.h"
 #import "LauncherTheme.h"
+#import "GlassControls.h"
 #import "LauncherModel.h"
 
 @interface HZLauncherDiagnosticsController ()
 @property (strong) UITextView *text;
-@property (strong) UISegmentedControl *which;
+@property (strong) UIControl *which;
 @end
 
 @implementation HZLauncherDiagnosticsController
@@ -15,10 +16,8 @@
     [HZTheme styleScreen:self];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction
                                                                                            target:self action:@selector(share:)];
-    self.which = [[UISegmentedControl alloc] initWithItems:@[@"Crash report", @"Game log"]];
-    self.which.selectedSegmentIndex = 0;
+    self.which = [HZTheme glassSegmentedWithItems:@[@"Crash report", @"Game log"] selected:0];
     [self.which addTarget:self action:@selector(reload) forControlEvents:UIControlEventValueChanged];
-    self.which.translatesAutoresizingMaskIntoConstraints = NO;
 
     self.text = [UITextView new];
     self.text.editable = NO;
@@ -46,8 +45,8 @@
 
 - (void)reload {
     HZLauncherModel *m = [HZLauncherModel shared];
-    NSString *t = self.which.selectedSegmentIndex == 0 ? [m crashReportText] : [m gameLogText];
-    self.text.text = t.length ? t : (self.which.selectedSegmentIndex == 0
+    NSString *t = ((HZGlassSegmented *)self.which).selectedSegmentIndex == 0 ? [m crashReportText] : [m gameLogText];
+    self.text.text = t.length ? t : (((HZGlassSegmented *)self.which).selectedSegmentIndex == 0
         ? @"No crash report. The game has not crashed since the files were last cleared."
         : @"No game log yet. It appears after the game has run once.");
 }

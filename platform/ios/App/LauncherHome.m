@@ -8,6 +8,7 @@
 #import "LauncherAbout.h"
 #import "LauncherMarketplace.h"
 #import "LauncherTheme.h"
+#import "LauncherSettings.h"
 #import "AccountClient.h"
 #import "AccountStore.h"
 #import "CrashReporter.h"
@@ -41,6 +42,7 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
     if ([[HZAccountStore shared] account]) [[HZAccountClient shared] recheck:^(BOOL reachable, BOOL owns, NSString *error) {}];
     [HZTheme styleScreen:self];
     [self addBackdrop];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(themeChanged) name:HZThemeChanged object:nil];
 
     // ---- Left: who this is, and the state of the game files.
     UILabel *name = [HZTheme labelWithSize:44 weight:UIFontWeightHeavy color:[HZTheme text]];
@@ -101,18 +103,7 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
     [self.view addSubview:row];
 
     // ---- Top right: the "..." button. Everything that is not needed every time lives behind it.
-    self.moreButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.moreButton.translatesAutoresizingMaskIntoConstraints = NO;
-    UIVisualEffectView *moreGlass = [HZTheme glassViewWithTint:nil interactive:YES cornerRadius:22];
-    moreGlass.userInteractionEnabled = NO;
-    [self.moreButton addSubview:moreGlass];
-    UIImageView *dots = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis"
-        withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightBold]]];
-    dots.tintColor = [HZTheme text];
-    dots.translatesAutoresizingMaskIntoConstraints = NO;
-    dots.userInteractionEnabled = NO;
-    [self.moreButton addSubview:dots];
-    self.moreButton.accessibilityLabel = @"More";
+    self.moreButton = [HZTheme iconButtonWithSymbol:@"ellipsis" label:@"More"];
     // A pull-down menu opened by a tap, rebuilt each time so the checkmarks are current.
     self.moreButton.showsMenuAsPrimaryAction = YES;
     self.moreButton.menu = [self buildMenu];
@@ -125,14 +116,8 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
         [row.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-40],
         [self.moreButton.topAnchor constraintEqualToAnchor:g.topAnchor constant:12],
         [self.moreButton.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-20],
-        [self.moreButton.widthAnchor constraintEqualToConstant:44],
-        [self.moreButton.heightAnchor constraintEqualToConstant:44],
-        [moreGlass.leadingAnchor constraintEqualToAnchor:self.moreButton.leadingAnchor],
-        [moreGlass.trailingAnchor constraintEqualToAnchor:self.moreButton.trailingAnchor],
-        [moreGlass.topAnchor constraintEqualToAnchor:self.moreButton.topAnchor],
-        [moreGlass.bottomAnchor constraintEqualToAnchor:self.moreButton.bottomAnchor],
-        [dots.centerXAnchor constraintEqualToAnchor:self.moreButton.centerXAnchor],
-        [dots.centerYAnchor constraintEqualToAnchor:self.moreButton.centerYAnchor],
+        [self.moreButton.widthAnchor constraintEqualToConstant:48],
+        [self.moreButton.heightAnchor constraintEqualToConstant:48],
     ]];
 }
 
@@ -150,21 +135,23 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
         CAGradientLayer *grad = (CAGradientLayer *)l;
         UITraitCollection *t = self.traitCollection;
         UIColor *top = [[HZTheme accent] resolvedColorWithTraitCollection:t];
-        grad.colors = @[(id)[top colorWithAlphaComponent:t.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.22 : 0.20].CGColor,
+        float k = [HZTheme glassStrength];
+        grad.colors = @[(id)[top colorWithAlphaComponent:(t.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.45 : 0.40) * k].CGColor,
                         (id)[[HZTheme background] resolvedColorWithTraitCollection:t].CGColor];
         grad.startPoint = CGPointMake(0, 0); grad.endPoint = CGPointMake(0.9, 1);
         grad.frame = self.view.bounds;
     }
 }
+- (void)themeChanged { [self updateBackdrop]; self.moreButton.menu = [self buildMenu]; }
 - (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; [self updateBackdrop]; }
 - (void)traitCollectionDidChange:(UITraitCollection *)previous {
     [super traitCollectionDidChange:previous];
     [self updateBackdrop];
 }
 
-// The "..." menu. Appearance is a submenu with a check on the current choice; the switch for
-// "open straight into the game" is a menu item with a check. The long explanation moved to the
-// confirmation shown when it is turned on.
+// The "..." menu, in groups. Library holds the places files live; Tools the things for when something is
+// wrong; Settings opens the page with the appearance, glass and start-up choices. Quick appearance stays
+// in the menu as a submenu with a check on the current choice, because it is the thing most often flipped.
 - (UIMenu *)buildMenu {
     HZAppearance current = [HZTheme appearance];
     NSMutableArray *looks = [NSMutableArray array];
@@ -180,42 +167,30 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
         act.state = a == current ? UIMenuElementStateOn : UIMenuElementStateOff;
         [looks addObject:act];
     }
-    UIMenu *appearance = [UIMenu menuWithTitle:@"Appearance" image:[UIImage systemImageNamed:@"paintbrush"]
+    UIMenu *appearance = [UIMenu menuWithTitle:@"Appearance" image:[UIImage systemImageNamed:@"circle.lefthalf.filled"]
                                     identifier:nil options:0 children:looks];
 
     UIAction *fm = [UIAction actionWithTitle:@"File manager" image:[UIImage systemImageNamed:@"folder.badge.gearshape"]
                                   identifier:nil handler:^(UIAction *x) { [self openFileManager]; }];
+    UIAction *files = [UIAction actionWithTitle:@"Game files" image:[UIImage systemImageNamed:@"shippingbox"]
+                                     identifier:nil handler:^(UIAction *x) { [self openFiles]; }];
     UIAction *diag = [UIAction actionWithTitle:@"Diagnostics" image:[UIImage systemImageNamed:@"stethoscope"]
                                     identifier:nil handler:^(UIAction *x) { [self openDiagnostics]; }];
+    UIAction *settings = [UIAction actionWithTitle:@"Settings" image:[UIImage systemImageNamed:@"gearshape"]
+                                        identifier:nil handler:^(UIAction *x) { [self openSettings]; }];
     UIAction *about = [UIAction actionWithTitle:@"About" image:[UIImage systemImageNamed:@"info.circle"]
                                      identifier:nil handler:^(UIAction *x) { [self openAbout]; }];
-    UIAction *direct = [UIAction actionWithTitle:@"Open straight into the game" image:[UIImage systemImageNamed:@"bolt.fill"]
-                                      identifier:nil handler:^(UIAction *x) { [self toggleDirect]; }];
-    direct.state = [HZLauncherModel shared].opensGameDirectly ? UIMenuElementStateOn : UIMenuElementStateOff;
 
-    UIMenu *tools = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[fm, diag]];
-    UIMenu *prefs = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[appearance, direct]];
-    UIMenu *info = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[about]];
-    return [UIMenu menuWithTitle:@"" children:@[tools, prefs, info]];
+    UIMenu *library = [UIMenu menuWithTitle:@"Library" image:[UIImage systemImageNamed:@"books.vertical"] identifier:nil options:0 children:@[fm, files]];
+    UIMenu *tools = [UIMenu menuWithTitle:@"Tools" image:[UIImage systemImageNamed:@"wrench.and.screwdriver"] identifier:nil options:0 children:@[diag]];
+    UIMenu *group1 = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[library, tools]];
+    UIMenu *group2 = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[appearance, settings]];
+    UIMenu *group3 = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[about]];
+    return [UIMenu menuWithTitle:@"" children:@[group1, group2, group3]];
 }
 
-// Turning the shortcut on explains what it does once; turning it off is immediate.
-- (void)toggleDirect {
-    HZLauncherModel *m = [HZLauncherModel shared];
-    if (m.opensGameDirectly) {
-        m.opensGameDirectly = NO;
-        self.moreButton.menu = [self buildMenu];
-        return;
-    }
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Open straight into the game?"
-        message:@"Skips this screen when the game files are ready. Stopping the app (from Xcode, StikDebug or the app switcher) does not bring it back. It comes back after a crash, after the app ends four times in a row within 15 seconds, or when a file named open-launcher is in the Horizon folder."
-        preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"Turn on" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
-        m.opensGameDirectly = YES;
-        self.moreButton.menu = [self buildMenu];
-    }]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
+- (void)openSettings {
+    [self.navigationController pushViewController:[HZLauncherSettingsController new] animated:YES];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -259,7 +234,7 @@ static UIColor *Accent(void) { return [HZTheme accent]; }
     }
     // Who the game will play as: the signed-in profile (GameSession.h), else it plays offline.
     HZAccountState *signedIn = [[HZAccountStore shared] account];
-    HZThemeSetButtonTitle(self.accountButton, signedIn.name.length ? signedIn.name : @"Account");
+    [HZTheme setTitle:signedIn.name.length ? signedIn.name : @"Account" onButton:self.accountButton];
     BOOL ready = state == HZFilesReady;
     self.playButton.enabled = ready;
     self.playButton.alpha = ready ? 1 : 0.45;

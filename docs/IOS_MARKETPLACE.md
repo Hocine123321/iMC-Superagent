@@ -1,8 +1,10 @@
 # The Horizon Marketplace on iOS (M14)
 
-Status (2026-11-10): **step 1 (the index client) and a browse screen are written; nothing installs.** Both
-compile in CI and have never run on a phone. Steps 3 to 5 of the plan in `IOS_IMPLEMENTATION_ROADMAP.md` (install,
-revocation of installed files, honest labels after install) are not built, and no button pretends otherwise.
+Status (2026-11-10, second pass): **browse and install are written; neither has run on a phone.** Install (step 3)
+downloads a mod, resource pack or shader, checks it, puts it in the game's folder and records it; the project page has
+Install / Update / Remove, and the list has an Installed tab. 23 of the registry's 25 non-native projects pass the
+phone's install rules today; the other 2 are signed and are refused (see "Not done"). Revocation of installed files
+(step 4) and honest labels (step 5) are only partly built, see below.
 
 "Marketplace" here means **Horizon's own registry**, `horizon-rust/horizon-mods`, the source of the desktop
 launcher's mod browser. If an app of your own organisation was meant, say so.
@@ -13,7 +15,9 @@ launcher's mod browser. If an app of your own organisation was meant, say so.
 |---|---|
 | `MarketIndex.m` | Parses and judges `index.json` (schema 1). No network, no UIKit |
 | `MarketClient.m` | Fetches it from the one fixed address, keeps the last good copy in `Documents/Horizon/marketplace/horizon-index.json`, falls back to it offline |
-| `LauncherMarketplace.m` | The screen (Home > **Marketplace**): tabs (Works on iPhone, All, Mods, Packs, Shaders), search, a project page |
+| `LauncherMarketplace.m` | The screen (Home > **Marketplace**): glass tabs (Works on iPhone, Installed, All, Mods, Packs, Shaders), search, and a project page with Install / Update / Remove and a progress bar |
+| `MarketInstaller.m` | The install rules and the disk work, no network or UIKit: what is refused, where each kind goes, SHA-256, atomic replace, the `mod-browser.json` record, `horizon-mods.txt`, remove |
+| `MarketFetcher.m` | The download: the registry's release address only, redirects only to github.com or `*.githubusercontent.com` (at most 5), cut off at the listed size, 120 s without data |
 
 **What the screen shows.** Name, kind, a plain label (*Works on iPhone*, *Needs a desktop build*, *Not supported
 yet*), the summary, and on the page: authors, licence, categories, the newest version for 26.3 and its size, download
@@ -52,15 +56,36 @@ are all native mods (so none touches an installable project today), and tamperin
 hash, a file pointed at another organisation) is refused. It is a Python copy of the logic; the Objective-C was only
 compiled by CI.
 
+## Install (step 3), written 2026-11-10, never run on a phone
+
+Follows `launcher/src/browser/horizon.rs` (`install_version_guarded`) and the game's own `mod_registry.rs`:
+- **Where:** a mod to `<home>/horizon-mods/<id>.hmod`, a resource pack to `<home>/resourcepacks/<name>`, a shader to
+  `<home>/shaderpacks/<name>`; `<home>` is `Documents/Horizon/home`, the folder the game is started with (`--home`).
+- **How:** downloaded to `<home>/mod-browser/downloads/`, then size, SHA-256, "taken down" and the ZIP signature are checked
+  before a rename into place (a replace for an update). A bad file is deleted and nothing is recorded.
+- **Record:** `<home>/mod-browser.json`, the file the desktop launcher and the game both read. Entries from other sources
+  are written back untouched. A mod is turned on in `horizon-mods.txt` as `mod.<id>:true` (the other lines are kept), as on
+  the desktop; the game reads mods at start, so it says to restart.
+- **Never over a player's own file**, a folder mod of the same id, or a file another install owns.
+- **Remove** deletes the file, the record and the `mod.<id>` line. A record that names a file outside the install folders
+  is refused, and a planted symlink is removed as a link.
+- **Checked:** `python3 platform/ios/tests/market_install_check.py --live` (67 checks): every refusal, placing, updating,
+  removing, and with `--live` a real mod, resource pack and shader downloaded from the registry and installed into a temp
+  folder, a one-bit-flipped real download refused, and the live index judged (23 installable, 2 signed refused).
+  It is a Python copy of the logic; the Objective-C was only compiled by CI.
+
 ## Not done
 
-- **Install (step 3)**: download, check size and SHA-256, check the minisign signature for the 61 of 208 versions
-  that have one (needs a minisign verifier on the phone: a library or a few hundred lines of Ed25519 and BLAKE2b,
-  neither written; adding a dependency needs your approval), check what the file says about itself (`index::inspect`),
-  write to the right folder, enable it. Without the signature check the SHA-256 still pins the exact reviewed file,
-  but a signed project would be less protected than on the desktop. Of the 29 installable versions in the live index
-  (2026-11-10) only **2 are signed** (61 of all 208), so the missing verifier affects very little today; the rule
-  still stands: install must refuse a signed project's file until the signature is checked, never skip it.
+- **Signed projects are refused** (2 of 25 today, e.g. `flesh_to_leather`): the minisign check (Ed25519 + BLAKE2b) is not
+  written. A dependency needs your approval; the alternative is a few hundred lines of crypto. Install must keep refusing
+  until it exists, never skip it.
+- **The deep content check.** The desktop runs `index::inspect` after the hash (a mod's manifest against the index, a
+  shader pack's own checks, a resource pack's `pack.mcmeta`). The phone checks the ZIP container only. The game checks
+  content when it reads it and shows a red reason on a mod it cannot load, so a bad file cannot run silently, but a file
+  that passes the hash and is wrong inside would install and then fail in the game.
+- **Update checks and automatic updates**, and removing an installed file the registry later takes down (step 4): the page
+  shows the registry's reason and refuses a new install, but an old install is not removed by itself.
+- **Shaders are untested on Metal**, and no installed pack has been seen in the game's list. The labels say so.
 - **`api_level`**: the desktop skips a version that needs a newer mod API than the game serves. The phone's engine
   level has not been read, so this is not applied yet; a code mod could be offered that the game then refuses to start.
 - **Images**: icons and screenshots are not fetched or shown yet (the rule is written, the loader is not).

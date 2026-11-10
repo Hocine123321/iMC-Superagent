@@ -1,5 +1,6 @@
 #import "LauncherTheme.h"
 #import "LauncherModel.h"
+#import "GlassControls.h"
 #import <objc/message.h>
 
 static UIColor *Dyn(UIColor *dark, UIColor *light) {
@@ -8,6 +9,8 @@ static UIColor *Dyn(UIColor *dark, UIColor *light) {
     }];
 }
 static UIColor *RGB(CGFloat r, CGFloat g, CGFloat b, CGFloat a) { return [UIColor colorWithRed:r green:g blue:b alpha:a]; }
+
+NSNotificationName const HZThemeChanged = @"HZThemeChanged";
 
 @implementation HZTheme
 
@@ -27,31 +30,44 @@ static UIColor *RGB(CGFloat r, CGFloat g, CGFloat b, CGFloat a) { return [UIColo
 
 + (NSString *)settingsPath { return [[HZLauncherModel shared].root stringByAppendingPathComponent:@"launcher.txt"]; }
 
-+ (HZAppearance)appearance {
+// launcher.txt holds one "key:value" per line (openGame: is read by LauncherModel and main.m). Reading and
+// writing here keeps every line this class does not own.
++ (NSString *)settingFor:(NSString *)key {
     NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
-    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
-        if ([line hasPrefix:@"appearance:"]) {
-            NSString *v = [line substringFromIndex:11];
-            if ([v hasPrefix:@"dark"]) return HZAppearanceDark;
-            if ([v hasPrefix:@"light"]) return HZAppearanceLight;
-        }
-    }
+    NSString *prefix = [key stringByAppendingString:@":"];
+    for (NSString *line in [text componentsSeparatedByString:@"\n"]) if ([line hasPrefix:prefix]) return [line substringFromIndex:prefix.length];
+    return nil;
+}
++ (void)setSetting:(NSString *)value for:(NSString *)key {
+    NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    NSString *prefix = [key stringByAppendingString:@":"];
+    NSMutableArray *kept = [NSMutableArray array];
+    for (NSString *line in [old componentsSeparatedByString:@"\n"]) if (line.length && ![line hasPrefix:prefix]) [kept addObject:line];
+    [kept addObject:[prefix stringByAppendingString:value]];
+    [[NSFileManager defaultManager] createDirectoryAtPath:[HZLauncherModel shared].root withIntermediateDirectories:YES attributes:nil error:nil];
+    [[[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
++ (HZAppearance)appearance {
+    NSString *v = [self settingFor:@"appearance"];
+    if ([v hasPrefix:@"dark"]) return HZAppearanceDark;
+    if ([v hasPrefix:@"light"]) return HZAppearanceLight;
     return HZAppearanceSystem;
 }
 
-// Rewrites launcher.txt keeping every other line (main.m and LauncherModel read "openGame:").
 + (void)setAppearance:(HZAppearance)appearance {
-    NSString *value = appearance == HZAppearanceDark ? @"dark" : appearance == HZAppearanceLight ? @"light" : @"system";
-    NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
-    NSMutableArray *kept = [NSMutableArray array];
-    for (NSString *line in [old componentsSeparatedByString:@"\n"]) {
-        if (line.length && ![line hasPrefix:@"appearance:"]) [kept addObject:line];
-    }
-    [kept addObject:[@"appearance:" stringByAppendingString:value]];
-    NSString *text = [[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:[HZLauncherModel shared].root withIntermediateDirectories:YES attributes:nil error:nil];
-    [text writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [self setSetting:appearance == HZAppearanceDark ? @"dark" : appearance == HZAppearanceLight ? @"light" : @"system" for:@"appearance"];
     [self applyAppearanceToWindows];
+    [NSNotificationCenter.defaultCenter postNotificationName:HZThemeChanged object:nil];
+}
+
++ (float)glassStrength {
+    NSString *v = [self settingFor:@"glass"];
+    return v.length ? MAX(0, MIN(1, v.floatValue)) : 0.5f;
+}
++ (void)setGlassStrength:(float)strength {
+    [self setSetting:[NSString stringWithFormat:@"%.2f", MAX(0, MIN(1, strength))] for:@"glass"];
+    [NSNotificationCenter.defaultCenter postNotificationName:HZThemeChanged object:nil];
 }
 
 + (NSString *)nameOfAppearance:(HZAppearance)a {
@@ -132,69 +148,93 @@ static UIColor *RGB(CGFloat r, CGFloat g, CGFloat b, CGFloat a) { return [UIColo
     return l;
 }
 
-+ (UIButton *)buttonWithTitle:(NSString *)title symbol:(NSString *)symbolName prominent:(BOOL)prominent target:(id)target action:(SEL)action {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
-    b.translatesAutoresizingMaskIntoConstraints = NO;
-    b.layer.cornerCurve = kCACornerCurveContinuous;
-    b.layer.cornerRadius = prominent ? 22 : 18;
-    b.clipsToBounds = YES;
+// UIButtonConfiguration +glassButtonConfiguration / +prominentGlassButtonConfiguration exist from iOS 26
+// (Apple's UIButtonConfiguration page lists both). Looked up by name so the iOS 18.5 SDK compiles this.
++ (UIButtonConfiguration *)glassConfigurationProminent:(BOOL)prominent {
+    SEL sel = NSSelectorFromString(prominent ? @"prominentGlassButtonConfiguration" : @"glassButtonConfiguration");
+    if (![UIButtonConfiguration respondsToSelector:sel]) return nil;
+    id (*send)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+    id cfg = send(UIButtonConfiguration.class, sel);
+    return [cfg isKindOfClass:UIButtonConfiguration.class] ? cfg : nil;
+}
 
-    // A glass layer behind the content where the phone has it; a tinted plain fill where not.
-    UIView *backing;
-    if ([self hasLiquidGlass]) {
-        UIVisualEffectView *g = [self glassViewWithTint:prominent ? [self.accent colorWithAlphaComponent:0.85] : nil
-                                            interactive:YES cornerRadius:b.layer.cornerRadius];
-        g.userInteractionEnabled = NO;
-        backing = g;
++ (UIButtonConfiguration *)configurationProminent:(BOOL)prominent title:(NSString *)title symbol:(NSString *)symbolName {
+    UIButtonConfiguration *cfg = [self glassConfigurationProminent:prominent];
+    BOOL glass = cfg != nil;
+    if (!cfg) cfg = prominent ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
+    cfg.title = title;
+    cfg.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    cfg.imagePadding = 8;
+    cfg.contentInsets = NSDirectionalEdgeInsetsMake(prominent ? 18 : 12, 14, prominent ? 18 : 12, 14);
+    if (symbolName.length)
+        cfg.image = [UIImage systemImageNamed:symbolName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:prominent ? 24 : 18 weight:UIImageSymbolWeightSemibold]];
+    // Glass takes its tint from baseBackgroundColor; the plain fallback needs its own colours.
+    if (prominent) {
+        cfg.baseBackgroundColor = [HZTheme accent];
+        cfg.baseForegroundColor = glass ? [HZTheme text] : [HZTheme onAccent];
     } else {
-        backing = [UIView new];
-        backing.translatesAutoresizingMaskIntoConstraints = NO;
-        backing.userInteractionEnabled = NO;
-        backing.backgroundColor = prominent ? [self accent] : [self surface];
+        cfg.baseForegroundColor = [HZTheme text];
+        if (!glass) cfg.baseBackgroundColor = [HZTheme surface];
     }
-    [b addSubview:backing];
-    [NSLayoutConstraint activateConstraints:@[
-        [backing.leadingAnchor constraintEqualToAnchor:b.leadingAnchor],
-        [backing.trailingAnchor constraintEqualToAnchor:b.trailingAnchor],
-        [backing.topAnchor constraintEqualToAnchor:b.topAnchor],
-        [backing.bottomAnchor constraintEqualToAnchor:b.bottomAnchor],
-    ]];
+    UIFont *font = [UIFont systemFontOfSize:prominent ? 24 : 16 weight:prominent ? UIFontWeightBold : UIFontWeightSemibold];
+    cfg.titleTextAttributesTransformer = ^NSDictionary<NSAttributedStringKey, id> *(NSDictionary<NSAttributedStringKey, id> *in) {
+        NSMutableDictionary *d = [in mutableCopy]; d[NSFontAttributeName] = font; return d;
+    };
+    return cfg;
+}
 
-    UIColor *fg = prominent && ![self hasLiquidGlass] ? [self onAccent] : [self text];
-    UIImageView *icon = nil;
-    if (symbolName.length) {
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:prominent ? 24 : 19 weight:UIImageSymbolWeightSemibold];
-        icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:symbolName withConfiguration:cfg]];
-        icon.tintColor = fg;
-        icon.contentMode = UIViewContentModeScaleAspectFit;
-        icon.userInteractionEnabled = NO;
-    }
-    UILabel *label = [self labelWithSize:prominent ? 24 : 16 weight:prominent ? UIFontWeightBold : UIFontWeightSemibold color:fg];
-    label.text = title;
-    label.numberOfLines = 1;
-    label.adjustsFontSizeToFitWidth = YES;
-    label.minimumScaleFactor = 0.7;
-    label.userInteractionEnabled = NO;
-    label.tag = 7001;   // so a screen can change the title later (HZThemeSetButtonTitle)
-
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:icon ? @[icon, label] : @[label]];
-    row.spacing = 10; row.alignment = UIStackViewAlignmentCenter;
-    row.userInteractionEnabled = NO;
-    row.translatesAutoresizingMaskIntoConstraints = NO;
-    [b addSubview:row];
-    [NSLayoutConstraint activateConstraints:@[
-        [row.centerXAnchor constraintEqualToAnchor:b.centerXAnchor],
-        [row.centerYAnchor constraintEqualToAnchor:b.centerYAnchor],
-        [row.leadingAnchor constraintGreaterThanOrEqualToAnchor:b.leadingAnchor constant:12],
-        [row.trailingAnchor constraintLessThanOrEqualToAnchor:b.trailingAnchor constant:-12],
-    ]];
++ (UIButton *)buttonWithTitle:(NSString *)title symbol:(NSString *)symbolName prominent:(BOOL)prominent target:(id)target action:(SEL)action {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    b.translatesAutoresizingMaskIntoConstraints = NO;
+    b.configuration = [self configurationProminent:prominent title:title symbol:symbolName];
+    b.titleLabel.adjustsFontSizeToFitWidth = YES;
+    b.titleLabel.minimumScaleFactor = 0.7;
+    b.tintColor = [self text];
     b.accessibilityLabel = title;
+    // A disabled button (Play with no game files) keeps its shape and looks switched off.
+    b.configurationUpdateHandler = ^(UIButton *btn) { btn.alpha = btn.isEnabled ? 1 : 0.45; };
     [b addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
-    // A small press response for the non-glass fallback (real glass animates itself).
-    [b addTarget:b action:@selector(hz_down) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
-    [b addTarget:b action:@selector(hz_up) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
     return b;
 }
+
++ (UIButton *)iconButtonWithSymbol:(NSString *)symbolName label:(NSString *)label {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    b.translatesAutoresizingMaskIntoConstraints = NO;
+    UIButtonConfiguration *cfg = [self glassConfigurationProminent:NO] ?: [UIButtonConfiguration grayButtonConfiguration];
+    cfg.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+    cfg.image = [UIImage systemImageNamed:symbolName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightBold]];
+    cfg.baseForegroundColor = [self text];
+    cfg.contentInsets = NSDirectionalEdgeInsetsMake(12, 12, 12, 12);
+    b.configuration = cfg;
+    b.tintColor = [self text];
+    b.accessibilityLabel = label;
+    return b;
+}
+
++ (void)setTitle:(NSString *)title onButton:(UIButton *)button {
+    UIButtonConfiguration *cfg = button.configuration;
+    if (cfg) { cfg.title = title; button.configuration = cfg; }
+    button.accessibilityLabel = title;
+}
+
+#pragma mark - Glass controls
+
++ (UIControl *)glassSegmentedWithItems:(NSArray<NSString *> *)items selected:(NSInteger)selected {
+    HZGlassSegmented *c = [[HZGlassSegmented alloc] initWithItems:items];
+    c.selectedSegmentIndex = selected;
+    return c;
+}
++ (UIControl *)glassSliderMin:(float)min max:(float)max value:(float)value {
+    HZGlassSlider *c = [HZGlassSlider new];
+    c.minimumValue = min; c.maximumValue = max; c.value = value;
+    return c;
+}
++ (UIControl *)glassSwitchOn:(BOOL)on {
+    HZGlassSwitch *c = [HZGlassSwitch new];
+    c.on = on;
+    return c;
+}
++ (UIView *)glassProgressView { return [HZGlassProgress new]; }
 
 #pragma mark - Screens
 
@@ -215,9 +255,4 @@ static UIColor *RGB(CGFloat r, CGFloat g, CGFloat b, CGFloat a) { return [UIColo
     vc.view.backgroundColor = [self background];
 }
 
-@end
-
-@implementation UIButton (HZTheme)
-- (void)hz_down { [UIView animateWithDuration:0.12 animations:^{ self.transform = CGAffineTransformMakeScale(0.97, 0.97); self.alpha = 0.85; }]; }
-- (void)hz_up   { [UIView animateWithDuration:0.18 animations:^{ self.transform = CGAffineTransformIdentity; self.alpha = self.enabled ? 1 : 0.45; }]; }
 @end
