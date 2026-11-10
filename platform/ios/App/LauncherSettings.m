@@ -80,6 +80,7 @@
 // A switch row. `setter` runs with the new value.
 - (UIView *)switchTitle:(NSString *)title detail:(NSString *)detail on:(BOOL)on set:(void (^)(BOOL))setter {
     HZGlassSwitch *sw = (HZGlassSwitch *)[HZTheme glassSwitchOn:on];
+    sw.accessibilityLabel = title;   // VoiceOver reads the setting's name, then On or Off
     objc_setAssociatedObject(sw, "setter", setter, OBJC_ASSOCIATION_COPY_NONATOMIC);
     [sw addTarget:self action:@selector(switchFlipped:) forControlEvents:UIControlEventValueChanged];
     return [self rowTitle:title detail:detail control:sw stacked:NO];
@@ -98,9 +99,11 @@
 
     // --- Appearance
     UIControl *appearance = [HZTheme glassSegmentedWithItems:@[@"System", @"Dark", @"Light"] selected:(NSInteger)[HZTheme appearance]];
+    appearance.accessibilityLabel = @"Appearance";
     [appearance addTarget:self action:@selector(appearanceChanged:) forControlEvents:UIControlEventValueChanged];
     [appearance.widthAnchor constraintEqualToConstant:230].active = YES;
     UIControl *strength = [HZTheme glassSliderMin:0 max:1 value:[HZTheme glassStrength]];
+    strength.accessibilityLabel = @"Background colour";
     [strength addTarget:self action:@selector(strengthChanged:) forControlEvents:UIControlEventValueChanged];
     self.strengthValue = [HZTheme labelWithSize:14 weight:UIFontWeightMedium color:[HZTheme secondaryText]];
     self.strengthValue.text = [NSString stringWithFormat:@"%d%%", (int)lroundf([HZTheme glassStrength] * 100)];

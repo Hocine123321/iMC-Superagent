@@ -15,7 +15,8 @@ launcher's mod browser. If an app of your own organisation was meant, say so.
 |---|---|
 | `MarketIndex.m` | Parses and judges `index.json` (schema 1). No network, no UIKit |
 | `MarketClient.m` | Fetches it from the one fixed address, keeps the last good copy in `Documents/Horizon/marketplace/horizon-index.json`, falls back to it offline |
-| `LauncherMarketplace.m` | The screen (Home > **Marketplace**): glass tabs (Works on iPhone, Installed, All, Mods, Packs, Shaders), search, and a project page with Install / Update / Remove and a progress bar |
+| `LauncherPrefs.{h,m}`, `MarketCells.{h,m}`, `ModrinthClient.{h,m}` | The Settings choices (what is hidden until turned on), the card row, and the Modrinth resource pack client |
+| `LauncherMarketplace.m` | The screen (Home > **Marketplace**): card rows and a row of chips (Resource packs and Installed always; Modrinth, Mods, Shaders and Everything once turned on in Settings), search, and a project page with Install / Update / Remove and a progress bar |
 | `MarketInstaller.m` | The install rules and the disk work, no network or UIKit: what is refused, where each kind goes, SHA-256, atomic replace, the `mod-browser.json` record, `horizon-mods.txt`, remove |
 | `MarketFetcher.m` | The download: the registry's release address only, redirects only to github.com or `*.githubusercontent.com` (at most 5), cut off at the listed size, 120 s without data |
 

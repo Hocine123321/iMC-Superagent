@@ -48,11 +48,12 @@ typedef NS_ENUM(NSInteger, HZTab) { HZTabPacks, HZTabModrinth, HZTabMods, HZTabS
 @property (strong) UISearchController *search;
 @property (strong) UILabel *banner;
 @property (strong) UIActivityIndicatorView *spinner;
-@property (nonatomic) BOOL loading, loadingModrinth;
+@property (nonatomic) BOOL loading, loadingModrinth, modrinthPending;
 @property (copy) NSArray<HZModrinthProject *> *modrinthHits;
 @property (nonatomic) NSUInteger modrinthTotal;
 @property (copy) NSString *modrinthError, *modrinthQuery;
 @property (strong) NSTimer *searchTimer;
+@property (copy) NSString *tabSignature;
 @end
 
 @implementation HZLauncherMarketplaceController
@@ -106,6 +107,7 @@ typedef NS_ENUM(NSInteger, HZTab) { HZTabPacks, HZTabModrinth, HZTabMods, HZTabS
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     self.spinner.color = [HZTheme secondaryText];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(settingsChanged) name:HZThemeChanged object:nil];
+    self.tabSignature = [NSString stringWithFormat:@"%d%d%d%d", [HZPrefs useModrinth], [HZPrefs showMods], [HZPrefs showShaders], [HZPrefs showOtherKinds]];
     [self rebuildTabs];
     [self load:NO];
 }
@@ -176,8 +178,14 @@ static NSString *TabName(HZTab t) {
     [self.tableView setContentOffset:CGPointMake(0, -self.tableView.adjustedContentInset.top) animated:NO];
 }
 
-// A switch in Settings changed what is visible (or the look): rebuild the tabs and the list.
-- (void)settingsChanged { [self rebuildTabs]; [self refilter]; }
+// A switch in Settings changed what is visible (or the look). The tabs are rebuilt only when the set of tabs
+// changed, so moving the Appearance or Background slider does not reset the chip row.
+- (void)settingsChanged {
+    NSString *signature = [NSString stringWithFormat:@"%d%d%d%d", [HZPrefs useModrinth], [HZPrefs showMods], [HZPrefs showShaders], [HZPrefs showOtherKinds]];
+    if (![signature isEqualToString:self.tabSignature]) { self.tabSignature = signature; [self rebuildTabs]; }
+    [self refilter];
+    [self paintChips];
+}
 
 #pragma mark - loading
 
@@ -199,18 +207,27 @@ static NSString *TabName(HZTab t) {
     }];
 }
 
+- (NSString *)currentQuery {
+    return [self.search.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+}
+
+// Searches Modrinth for what is typed. If a search is already running, the newer text is searched as soon as
+// it returns (an answer for older text is never shown), so typing quickly cannot leave stale results.
 - (void)searchModrinth:(BOOL)force {
-    if (![HZPrefs useModrinth] || self.loadingModrinth) return;
-    NSString *q = [self.search.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    if (![HZPrefs useModrinth]) return;
+    NSString *q = [self currentQuery];
+    if (self.loadingModrinth) { self.modrinthPending = YES; return; }
     if (!force && [q isEqualToString:self.modrinthQuery ?: @""] && self.modrinthHits.count) return;
-    self.loadingModrinth = YES; self.modrinthError = nil; self.modrinthQuery = q;
+    self.loadingModrinth = YES; self.modrinthError = nil; self.modrinthQuery = q; self.modrinthPending = NO;
     [self refilter];
+    __weak typeof(self) weak = self;
     [self.modrinth searchText:q offset:0 completion:^(NSArray<HZModrinthProject *> *p, NSUInteger total, NSString *err) {
-        self.loadingModrinth = NO;
-        // An answer for an older search is dropped.
-        if (![q isEqualToString:[self.search.searchBar.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @""]) return;
-        self.modrinthHits = p ?: @[]; self.modrinthTotal = total; self.modrinthError = err;
-        [self refilter];
+        typeof(self) me = weak; if (!me) return;
+        me.loadingModrinth = NO;
+        BOOL stale = ![q isEqualToString:[me currentQuery]];
+        if (!stale) { me.modrinthHits = p ?: @[]; me.modrinthTotal = total; me.modrinthError = err; }
+        if (stale || me.modrinthPending) { me.modrinthPending = NO; [me searchModrinth:NO]; return; }
+        [me refilter];
     }];
 }
 
@@ -218,7 +235,8 @@ static NSString *TabName(HZTab t) {
     if (self.tab == HZTabModrinth) {
         // Modrinth is searched on its server, a moment after typing stops.
         [self.searchTimer invalidate];
-        self.searchTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:NO block:^(NSTimer *t) { [self searchModrinth:NO]; }];
+        __weak typeof(self) weak = self;
+        self.searchTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:NO block:^(NSTimer *t) { [weak searchModrinth:NO]; }];
     }
     [self refilter];
 }

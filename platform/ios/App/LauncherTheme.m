@@ -1,7 +1,6 @@
 #import "LauncherTheme.h"
 #import "LauncherModel.h"
 #import "GlassControls.h"
-#import <objc/message.h>
 
 static UIColor *Dyn(UIColor *dark, UIColor *light) {
     return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
@@ -94,50 +93,6 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
 #pragma clang diagnostic pop
 }
 
-#pragma mark - Glass
-
-+ (BOOL)hasLiquidGlass { return NSClassFromString(@"UIGlassEffect") != nil; }
-
-// UIGlassEffect is iOS 26+. Apple documents init(style:), isInteractive and tintColor; the style
-// enum is { regular, clear }. Called through the Objective-C runtime so the iOS 18.5 SDK compiles it.
-+ (UIVisualEffect *)glassEffectWithTint:(UIColor *)tint interactive:(BOOL)interactive {
-    Class cls = NSClassFromString(@"UIGlassEffect");
-    if (!cls) return nil;
-    id effect = nil;
-    SEL initWithStyle = NSSelectorFromString(@"initWithStyle:");
-    id alloc = [cls alloc];
-    if ([alloc respondsToSelector:initWithStyle]) {
-        NSInteger regular = 0;   // UIGlassEffectStyleRegular
-        id (*send)(id, SEL, NSInteger) = (id (*)(id, SEL, NSInteger))objc_msgSend;
-        effect = send(alloc, initWithStyle, regular);
-    } else {
-        effect = [alloc init];
-    }
-    if (![effect isKindOfClass:[UIVisualEffect class]]) return nil;
-    @try {
-        if (interactive && [effect respondsToSelector:NSSelectorFromString(@"setInteractive:")]) [effect setValue:@YES forKey:@"interactive"];
-        if (tint && [effect respondsToSelector:NSSelectorFromString(@"setTintColor:")]) [effect setValue:tint forKey:@"tintColor"];
-    } @catch (NSException *e) { /* a property that is not there: plain glass */ }
-    return effect;
-}
-
-+ (UIVisualEffectView *)glassViewWithTint:(UIColor *)tint interactive:(BOOL)interactive cornerRadius:(CGFloat)radius {
-    UIVisualEffect *effect = [self glassEffectWithTint:tint interactive:interactive];
-    UIVisualEffectView *v;
-    if (effect) {
-        v = [[UIVisualEffectView alloc] initWithEffect:effect];
-    } else {
-        // No Liquid Glass here: the closest thing the older SDKs have.
-        v = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];
-        if (tint) v.contentView.backgroundColor = [tint colorWithAlphaComponent:0.35];
-    }
-    v.translatesAutoresizingMaskIntoConstraints = NO;
-    v.layer.cornerRadius = radius;
-    v.layer.cornerCurve = kCACornerCurveContinuous;
-    v.clipsToBounds = YES;
-    return v;
-}
-
 #pragma mark - Controls
 
 + (UILabel *)labelWithSize:(CGFloat)size weight:(UIFontWeight)weight color:(UIColor *)color {
@@ -148,34 +103,20 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
     return l;
 }
 
-// UIButtonConfiguration +glassButtonConfiguration / +prominentGlassButtonConfiguration exist from iOS 26
-// (Apple's UIButtonConfiguration page lists both). Looked up by name so the iOS 18.5 SDK compiles this.
-+ (UIButtonConfiguration *)glassConfigurationProminent:(BOOL)prominent {
-    SEL sel = NSSelectorFromString(prominent ? @"prominentGlassButtonConfiguration" : @"glassButtonConfiguration");
-    if (![UIButtonConfiguration respondsToSelector:sel]) return nil;
-    id (*send)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
-    id cfg = send(UIButtonConfiguration.class, sel);
-    return [cfg isKindOfClass:UIButtonConfiguration.class] ? cfg : nil;
-}
-
+// Buttons are solid: a primary button is the accent colour with the on-accent text (dark on the light green in
+// dark mode, white on the dark green in light mode), a secondary one is the surface colour with the normal text.
+// The first pass asked iOS 26 for its glass button style; on the owner's phone that did not read as glass and put
+// white text on a green-tinted pane, so contrast was left to chance. This is the same in both themes and on every iOS.
 + (UIButtonConfiguration *)configurationProminent:(BOOL)prominent title:(NSString *)title symbol:(NSString *)symbolName {
-    UIButtonConfiguration *cfg = [self glassConfigurationProminent:prominent];
-    BOOL glass = cfg != nil;
-    if (!cfg) cfg = prominent ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
+    UIButtonConfiguration *cfg = prominent ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
     cfg.title = title;
     cfg.cornerStyle = UIButtonConfigurationCornerStyleLarge;
     cfg.imagePadding = 8;
     cfg.contentInsets = NSDirectionalEdgeInsetsMake(prominent ? 18 : 12, 14, prominent ? 18 : 12, 14);
     if (symbolName.length)
         cfg.image = [UIImage systemImageNamed:symbolName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:prominent ? 24 : 18 weight:UIImageSymbolWeightSemibold]];
-    // Glass takes its tint from baseBackgroundColor; the plain fallback needs its own colours.
-    if (prominent) {
-        cfg.baseBackgroundColor = [HZTheme accent];
-        cfg.baseForegroundColor = glass ? [HZTheme text] : [HZTheme onAccent];
-    } else {
-        cfg.baseForegroundColor = [HZTheme text];
-        if (!glass) cfg.baseBackgroundColor = [HZTheme surface];
-    }
+    cfg.baseBackgroundColor = prominent ? [HZTheme accent] : [HZTheme surface];
+    cfg.baseForegroundColor = prominent ? [HZTheme onAccent] : [HZTheme text];
     UIFont *font = [UIFont systemFontOfSize:prominent ? 24 : 16 weight:prominent ? UIFontWeightBold : UIFontWeightSemibold];
     cfg.titleTextAttributesTransformer = ^NSDictionary<NSAttributedStringKey, id> *(NSDictionary<NSAttributedStringKey, id> *in) {
         NSMutableDictionary *d = [in mutableCopy]; d[NSFontAttributeName] = font; return d;
@@ -189,7 +130,6 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
     b.configuration = [self configurationProminent:prominent title:title symbol:symbolName];
     b.titleLabel.adjustsFontSizeToFitWidth = YES;
     b.titleLabel.minimumScaleFactor = 0.7;
-    b.tintColor = [self text];
     b.accessibilityLabel = title;
     // A disabled button (Play with no game files) keeps its shape and looks switched off.
     b.configurationUpdateHandler = ^(UIButton *btn) { btn.alpha = btn.isEnabled ? 1 : 0.45; };
@@ -200,7 +140,8 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
 + (UIButton *)iconButtonWithSymbol:(NSString *)symbolName label:(NSString *)label {
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     b.translatesAutoresizingMaskIntoConstraints = NO;
-    UIButtonConfiguration *cfg = [self glassConfigurationProminent:NO] ?: [UIButtonConfiguration grayButtonConfiguration];
+    UIButtonConfiguration *cfg = [UIButtonConfiguration grayButtonConfiguration];
+    cfg.baseBackgroundColor = [self surface];
     cfg.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     cfg.image = [UIImage systemImageNamed:symbolName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightBold]];
     cfg.baseForegroundColor = [self text];

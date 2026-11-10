@@ -136,6 +136,8 @@ check("search: only resource packs with a valid id", len(parse_search({"hits": [
 def ver(date, games=("26.3",), status="listed", files=None):
     f = files if files is not None else [{"filename": "P.zip", "url": good["url"], "size": 10, "primary": True, "hashes": {"sha512": "a" * 128, "sha1": "b" * 40}}]
     return {"id": "v" + date, "version_number": date, "date_published": date, "game_versions": list(games), "status": status, "files": f}
+def number_of(v): return v.get("version_number") or v.get("id") or ""
+check("an empty version number falls back to the id", number_of({"version_number": "", "id": "abc"}) == "abc" and number_of({"version_number": "1.2", "id": "abc"}) == "1.2")
 v, r = pick_version([ver("2026-01-01"), ver("2026-03-01"), ver("2026-02-01")], "26.3")
 check("the newest version is picked", v and v["date_published"] == "2026-03-01")
 v, r = pick_version([ver("2026-03-01", games=("1.21",)), ver("2026-01-01")], "26.3")

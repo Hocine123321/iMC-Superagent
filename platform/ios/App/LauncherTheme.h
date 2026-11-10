@@ -1,14 +1,9 @@
-// The launcher's look: one place for colours, buttons and glass, so every screen follows the same
-// dark/light setting. Pure UIKit, no storyboard.
+// The launcher's look: one place for colours, buttons and controls, so every screen follows the same
+// rules and dark/light is one switch. Every colour is dynamic (it follows the window's appearance).
 //
-// Dark and light: the colours are dynamic (they resolve against the screen's trait collection), and
-// the person's choice (System, Dark or Light) is applied to the window with overrideUserInterfaceStyle.
-// The choice is the line "appearance:" in <root>/launcher.txt (LauncherModel).
-//
-// Liquid Glass: the CI runner builds with the iOS 18.5 SDK, which has no UIGlassEffect. The class is
-// therefore looked up by name at run time (NSClassFromString). On iOS 26 and later it exists and the
-// surfaces are real glass; on anything older, or if the lookup fails, they are a system blur material.
-// Written 2026-11-10 against Apple's documentation (UIGlassEffect, iOS 26.0+): never run on a phone.
+// There is no Liquid Glass here. The first pass drew surfaces and controls on UIGlassEffect and asked iOS 26 for
+// its glass buttons; on the owner's phone (iOS 27.2) none of it read as glass, and over a near-black background
+// it came out as flat black. Everything is now solid and has the same contrast in both themes.
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -44,22 +39,14 @@ typedef NS_ENUM(NSInteger, HZAppearance) {
 + (nullable NSString *)settingFor:(NSString *)key;
 + (void)setSetting:(NSString *)value for:(NSString *)key;
 
-// How strongly the colour behind the glass shows, 0...1 (default 0.5). It is what makes glass look like
-// glass, so a person can turn it down. Kept as "glass:" in launcher.txt. Posts HZThemeChanged when set.
+// How strongly the colour shows behind the Home screen, 0...1 (default 0.5). Kept as "glass:" in launcher.txt (the
+// name of the first version). Posts HZThemeChanged when set.
 + (float)glassStrength;
 + (void)setGlassStrength:(float)strength;
 extern NSNotificationName const HZThemeChanged;
 
-// Whether this phone can draw real Liquid Glass (the class exists at run time).
-+ (BOOL)hasLiquidGlass;
-
-// A view that draws glass (or a blur material where there is none). Put content in `contentView`.
-// `tint` may be nil. `interactive` makes it react to touch on iOS 26 and later.
-+ (UIVisualEffectView *)glassViewWithTint:(nullable UIColor *)tint interactive:(BOOL)interactive cornerRadius:(CGFloat)radius;
-
-// A button. `prominent` is the green Play-style one. On iOS 26 and later it is the system's own glass
-// button (UIButtonConfiguration glassButtonConfiguration / prominentGlassButtonConfiguration, found at run
-// time), so it gets the real press, morph and highlight behaviour; elsewhere it is a tinted plain button.
+// A button. `prominent` is the accent-filled Play-style one (dark text on the light green, white on the dark
+// green); the other is a quiet surface-coloured one. Both are solid, so contrast is the same everywhere.
 + (UIButton *)buttonWithTitle:(NSString *)title
                          symbol:(NSString *)symbolName
                       prominent:(BOOL)prominent

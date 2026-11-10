@@ -121,15 +121,10 @@ screens follow dark or light. The choice is the line `appearance:system|dark|lig
 `Documents/Horizon/launcher.txt` (the same file as `openGame:`; both setters keep the other's line)
 and is applied to the window with `overrideUserInterfaceStyle`.
 
-**Liquid Glass** (`UIGlassEffect`, iOS 26 and later). CI builds with the iOS 18.5 SDK
-(Xcode 16.4 on `macos-15`), which does not have the class, and workflow files are off limits. So the
-class is found at run time (`NSClassFromString`) and called through the Objective-C runtime. On iOS 26
-and later (the test phone runs 27.2) the buttons and cards are real glass; elsewhere they are a
-system blur material. Two things taken from Apple's documentation, not yet seen working: the
-initialiser `initWithStyle:` (style 0 is `regular`; the enum is `regular`, `clear`) and the
-`interactive` and `tintColor` properties, set through key-value coding inside a try block so a
-missing property gives plain glass instead of a crash. When the runner gets an iOS 26 SDK, the
-runtime lookup can become a normal `UIGlassEffect` call.
+**Liquid Glass was tried and removed.** The first pass drew surfaces, buttons and controls on `UIGlassEffect`, found at run
+time because CI builds with the iOS 18.5 SDK. On the test phone (iOS 27.2) it did not read as glass and came out as flat
+black on the dark background, so everything is solid now (see the second pass). If the runner ever gets an iOS 26 SDK, the
+system's own controls turn into glass without any code, and the custom ones could be dropped.
 
 ## Second pass (2026-11-10)
 
@@ -138,8 +133,9 @@ runtime lookup can become a normal `UIGlassEffect` call.
   glass: over the launcher's near-black background there is nothing to refract, and the tabs came out as a black slab with
   no visible selection. The controls (`GlassControls.{h,m}`, names kept) are now plain: a clear track, an accent fill or
   pill, a white knob. The Home card is a system blur material with a hairline edge. Buttons still ask the system for
-  `glassButtonConfiguration` / `prominentGlassButtonConfiguration` where it exists (iOS 26+) and fall back to the stock
-  gray/filled style; whether that looks like glass on a phone is **not confirmed**, the owner said it does not.
+  `glassButtonConfiguration` / `prominentGlassButtonConfiguration` where it exists (iOS 26+); the owner said they did
+  not look like glass either, so (polish pass) buttons are solid too: a primary button is the accent fill with the
+  on-accent text, a secondary one is the surface colour. Contrast is the same on every iOS and in both themes.
 - **Marketplace redesign.** Cards (a coloured icon tile per kind, name, kind and source, one-line summary, a pill that
   says Get / v1.2 / Desktop only) in a plain list, with one row of scrolling chips for the tabs. Both project pages share
   one layout (`HZMarketPageController`): header, a big Install button with a progress bar, one line saying what happens,

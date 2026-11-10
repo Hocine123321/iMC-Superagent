@@ -160,7 +160,9 @@ static NSArray *List(id d, NSString *k) {
         if (why) { if (!firstProblem) firstProblem = why; continue; }
         HZModrinthVersion *ver = [HZModrinthVersion new];
         ver.versionId = Text(v, @"id") ?: @"";
-        ver.number = Text(v, @"version_number") ?: @"";
+        // The page and the install record both show this; an empty one falls back to the id so they always agree.
+        NSString *number = Text(v, @"version_number");
+        ver.number = number.length ? number : (Text(v, @"id") ?: @"");
         ver.published = Text(v, @"date_published") ?: @"";
         ver.gameVersions = List(v, @"game_versions") ?: @[];
         ver.file = file;
