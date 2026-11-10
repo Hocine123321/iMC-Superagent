@@ -20,7 +20,7 @@ code or assets: players need their own copy of Java Edition.
 The engine builds, links and starts on iOS. Each CI run of the `iOS app` workflow publishes an
 unsigned IPA as a release named *iMC Horizon vN*, which you sign yourself.
 
-What exists: a native launcher (Home, Marketplace, Settings, file manager, game files, Account, diagnostics, About), touch controls and app lifecycle
+What exists: a native launcher (a SwiftUI shell with Play, Packs and Settings tabs, built on the iOS 26 SDK; behind it the Marketplace, file manager, game files, Account, diagnostics and About), touch controls and app lifecycle
 (M4/M5), a crash reporter, and the in-game **iMC Settings** page. The game itself **runs on a phone without issues**
 (confirmed by the owner, 2026-11-10), so the port works; the work now is making it feel made for iOS (milestone M15 in
 the roadmap). What does not exist yet: preparing the game files on the phone (M8: the download is written but has never

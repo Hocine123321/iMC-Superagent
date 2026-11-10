@@ -5,7 +5,7 @@ summary: The choices the owner made along the way, and a plain picture of the fi
 
 # Horizon for iOS: decisions and the finished app
 
-Written 2026-11-08, status corrected 2026-11-10 (after iMC Horizon v33). This is the owner's reference. It says what was decided, what the app
+Written 2026-11-08, status corrected 2026-11-10 (after iMC Horizon v37). This is the owner's reference. It says what was decided, what the app
 will be when it is done, and how much of that is real today.
 
 **How to read the labels**
@@ -22,7 +22,7 @@ will be when it is done, and how much of that is real today.
 | # | Decision | Why it matters | Status |
 |---|---|---|---|
 | 1 | **Port the existing Rust engine**, do not rewrite the game. | Horizon already renders with wgpu/Metal and has a touch-free desktop client. The work is a thin iOS shell around it. | DONE (engine builds, links, starts on the simulator) |
-| 2 | **Do not modify, delete or rewrite anything in `horizon/`.** | The upstream snapshot stays clean and updatable. All iOS work lives beside it (`platform/`, `docs/`, `.github/`). | Followed throughout |
+| 2 | **Keep `horizon/` untouched, with one exception.** Until 2026-11-10 nothing in it was to change; the owner then approved small, iOS-gated, documented edits (every one listed in `HORIZON_CHANGES.md`, with the patch files). | The upstream snapshot stays clean and updatable. All iOS work lives beside it (`platform/`, `docs/`, `.github/`). | Followed throughout |
 | 3 | **Minimal native iOS app first**, features later. | Get something running on a real phone before polishing. | Followed |
 | 4 | **Build and verify on a GitHub Actions macOS runner.** | There is no Mac in the loop. The repo was made **public** so those runners are free. | DONE |
 | 5 | **Distribute as an IPA you sign yourself.** No App Store, no TestFlight, no verification by Apple. | Removes App Store review and its rules from the plan. | DONE (decision); IPA builds |
@@ -89,7 +89,7 @@ on the phone from your own Minecraft account.
 | M9 | Microsoft sign-in and ownership check | BUILT, NOT RUN: code and screen are in `platform/ios/App`; needs the owner's Azure app and Mojang's approval before it can sign in. Gates the download only. See `docs/IOS_SIGN_IN.md` |
 | M10 / M11 | Multiplayer, polish, final IPA | PLANNED |
 | **M15** | **iOS optimisation: make it feel made for iOS** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | **NEXT.** First step below |
-| **M24** | **Launcher v2**: SwiftUI, real system Liquid Glass, portrait, Play and Quit Game in one process (owner decisions, 2026-11-10; `horizon/` editing approved) | **IN PROGRESS.** Stage 1 (CI on Xcode 26) pushed; plan in `NEXT_STEPS.md` |
+| **M24** | **Launcher v2**: SwiftUI, real system Liquid Glass, portrait, Play and Quit Game in one process (owner decisions, 2026-11-10; `horizon/` editing approved) | **IN PROGRESS.** Stage 1 (CI on Xcode 26, v35) done; stage 2 (SwiftUI shell, v36) built, not yet seen on the phone; stage 3 (Play and Quit in one process) designed in `IN_PROCESS_PLAY_DESIGN.md`, not built; stage 4 started (download speed and time left). Plan in `NEXT_STEPS.md` |
 | M17 | Frame pacing, 60/120 Hz, battery and thermal modes | PLANNED, needs M15 numbers |
 | M18 | Controller support through iOS's GameController | PLANNED, **to check** what the engine sees first |
 | M19 | Haptics, one-handed layout, screenshot and chat buttons, text size | PLANNED |

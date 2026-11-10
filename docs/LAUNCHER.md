@@ -5,7 +5,11 @@ summary: What the native launcher screens do, how Play works, the look and Setti
 
 # The launcher
 
-The app opens to a native launcher, not to the game. Source: `platform/ios/App/Launcher*.{h,m}`.
+The app opens to a native launcher, not to the game. Source: `platform/ios/App/Launcher*.{h,m}` and, since v36, `platform/ios/App/Swift/`.
+
+## The SwiftUI shell (M24 stage 2, built 2026-11-10, not yet seen on a phone)
+
+`Launcher.m` now makes `HZLauncherHost.makeRoot()` (`Swift/LauncherHost.swift`) the window's root. It is a system `TabView` with three tabs: **Play** (`PlayTab.swift`: status card, Play, shortcuts to Download and Game files, the round Account button), **Packs** (the UIKit Marketplace, hosted) and **Settings** (`SettingsTab.swift`: Preferences, File manager, Game files, Diagnostics, About). Glass comes only from the system (`glassEffect`, `.glass`, `.glassProminent` on iOS 26 and later; materials and bordered buttons before), see `Swift/Look.swift`. The Objective-C screens are reused unchanged through `Swift/Hosted.swift`; Play still uses the relaunch described below (`LauncherState.play()`). **Where this page describes the old UIKit Home, its "..." menu and its tab bar, that layout is gone; the screens it lists are all still reachable, now from Settings or the Play tab.** The Home, Second pass and Look notes below are kept as history; `HZTheme` still supplies the colours.
 
 ## How Play works
 

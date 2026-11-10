@@ -1,6 +1,6 @@
 # Every change we made inside `horizon/`
 
-Written 2026-11-09, brought up to date 2026-11-10 (after iMC Horizon v33, repo commit `dbaaa96`).
+Written 2026-11-09, brought up to date 2026-11-10 (after iMC Horizon v37, repo commit `b2fe366`).
 **This is the file to open when the upstream Horizon moves and the iOS app has to
 be rebuilt on top of the new version.** It lists every difference between the upstream snapshot and
 what `horizon/` holds now, why each exists, and how to put it back.
@@ -9,7 +9,7 @@ what `horizon/` holds now, why each exists, and how to put it back.
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
   Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **60 files,
-  +9275 / -90: 18 new files, 42 modified, none deleted.** Only 90 upstream lines are removed or
+  +9282 / -90: 18 new files, 42 modified, none deleted.** Only 90 upstream lines are removed or
   rewritten in total; everything else is added.
 - **The patches are the exact diff** (generated, not hand-written). When this prose and a patch
   disagree, the patch is right. There are two copies of the same diff:
@@ -91,7 +91,7 @@ screen's corner, so a desktop-sized request hangs off the edges. Three call site
 **Re-apply:** wherever upstream calls `Window::default_attributes()....with_inner_size(...)`.
 (`05cda51`)
 
-### A5. The game window is landscape only (iOS), 2026-11-10
+### A7. The game window is landscape only (iOS), 2026-11-10
 `crates/horizon-client-input/src/window.rs`, in `with_horizon_icon` (which every window goes through),
 adds under `#[cfg(target_os = "ios")]` a call to winit's `WindowAttributesExtIOS::with_valid_orientations`
 with `ValidOrientations::Landscape`. Why: the launcher is portrait (M24), so the app's Info.plist now lists
@@ -436,7 +436,7 @@ A horizon/crates/horizon-client-input/src/touch_calibration.rs           [J1]
 A horizon/crates/horizon-client-input/src/touch_editor_tools.rs          [L1]
 A horizon/crates/horizon-client-input/src/touch_extras.rs                [K1]
 A horizon/crates/horizon-client-input/src/touch_layout.rs                [I1, K2]
-M horizon/crates/horizon-client-input/src/window.rs                      [A4]
+M horizon/crates/horizon-client-input/src/window.rs                      [A4, A7]
 M horizon/crates/horizon-client-render/src/gfx.rs                        [A1, B]
 M horizon/crates/horizon-client-render/src/gfx/flat.rs                   [A6]
 M horizon/crates/horizon-client-render/src/graphics.rs                   [A1]
