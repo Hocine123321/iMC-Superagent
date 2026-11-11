@@ -8,8 +8,8 @@ what `horizon/` holds now, why each exists, and how to put it back.
 ## How this stays true
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
-  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **60 files,
-  +9282 / -90: 18 new files, 42 modified, none deleted.** Only 90 upstream lines are removed or
+  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **62 files,
+  +9528 / -92: 19 new files, 43 modified, none deleted.** Only 92 upstream lines are removed or
   rewritten in total; everything else is added.
 - **The patches are the exact diff** (generated, not hand-written). When this prose and a patch
   disagree, the patch is right. There are two copies of the same diff:
@@ -35,7 +35,7 @@ could not be built without it) and some of it (the iMC Settings page, Auto Perfo
 goes beyond a touch fix. They are listed here as the facts they are, not as approved. **Each entry
 carries a risk, so you can decide what to keep when you rebase.**
 
-Entries are grouped by what they are for, not by file. Every one of the 60 files appears once, in
+Entries are grouped by what they are for, not by file. Every one of the 62 files appears once, in
 the index at the end.
 
 ---
@@ -428,13 +428,13 @@ Quit Game). Written and unit tested in the input crate (4 tests); the other edit
 
 | File | Change |
 |---|---|
-| `crates/horizon-client-input/src/ios_hold.rs` | **New, 150 lines with tests.** A process-wide state (`Disarmed`, `Waiting`, `Released`, `Cancelled`) behind a mutex and condvar: `arm`, `armed`, `play`, `cancel`, `state`, `wait_for_play`. No unsafe code, no dependency. |
-| `crates/horizon-client-input/src/lib.rs` | `pub mod ios_hold;` |
-| `crates/horizon-client/src/client_lib.rs` | `pub use horizon_client_input::ios_hold;` so the bridge reaches it as `horizon_client::ios_hold` and `Cargo.toml` and `Cargo.lock` do not change. |
-| `crates/horizon-client/src/game/startup_menu.rs` | `spawn_loader`: the loader thread first calls `ios_hold::wait_for_play()`. Unarmed it returns at once. If the hold is cancelled it sends `Done(Err)` and ends. |
-| `crates/horizon-client/src/game.rs` | `run_with`: the "prepared files are missing" early return is skipped while the hold is armed (the window must exist first; the launcher only lets Play through with usable files, and the loader fails with its own message otherwise). `Options::read`: the `--session-file` read is skipped while armed. New `Options::apply_late_session`, the same read run after Play. |
-| `crates/horizon-client/src/game/loading_screen.rs` | `Loading::finish` calls `options.apply_late_session()` first (a no-op unless the hold was armed). Why: the engine refuses a session file older than two minutes and the launcher writes it at Play, not at app start. |
-| `platform/ios-bridge/src/lib.rs` | Four exported C functions: `horizon_ios_arm_hold`, `horizon_ios_play`, `horizon_ios_cancel_hold`, `horizon_ios_hold_state`. |
+| `horizon/crates/horizon-client-input/src/ios_hold.rs` | **New, 150 lines with tests.** A process-wide state (`Disarmed`, `Waiting`, `Released`, `Cancelled`) behind a mutex and condvar: `arm`, `armed`, `play`, `cancel`, `state`, `wait_for_play`. No unsafe code, no dependency. |
+| `horizon/crates/horizon-client-input/src/lib.rs` | `pub mod ios_hold;` |
+| `horizon/crates/horizon-client/src/client_lib.rs` | `pub use horizon_client_input::ios_hold;` so the bridge reaches it as `horizon_client::ios_hold` and `Cargo.toml` and `Cargo.lock` do not change. |
+| `horizon/crates/horizon-client/src/game/startup_menu.rs` | `spawn_loader`: the loader thread first calls `ios_hold::wait_for_play()`. Unarmed it returns at once. If the hold is cancelled it sends `Done(Err)` and ends. |
+| `horizon/crates/horizon-client/src/game.rs` | `run_with`: the "prepared files are missing" early return is skipped while the hold is armed (the window must exist first; the launcher only lets Play through with usable files, and the loader fails with its own message otherwise). `Options::read`: the `--session-file` read is skipped while armed. New `Options::apply_late_session`, the same read run after Play. |
+| `horizon/crates/horizon-client/src/game/loading_screen.rs` | `Loading::finish` calls `options.apply_late_session()` first (a no-op unless the hold was armed). Why: the engine refuses a session file older than two minutes and the launcher writes it at Play, not at app start. |
+| `horizon/platform/ios-bridge/src/lib.rs` | Four exported C functions: `horizon_ios_arm_hold`, `horizon_ios_play`, `horizon_ios_cancel_hold`, `horizon_ios_hold_state`. |
 
 **Re-apply:** copy `ios_hold.rs`, add the two one-line exports, and put the three small hooks where the loader
 is spawned, where the missing-files check and the session read are in `run_with` / `Options::read`, and at the
@@ -442,7 +442,7 @@ top of `Loading::finish`. **Risk:** low with the hold unarmed (each hook is one 
 call that returns at once). Armed, the unknown is the phone: whether winit's window is presented behind the
 launcher and what the orientation change does.
 
-## F. Index: all 60 files
+## F. Index: all 62 files
 
 `A` = new file, `M` = modified. Section in brackets.
 
@@ -453,8 +453,9 @@ M horizon/crates/horizon-client-input/Cargo.toml                         [A2]
 A horizon/crates/horizon-client-input/src/auto_performance.rs            [E1]
 M horizon/crates/horizon-client-input/src/gamepad.rs                     [M]
 A horizon/crates/horizon-client-input/src/imc_settings.rs                [D1, N]
+A horizon/crates/horizon-client-input/src/ios_hold.rs                    [P]
 M horizon/crates/horizon-client-input/src/keybinds.rs                    [A3]
-M horizon/crates/horizon-client-input/src/lib.rs                         [C2, I2, J2, K2, L2, N]
+M horizon/crates/horizon-client-input/src/lib.rs                         [C2, I2, J2, K2, L2, N, P]
 A horizon/crates/horizon-client-input/src/touch.rs                       [C1]
 A horizon/crates/horizon-client-input/src/touch_cursor.rs                [N]
 A horizon/crates/horizon-client-input/src/touch_calibration.rs           [J1]
@@ -473,7 +474,8 @@ M horizon/crates/horizon-client-render/src/logging.rs                    [A1]
 M horizon/crates/horizon-client-render/src/options_ui.rs                 [A1, D2, I2, J2, K2, N, O]
 M horizon/crates/horizon-client-render/src/settings.rs                   [D2, I2, J2, K2, L2]
 M horizon/crates/horizon-client/assets/horizon/lang/en_us.json           [D2, I2, J2, K2, N, O]
-M horizon/crates/horizon-client/src/game.rs                              [B, C2, E2, I2, J2, L2, M, N]
+M horizon/crates/horizon-client/src/client_lib.rs                       [P]
+M horizon/crates/horizon-client/src/game.rs                              [B, C2, E2, I2, J2, L2, M, N, P]
 M horizon/crates/horizon-client/src/game/agent.rs                        [I2]
 A horizon/crates/horizon-client/src/game/auto_performance.rs             [E1]
 M horizon/crates/horizon-client/src/game/chat.rs                         [M2]
@@ -483,7 +485,7 @@ M horizon/crates/horizon-client/src/game/dedicated.rs                    [E2]
 M horizon/crates/horizon-client/src/game/ime.rs                          [I2]
 M horizon/crates/horizon-client/src/game/key_codes.rs                    [M2]
 A horizon/crates/horizon-client/src/game/lifecycle.rs                    [C1]
-M horizon/crates/horizon-client/src/game/loading_screen.rs               [A4, B, C2]
+M horizon/crates/horizon-client/src/game/loading_screen.rs               [A4, B, C2, P]
 M horizon/crates/horizon-client/src/game/loading_window.rs               [B]
 M horizon/crates/horizon-client/src/game/no_resources.rs                 [A4]
 M horizon/crates/horizon-client/src/game/options.rs                      [E2, I2, J2]
@@ -496,7 +498,7 @@ M horizon/crates/horizon-client/src/game/render_settings.rs              [E2]
 M horizon/crates/horizon-client/src/game/screens.rs                      [I2]
 M horizon/crates/horizon-client/src/game/split.rs                        [C2]
 M horizon/crates/horizon-client/src/game/split/players.rs                [B]
-M horizon/crates/horizon-client/src/game/startup_menu.rs                 [B, I2, J2]
+M horizon/crates/horizon-client/src/game/startup_menu.rs                 [B, I2, J2, P]
 A horizon/crates/horizon-client/src/game/touch.rs                        [C1, C2, I2, J2, K2, L2, N]
 A horizon/crates/horizon-client/src/game/touch_calibration.rs            [J1]
 A horizon/crates/horizon-client/src/game/touch_cursor.rs                 [N]
@@ -506,7 +508,7 @@ M horizon/crates/horizon-hdr/Cargo.toml                                  [A1]
 M horizon/crates/horizon-hdr/src/lib.rs                                  [A1]
 M horizon/crates/horizon-threads/src/process_memory.rs                   [A3]
 A horizon/platform/ios-bridge/Cargo.toml                                 [A5]
-A horizon/platform/ios-bridge/src/lib.rs                                 [A5]
+A horizon/platform/ios-bridge/src/lib.rs                                 [A5, P]
 ```
 
 ## G. Rebase checklist
