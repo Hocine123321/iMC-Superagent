@@ -365,6 +365,14 @@ pub(super) fn spawn_loader(
     let handle = std::thread::Builder::new()
         .name("resource-loader".into())
         .spawn(move || {
+            // iMC (iOS, Play without closing the app): when the shell armed the hold, the engine is up
+            // with its window but does not read any game file until Play (docs/IN_PROCESS_PLAY_DESIGN.md).
+            // Unarmed, which is every other build and run, this returns at once. If the app is leaving,
+            // the loader ends without loading and says so, so `Loading` reports it like any failed load.
+            if !horizon_client_input::ios_hold::wait_for_play() {
+                let _ = sender.send(LoaderMsg::Done(Err("the app closed before Play".into())));
+                return;
+            }
             let mut pack_error = None;
             let root = packs::startup_root(&vanilla_root, &settings.resource_packs, &[])
                 .unwrap_or_else(|error| {

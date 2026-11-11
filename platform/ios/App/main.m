@@ -12,12 +12,15 @@
 #import "SessionLog.h"
 #import "Launcher.h"
 #import "LauncherModel.h"
+#import "EngineOverlay.h"
 #include <crt_externs.h>   // _NSGetArgc / _NSGetArgv (iOS 13 SDK and later)
 #include <stdlib.h>
 #include <string.h>
 
 // Exported by libhorizon_ios_bridge.a (horizon/platform/ios-bridge).
 extern void horizon_ios_main(void);
+// Play without closing the app (horizon/platform/ios-bridge). Only used when launcher.txt says inProcessPlay:true.
+extern void horizon_ios_arm_hold(void);
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
@@ -48,13 +51,24 @@ int main(int argc, char *argv[]) {
         // Read-only checks, run before the engine; see Diagnostics.m.
         HorizonWriteDiagnostics(root);
 
+        // Play without closing the app (M24 stage 3, OFF unless launcher.txt says inProcessPlay:true): the
+        // engine starts now, shows its window, and waits; the launcher is presented over that window
+        // (EngineOverlay.swift) and Play lets the engine load, in this same process. The engine's
+        // arguments are the ones below, without a session file: the signed-in account is written when
+        // Play is pressed, because the engine refuses a session file older than two minutes.
+        BOOL inProcess = [[HZLauncherModel shared] inProcessPlay];
+        if (inProcess) {
+            horizon_ios_breadcrumb("main: in-process play, engine starts and waits for Play");
+            HZSetInProcessPlay(YES);
+        }
+
         // The app is a launcher first. The game is a separate run of the app (winit's EventLoop
         // cannot start after UIApplicationMain), so Play leaves a one-shot flag and the next open
         // starts the game. Without the flag, or without usable game files, the launcher opens.
         // The check is the engine's own, so a folder the engine would refuse never reaches it.
         BOOL startGame = [[HZLauncherModel shared] consumeStartGameFlag] || skipLauncher;
         NSString *why = nil;
-        if (!startGame || [[HZLauncherModel shared] checkFiles:&why] != HZFilesReady) {
+        if (!inProcess && (!startGame || [[HZLauncherModel shared] checkFiles:&why] != HZFilesReady)) {
             horizon_ios_breadcrumb(startGame ? "main: start flag set but the files are not usable, launcher"
                                              : "main: opening the launcher");
             return HorizonRunLauncher(argc, argv);
@@ -70,17 +84,23 @@ int main(int argc, char *argv[]) {
         // reads it. No account, or a file that cannot be written safely, means the game starts
         // offline as before. This never stops the game from starting.
         HZRemoveStaleGameSession(root);
-        NSString *session = HZWriteGameSession(root);
-        HZNoteGameSession(root, session != nil);
-        horizon_ios_breadcrumb(session ? "main: signed-in account handed to the game"
-                                       : "main: no account for the game, offline");
+        // In-process the file is written when Play is pressed (it may be minutes after launch).
+        NSString *session = inProcess ? nil : HZWriteGameSession(root);
+        if (!inProcess) {
+            HZNoteGameSession(root, session != nil);
+            horizon_ios_breadcrumb(session ? "main: signed-in account handed to the game"
+                                           : "main: no account for the game, offline");
+        }
 
         // A new argv: the program name, then ours, then anything the system passed (a debugger's,
         // or a launch argument from a developer's scheme).
+        // In-process the path is always passed: the file does not exist yet, and the engine reads it when
+        // it loads (after Play). A missing file means offline, exactly as with no account.
+        NSString *sessionPath = inProcess ? [root stringByAppendingPathComponent:@"game-session.json"] : session;
         const char *extra[] = { "--resources", resources.fileSystemRepresentation,
                                 "--home", home.fileSystemRepresentation,
-                                "--session-file", session ? session.fileSystemRepresentation : "" };
-        int extras = session ? 6 : 4;
+                                "--session-file", sessionPath ? sessionPath.fileSystemRepresentation : "" };
+        int extras = sessionPath ? 6 : 4;
         int n = 1 + extras + (argc > 1 ? argc - 1 : 0);
         char **args = calloc((size_t)n + 1, sizeof(char *));
         int i = 0;
@@ -97,6 +117,10 @@ int main(int argc, char *argv[]) {
         *_NSGetArgc() = n;
         *_NSGetArgv() = args;
 
+        if (inProcess) {
+            horizon_ios_arm_hold();                 // the engine's loader waits for Play
+            HZEngineOverlayStart();                 // presents the launcher over winit's window
+        }
         horizon_ios_breadcrumb("main: handing over to the engine");
         horizon_ios_main();
     }

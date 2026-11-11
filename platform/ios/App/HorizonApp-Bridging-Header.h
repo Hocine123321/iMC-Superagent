@@ -12,3 +12,10 @@
 #import "LauncherAccount.h"
 #import "LauncherDiagnostics.h"
 #import "LauncherFiles.h"
+#import "EngineOverlay.h"
+#import "GameSession.h"
+
+#include <stdbool.h>
+// Play without closing the app (horizon/platform/ios-bridge, libhorizon_ios_bridge.a).
+extern bool horizon_ios_play(void);
+extern int horizon_ios_hold_state(void);

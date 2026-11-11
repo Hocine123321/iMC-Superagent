@@ -58,9 +58,25 @@ final class LauncherState: ObservableObject {
     /// The same Play as before: the game is a separate run of the app, so leave the one-shot flag and exit.
     /// (Replaced by an in-process start in M24 stage 3.)
     func play() {
+        // Play without closing the app (flag inProcessPlay:true): the engine is already running and waiting.
+        if HZIsInProcessPlay() { playInProcess(); return }
         guard model.setStartGameFlag() else { startFailed = true; return }
         HorizonCrashReporterCleanExit()
         exit(0)
+    }
+
+    /// The engine waits for Play. The account is written now (the engine refuses a file older than two minutes and
+    /// reads it when it loads), then the engine is released and the launcher goes away. A failure leaves the
+    /// launcher up and says so; nothing is half done, because the engine only loads on `horizon_ios_play()`.
+    private func playInProcess() {
+        let root = model.root as String
+        var problem: NSString?
+        guard model.checkFiles(&problem) == .ready else { refresh(); startFailed = true; return }
+        HZRemoveStaleGameSession(root)
+        let session = HZWriteGameSession(root)          // nil: not signed in, the game starts offline as before
+        HZNoteGameSession(root, session != nil)
+        guard horizon_ios_play() else { startFailed = true; return }
+        EngineOverlay.dismiss()
     }
 
     func cancelPlay() { _ = model.consumeStartGameFlag() }

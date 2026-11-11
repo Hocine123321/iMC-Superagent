@@ -664,6 +664,24 @@ struct Options {
     session_stdin: bool,
 }
 impl Options {
+    /// iMC (iOS, hold armed): reads the session file now, after Play. Same rules as the start's read; a
+    /// bad or missing file leaves the game offline. Does nothing when there is no file to read.
+    fn apply_late_session(&mut self) {
+        let Some(path) = self.session_file.take().filter(|p| !p.is_empty()) else {
+            return;
+        };
+        if !std::path::Path::new(&path).exists() {
+            return;
+        }
+        match horizon_client::auth::AuthSession::load(path.as_ref()) {
+            Ok(session) => {
+                self.player_name = Some(session.name.clone());
+                horizon_client::auth::set_current(session);
+                horizon_client::auth::prepare_chat_keys(true);
+            }
+            Err(e) => eprintln!("Horizon: not signed in: {e}"),
+        }
+    }
     /// The name to join servers with: the one given, else the offline name kept
     /// next to options.txt (created on first use).
     fn player_name(&self) -> String {
@@ -698,7 +716,11 @@ impl Options {
         }
         // The launcher's account: online-mode servers need it. A bad file
         // only leaves the game offline.
-        let session = if o.session_stdin {
+        // iMC (iOS): with the hold armed the account is read after Play (`Options::apply_late_session`),
+        // because the launcher writes the file at Play and the engine refuses a file older than 2 minutes.
+        let session = if horizon_client_input::ios_hold::armed() && o.session_file.is_some() {
+            Ok(None)
+        } else if o.session_stdin {
             let mut text = String::new();
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
                 .map_err(|e| e.to_string())
@@ -17224,7 +17246,12 @@ pub fn run_with() -> Result<()> {
         horizon_client::spans::record_here(true);
     }
     let vanilla_root = options.resources.clone();
-    if let Some(error) = missing_resources(&vanilla_root) {
+    // iMC (iOS): with the hold armed the app starts the engine before Play, and the launcher on top has
+    // already checked the files (it only lets Play through when they are usable), so a missing folder is
+    // not an error yet: the loader fails with its own message if it still is when Play is pressed.
+    if let Some(error) = missing_resources(&vanilla_root)
+        .filter(|_| !horizon_client_input::ios_hold::armed())
+    {
         // The game build started by hand (the release's zip), not by the
         // launcher: a window says where to get it. Scripts and servers get
         // the error.

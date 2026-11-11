@@ -23,6 +23,15 @@ two runs of the app:
 3. **Open** again: `main.m` finds the flag, deletes it, checks the game files, and starts the engine.
 4. Close the game and open the app: no flag, so the launcher is back.
 
+**Play without closing the app (experimental, off by default, written 2026-11-11, never built or run).**
+Put the line `inProcessPlay:true` in `Documents/Horizon/launcher.txt` (there is no switch in Settings yet).
+Then `main.m` always starts the engine, arms its hold (`horizon_ios_arm_hold`), and the engine opens its window
+and waits. `EngineOverlay.swift` presents the SwiftUI launcher over that window. Play writes the signed-in
+account's session file, calls `horizon_ios_play()` (the engine's loader goes on), and dismisses the launcher.
+Quit Game still ends the process (returning to the launcher is the next step). Delete the line to go back to the
+relaunch. If the engine's window never appears the launcher is not shown (20 s limit, noted in the breadcrumb);
+the way out is to remove the line in the Files app. `openGame:1` and `start-game` are ignored in this mode.
+
 **Open straight into the game** (a switch in Settings under Start-up, off by default) skips steps 1 and 2:
 with it on and the game files ready, opening the app starts the game. The setting is a line,
 `openGame:1`, in `Documents/Horizon/launcher.txt`, because `main.m` reads it before the engine and

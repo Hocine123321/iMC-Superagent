@@ -33,6 +33,7 @@ Done when: every current screen is reachable, the tab bar is the system's, and t
 
 ### 3. Engine: Play and Quit Game in one process (M24 stage 3, `horizon/` edit)
 Written against our engine revision, using the fork's design (one winit loop, the engine replaced in place, the launcher presented over the game window). Behind a flag until the numbers are good.
+**Status 2026-11-11, step 1 written (not built, not run):** the engine starts with the app and waits for Play; the launcher is presented over winit's window; flag `inProcessPlay:true` in `launcher.txt`, off by default (`HORIZON_CHANGES.md` section P, `LAUNCHER.md`). Left: Quit Game back to the launcher (`App::Idle`), the five-cycle memory test, the phone test of the orientation change and the presentation timing.
 Done when: Play starts with no app relaunch, Quit Game returns to the launcher, and memory after 5 repeated cycles on the phone stays flat (the fork only measured two cycles on a simulator).
 
 ### 4. Download screen and wording (M24 stage 4)

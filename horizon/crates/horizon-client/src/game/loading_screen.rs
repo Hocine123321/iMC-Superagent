@@ -312,6 +312,8 @@ impl Loading {
         horizon_client::gfx::breadcrumb("finish: starting the game");
         let handoff_at = Instant::now();
         let mut options = self.options.take().ok_or("loading already finished")?;
+        // iMC (iOS): the account the launcher wrote at Play (a no-op unless the hold was armed).
+        options.apply_late_session();
         options.resources = loaded.root.clone();
         // StartupMenu owns world selection until it can hand it to Game.
         options.world = None;

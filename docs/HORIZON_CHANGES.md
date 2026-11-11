@@ -417,6 +417,31 @@ Sections D, I, J and K name `Page::Imc`, `Act::Imc` and the old buttons; they ar
 section. **Re-apply:** the `graphics_ui.rs` additions are self-contained; let the compiler list each
 `match` on `Item` and `Page`.
 
+## P. Play without closing the app: the hold (2026-11-11, M24 stage 3, step 1)
+
+The engine can now be started with the app and told to wait for Play before it reads any game file.
+**Off unless the iOS shell arms it** (`launcher.txt` `inProcessPlay:true`, default off): every other
+build and run, including desktop, behaves exactly as before. This is step 1 of `IN_PROCESS_PLAY_DESIGN.md`
+(start, wait, load on Play). **Not in this step:** returning from the game to the launcher (`App::Idle`,
+Quit Game). Written and unit tested in the input crate (4 tests); the other edits are type checked on Linux
+(`cargo check -p horizon-client --no-default-features`) and compiled for iOS by CI only.
+
+| File | Change |
+|---|---|
+| `crates/horizon-client-input/src/ios_hold.rs` | **New, 150 lines with tests.** A process-wide state (`Disarmed`, `Waiting`, `Released`, `Cancelled`) behind a mutex and condvar: `arm`, `armed`, `play`, `cancel`, `state`, `wait_for_play`. No unsafe code, no dependency. |
+| `crates/horizon-client-input/src/lib.rs` | `pub mod ios_hold;` |
+| `crates/horizon-client/src/client_lib.rs` | `pub use horizon_client_input::ios_hold;` so the bridge reaches it as `horizon_client::ios_hold` and `Cargo.toml` and `Cargo.lock` do not change. |
+| `crates/horizon-client/src/game/startup_menu.rs` | `spawn_loader`: the loader thread first calls `ios_hold::wait_for_play()`. Unarmed it returns at once. If the hold is cancelled it sends `Done(Err)` and ends. |
+| `crates/horizon-client/src/game.rs` | `run_with`: the "prepared files are missing" early return is skipped while the hold is armed (the window must exist first; the launcher only lets Play through with usable files, and the loader fails with its own message otherwise). `Options::read`: the `--session-file` read is skipped while armed. New `Options::apply_late_session`, the same read run after Play. |
+| `crates/horizon-client/src/game/loading_screen.rs` | `Loading::finish` calls `options.apply_late_session()` first (a no-op unless the hold was armed). Why: the engine refuses a session file older than two minutes and the launcher writes it at Play, not at app start. |
+| `platform/ios-bridge/src/lib.rs` | Four exported C functions: `horizon_ios_arm_hold`, `horizon_ios_play`, `horizon_ios_cancel_hold`, `horizon_ios_hold_state`. |
+
+**Re-apply:** copy `ios_hold.rs`, add the two one-line exports, and put the three small hooks where the loader
+is spawned, where the missing-files check and the session read are in `run_with` / `Options::read`, and at the
+top of `Loading::finish`. **Risk:** low with the hold unarmed (each hook is one `armed()` or `wait_for_play()`
+call that returns at once). Armed, the unknown is the phone: whether winit's window is presented behind the
+launcher and what the orientation change does.
+
 ## F. Index: all 60 files
 
 `A` = new file, `M` = modified. Section in brackets.

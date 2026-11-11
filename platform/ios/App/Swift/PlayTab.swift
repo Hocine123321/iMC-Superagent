@@ -32,15 +32,15 @@ struct PlayTab: View {
         .scrollIndicators(.hidden)
         .screenBackground()
         .alert("Start the game?", isPresented: $confirmPlay) {
-            Button("Close app and play") { state.play() }
+            Button(HZIsInProcessPlay() ? "Play" : "Close app and play") { state.play() }
             Button("Cancel", role: .cancel) { state.cancelPlay() }
         } message: {
-            Text("iMC Horizon closes now. Open it again and the game starts.")
+            Text(HZIsInProcessPlay() ? "The game loads now." : "iMC Horizon closes now. Open it again and the game starts.")
         }
         .alert("Could not start", isPresented: $state.startFailed) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("The launcher could not write its start flag in the Horizon folder.")
+            Text("The game could not be started. Check Game files, then try again.")
         }
     }
 

@@ -11,6 +11,7 @@ pub mod gameplay_guide;
 pub mod held;
 pub mod imc_settings;
 pub mod input;
+pub mod ios_hold;
 pub mod interaction_input;
 pub mod key_names;
 pub mod keybinds;

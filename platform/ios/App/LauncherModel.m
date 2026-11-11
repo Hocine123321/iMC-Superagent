@@ -94,6 +94,14 @@
     return NO;
 }
 
+- (BOOL)inProcessPlay {
+    NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
+    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
+        if ([line hasPrefix:@"inProcessPlay:"]) return [[line substringFromIndex:14] hasPrefix:@"true"];
+    }
+    return NO;   // off by default
+}
+
 - (void)setOpensGameDirectly:(BOOL)on {
     // Keeps the other lines of launcher.txt (the appearance choice lives there too).
     NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";

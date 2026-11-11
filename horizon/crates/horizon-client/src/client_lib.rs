@@ -170,6 +170,7 @@ pub use horizon_client_input::gameplay_guide;
 pub use horizon_client_input::held;
 pub use horizon_client_input::input;
 pub use horizon_client_input::interaction_input;
+pub use horizon_client_input::ios_hold;
 pub use horizon_client_input::key_names;
 pub use horizon_client_input::keybinds;
 pub use horizon_client_input::keymapping;
