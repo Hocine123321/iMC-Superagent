@@ -14,6 +14,9 @@
 #import "LauncherFiles.h"
 #import "EngineOverlay.h"
 #import "GameSession.h"
+#import "AccountClient.h"
+#import "Downloader.h"
+#import "DownloadRate.h"
 
 #include <stdbool.h>
 // Play without closing the app (horizon/platform/ios-bridge, libhorizon_ios_bridge.a).

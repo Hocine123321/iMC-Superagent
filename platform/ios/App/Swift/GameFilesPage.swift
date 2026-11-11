@@ -57,7 +57,7 @@ final class FilesController: ObservableObject {
                 else { self.say("Import finished", "The game files are on the phone. Go back and press Play."); Haptics.success() }
             }
         }, progress: { [weak self] fraction, file in
-            Task { @MainActor in self?.fraction = fraction; self?.current = file }
+            Task { @MainActor in self?.fraction = fraction; self?.current = file ?? "" }
         })
     }
 
