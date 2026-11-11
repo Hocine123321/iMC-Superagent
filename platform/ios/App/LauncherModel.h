@@ -47,7 +47,8 @@ typedef NS_ENUM(NSInteger, HZFilesState) {
 // on the main thread with nil on success.
 - (void)importFolderAtURL:(NSURL *)source
                completion:(void (^)(NSError *error))completion
-                 progress:(void (^)(double fraction, NSString *file))progress;
+                 progress:(void (^)(double fraction, NSString *file))progress
+    NS_SWIFT_NAME(importFolder(at:completion:progress:));
 
 // The text of the newest crash report and the game's log, for the Diagnostics screen.
 - (NSString *)crashReportText;

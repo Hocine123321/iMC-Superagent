@@ -40,7 +40,7 @@ typedef NS_ENUM(NSInteger, HZDownloadPhase) {
 // Runs to the end on a background queue and calls `progress` on the main queue (at most about four
 // times a second, and on every phase change). Safe to call again after a failure or a cancel: files
 // that are whole are kept, so it carries on.
-- (void)startWithProgress:(void (^)(HZDownloadProgress *p))progress;
+- (void)startWithProgress:(void (^)(HZDownloadProgress *p))progress NS_SWIFT_NAME(start(progress:));
 // Stops soon. Files already installed stay; a file in flight is dropped.
 - (void)cancel;
 @property (atomic, readonly) BOOL running;

@@ -73,12 +73,12 @@ struct SettingsTab: View {
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: Route.self) { route in
                 switch route {
-                case .account: HostedPage(title: "Account") { HZLauncherAccountController() }
+                case .account: AccountPage()
                 case .look: LookSettingsPage()
                 case .game: GameSettingsPage()
                 case .marketplace: MarketplaceSettingsPage()
-                case .download: HostedPage(title: "Download") { HZLauncherDownloadController() }
-                case .files: HostedPage(title: "Game files") { HZLauncherFilesController() }
+                case .download: DownloadPage()
+                case .files: GameFilesPage()
                 case .fileManager: HostedNav(title: "File manager") { HZLauncherFileManagerController(path: "") }
                 case .diagnostics: HostedPage(title: "Diagnostics") { HZLauncherDiagnosticsController() }
                 case .about: AboutPage()

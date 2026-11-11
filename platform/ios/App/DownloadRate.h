@@ -16,7 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 // "4.2 MB/s", or nil while unknown.
 - (nullable NSString *)speedText;
 // "about 3 min left", "about 40 s left", or nil while unknown or when nothing is left.
-- (nullable NSString *)timeLeftTextForRemaining:(unsigned long long)remainingBytes;
+- (nullable NSString *)timeLeftTextForRemaining:(unsigned long long)remainingBytes NS_SWIFT_NAME(timeLeftText(remaining:));
 
 // Pure helpers, public so a test can read them.
 + (NSString *)formatSpeed:(double)bytesPerSecond;

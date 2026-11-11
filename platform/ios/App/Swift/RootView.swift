@@ -18,9 +18,9 @@ struct RootView: View {
                     .navigationBarHidden(true)
                     .navigationDestination(for: PlayRoute.self) { route in
                         switch route {
-                        case .download: HostedPage(title: "Download") { HZLauncherDownloadController() }
-                        case .files: HostedPage(title: "Game files") { HZLauncherFilesController() }
-                        case .account: HostedPage(title: "Account") { HZLauncherAccountController() }
+                        case .download: DownloadPage()
+                        case .files: GameFilesPage()
+                        case .account: AccountPage()
                         case .diagnostics: HostedPage(title: "Diagnostics") { HZLauncherDiagnosticsController() }
                         }
                     }
