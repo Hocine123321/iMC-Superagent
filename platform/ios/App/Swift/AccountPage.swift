@@ -56,7 +56,7 @@ final class AccountController: ObservableObject {
                 self.statusLine = "Waiting for you to finish on the Microsoft page."
                 UIPasteboard.general.string = code.userCode
                 self.startTimer()
-                HZAccountClient.shared().completeSignIn(code, status: { [weak self] line in
+                HZAccountClient.shared().completeSign(in: code, status: { [weak self] line in
                     Task { @MainActor in if self?.code === code { self?.statusLine = line } }
                 }, done: { [weak self] account, err in
                     Task { @MainActor in
