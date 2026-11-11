@@ -9,7 +9,7 @@ what `horizon/` holds now, why each exists, and how to put it back.
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
   Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **63 files,
-  +9612 / -92: 19 new files, 44 modified, none deleted.** Only 92 upstream lines are removed or
+  +9667 / -92: 19 new files, 44 modified, none deleted.** Only 92 upstream lines are removed or
   rewritten in total; everything else is added.
 - **The patches are the exact diff** (generated, not hand-written). When this prose and a patch
   disagree, the patch is right. There are two copies of the same diff:
@@ -456,6 +456,24 @@ the `App::Idle` state that drops the game and shows the launcher, and the bridge
 | `horizon/crates/horizon-client/src/game/startup_menu.rs` | `menu_action`: `Action::Quit if ios_hold::request_quit() => {}` before the old arm. |
 | `horizon/crates/horizon-client/src/game/world_session.rs` | `title_action`: the same guard before `Action::Quit => event_loop.exit()`. |
 
+### P.3 Orientation while the app waits for Play (2026-11-11, fix for the start-up swap)
+
+Phone test of v43: the app still started in landscape and turned to portrait, and the engine's boot screen showed
+for a split second. The engine created its window landscape-only (A7), so an app that waits for Play started in
+landscape. Now, while the hold is armed and Play has not been pressed, the window is created **portrait**, like the
+launcher over it; the first turn after Play switches it to landscape, once (`WindowExtIOS::set_valid_orientations`).
+Unarmed (every other build and run) both calls answer "no" and the window is landscape-only as before.
+
+| File | Change |
+|---|---|
+| `horizon/crates/horizon-client-input/src/ios_hold.rs` | `window_starts_portrait()` and `take_landscape_switch()` (one unit test, 7 in all). |
+| `horizon/crates/horizon-client-input/src/window.rs` | `with_horizon_icon`: iOS window orientation is Portrait while `window_starts_portrait()`, else Landscape as before. |
+| `horizon/crates/horizon-client/src/game/loading_screen.rs` | `Loading::about_to_wait`: iOS only, `take_landscape_switch()` then `set_valid_orientations(Landscape)`. |
+
+**Risk:** low unarmed. Armed, untested on the phone: whether the system now starts in portrait, and the switch to
+landscape on Play. Only `horizon-client-input` was type-checked for aarch64-apple-ios locally; `horizon-client`
+needs Apple's C toolchain (`ring`), so only CI compiles that hook.
+
 ## F. Index: all 63 files
 
 `A` = new file, `M` = modified. Section in brackets.
@@ -476,7 +494,7 @@ A horizon/crates/horizon-client-input/src/touch_calibration.rs           [J1]
 A horizon/crates/horizon-client-input/src/touch_editor_tools.rs          [L1]
 A horizon/crates/horizon-client-input/src/touch_extras.rs                [K1]
 A horizon/crates/horizon-client-input/src/touch_layout.rs                [I1, K2]
-M horizon/crates/horizon-client-input/src/window.rs                      [A4, A7]
+M horizon/crates/horizon-client-input/src/window.rs                      [A4, A7, P]
 M horizon/crates/horizon-client-render/src/gfx.rs                        [A1, B]
 M horizon/crates/horizon-client-render/src/gfx/flat.rs                   [A6]
 M horizon/crates/horizon-client-render/src/graphics.rs                   [A1]

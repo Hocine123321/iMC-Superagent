@@ -16,52 +16,74 @@ import UIKit
 public final class EngineOverlay: NSObject {
     private static var cover: UIWindow?
     private static var begun = false
-    private static var observer: NSObjectProtocol?
+    private static var dismissing = false
 
-    /// Starts. Once. The window is made as soon as a window scene exists (winit has called UIApplicationMain by then).
+    /// Starts. Once. Called from main() before the engine, so these observers are registered before winit's own:
+    /// winit makes its window visible inside UIApplicationDidFinishLaunching, and notification observers run in the
+    /// order they were added, so this cover is already up (same run loop pass, before any frame is drawn) when the
+    /// engine's window becomes visible. The first version polled the main queue every 0.2 s instead, and the
+    /// engine's black boot screen, in landscape, was on screen until the first poll found it.
     @objc public static func begin() {
         guard !begun else { return }
         begun = true
-        attempt(left: 100)   // 100 x 0.1 s = 10 s
+        let center = NotificationCenter.default
+        // queue: nil runs the block synchronously on the posting thread (the main thread), in registration order.
+        center.addObserver(forName: UIApplication.didFinishLaunchingNotification, object: nil, queue: nil) { _ in
+            raise(first: true)
+        }
+        // winit makes its window key again when the app becomes active; the cover must be the key window, because
+        // the key window's controller decides the orientation (portrait for the launcher).
+        center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { _ in
+            raise(first: false)
+        }
+        // winit's own launch handler runs right after ours and makes ITS window key (landscape only). Take key back
+        // on the next run loop passes, for the first second, so the system settles the orientation on the portrait
+        // launcher and not on the engine's window. Also the safety net if the launch notification already passed.
+        for delay in [0.0, 0.05, 0.15, 0.3, 0.6, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { raise(first: false) }
+        }
+        // If nothing could be shown within 10 s, say so and switch the experiment off for the next open.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            if cover == nil {
+                horizon_ios_breadcrumb("overlay: no launcher window after 10 s")
+                HZLauncherModel.shared()?.inProcessPlay = false
+            }
+        }
     }
 
     /// The launcher is up (or about to be).
     static var isPresented: Bool { cover != nil }
 
-    private static func attempt(left: Int) {
-        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
-            if left > 0 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { attempt(left: left - 1) }
-            } else {
-                horizon_ios_breadcrumb("overlay: no window scene appeared, no launcher")
-                // Switch the experiment off so the next open is the normal launcher, where Settings can reach it.
-                HZLauncherModel.shared()?.inProcessPlay = false
-            }
-            return
+    /// Makes the cover (once) and keeps it the key window. Legacy single-window app (no scene manifest): a plain
+    /// UIWindow, like the old launcher's, not tied to a scene.
+    private static func raise(first: Bool) {
+        if cover == nil {
+            guard UIApplication.shared.applicationState != .background || first else { return }
+            let window = UIWindow(frame: UIScreen.main.bounds)
+            window.windowLevel = UIWindow.Level.alert + 1       // above whatever winit shows, including its keyboard
+            window.backgroundColor = HZTheme.background()
+            let host = OverlayHost(rootView: RootView())
+            host.view.backgroundColor = HZTheme.background()
+            window.rootViewController = host
+            cover = window
+            // The saved System / Dark / Light choice, as the launcher window had it.
+            window.overrideUserInterfaceStyle = HZTheme.appearance() == .dark ? .dark
+                : HZTheme.appearance() == .light ? .light : .unspecified
+            HZTheme.applyAppearanceToWindows()
+            horizon_ios_breadcrumb(first ? "overlay: launcher window up at launch" : "overlay: launcher window up (late)")
         }
-        guard cover == nil else { return }
-        let window = UIWindow(windowScene: scene)
-        window.windowLevel = UIWindow.Level.alert + 1       // above whatever winit shows, including its keyboard
-        window.backgroundColor = HZTheme.background()
-        let host = OverlayHost(rootView: RootView())
-        host.view.backgroundColor = HZTheme.background()
-        window.rootViewController = host
-        cover = window
-        // The saved System / Dark / Light choice, as the launcher window had it.
-        HZTheme.applyAppearanceToWindows()
-        window.overrideUserInterfaceStyle = HZTheme.appearance() == .dark ? .dark
-            : HZTheme.appearance() == .light ? .light : .unspecified
+        guard let window = cover, !dismissing else { return }
         window.isHidden = false
-        window.makeKeyAndVisible()
-        // The scene may start landscape (the engine's window asks for it); the launcher is portrait.
-        turn(scene, to: .portrait)
-        horizon_ios_breadcrumb("overlay: launcher window up over the engine's")
+        if !window.isKeyWindow { window.makeKeyAndVisible() }
+        // The scene (if the system has made one) may start landscape because the engine's window asks for it.
+        turn(window.windowScene, to: .portrait)
     }
 
     /// Play was accepted by the engine: turn the scene to landscape under the cover, then fade the cover away.
     @objc public static func dismiss() {
         guard let window = cover else { return }
         let scene = window.windowScene
+        dismissing = true
         cover = nil
         turn(scene, to: .landscape)
         // The turn takes a moment; the cover stays until the scene is landscape (or 1.5 s, whichever is first), so the

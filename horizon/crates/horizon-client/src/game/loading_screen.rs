@@ -253,6 +253,16 @@ impl Loading {
             event_loop.exit();
             return;
         }
+        // iMC (iOS): the window waited for Play as a portrait window; the game is landscape (ios_hold).
+        #[cfg(target_os = "ios")]
+        if horizon_client_input::ios_hold::take_landscape_switch()
+            && let Some(w) = &self.window
+        {
+            winit::platform::ios::WindowExtIOS::set_valid_orientations(
+                &**w,
+                winit::platform::ios::ValidOrientations::Landscape,
+            );
+        }
         if let Err(error) = self.poll_menu_resources() {
             self.error = Some(error);
             event_loop.exit();

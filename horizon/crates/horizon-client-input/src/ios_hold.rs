@@ -96,6 +96,27 @@ pub fn wait_for_play() -> bool {
     }
 }
 
+// ---- Orientation (the launcher is portrait, the game is landscape) ----
+//
+// The engine's window used to be created landscape-only, which made an app that waits for Play start in
+// landscape and turn to portrait under the launcher (a visible swap, with the engine's boot screen in it).
+// While the hold waits, the window is created portrait-capable instead; once Play releases the hold it is
+// switched to landscape, once. Unarmed (every other build and run) neither function changes anything.
+
+static LANDSCAPE_SWITCHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether a window created now should be portrait (the hold is armed and Play has not been pressed).
+pub fn window_starts_portrait() -> bool {
+    *lock() == State::Waiting
+}
+
+/// For the engine loop, every turn while loading: true exactly once, on the first turn after Play released the
+/// hold, meaning "switch the window to landscape now". False when never armed, still waiting, or cancelled.
+pub fn take_landscape_switch() -> bool {
+    use std::sync::atomic::Ordering::SeqCst;
+    *lock() == State::Released && !LANDSCAPE_SWITCHED.swap(true, SeqCst)
+}
+
 // ---- Quit Game back to the launcher (M24 stage 3, step 2; nothing calls `allow_quit_to_launcher` yet) ----
 //
 // Same rule as the hold: off unless the shell turns it on, so every build behaves as before. When it is on,
@@ -147,6 +168,24 @@ mod tests {
 
     fn reset() {
         *lock() = State::Disarmed;
+    }
+
+    #[test]
+    fn orientation_follows_the_hold() {
+        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        reset();
+        LANDSCAPE_SWITCHED.store(false, std::sync::atomic::Ordering::SeqCst);
+        // Never armed: landscape as always, and no switch is ever asked for.
+        assert!(!window_starts_portrait());
+        assert!(!take_landscape_switch());
+        arm();
+        assert!(window_starts_portrait());
+        assert!(!take_landscape_switch(), "still waiting for Play");
+        assert!(play());
+        assert!(!window_starts_portrait());
+        assert!(take_landscape_switch(), "the first turn after Play");
+        assert!(!take_landscape_switch(), "only once");
+        reset();
     }
 
     #[test]

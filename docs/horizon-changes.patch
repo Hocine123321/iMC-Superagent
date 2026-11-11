@@ -1700,10 +1700,10 @@ index 0000000..04884ac
 +}
 diff --git a/horizon/crates/horizon-client-input/src/ios_hold.rs b/horizon/crates/horizon-client-input/src/ios_hold.rs
 new file mode 100644
-index 0000000..bc9d3a5
+index 0000000..97aa3f9
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/ios_hold.rs
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,291 @@
 +//! The iOS app's "hold": the engine starts with the app, but waits for Play before it loads.
 +//!
 +//! Today Play on iOS relaunches the app (the launcher is one run, the game another). The in-process
@@ -1802,6 +1802,27 @@ index 0000000..bc9d3a5
 +    }
 +}
 +
++// ---- Orientation (the launcher is portrait, the game is landscape) ----
++//
++// The engine's window used to be created landscape-only, which made an app that waits for Play start in
++// landscape and turn to portrait under the launcher (a visible swap, with the engine's boot screen in it).
++// While the hold waits, the window is created portrait-capable instead; once Play releases the hold it is
++// switched to landscape, once. Unarmed (every other build and run) neither function changes anything.
++
++static LANDSCAPE_SWITCHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
++/// Whether a window created now should be portrait (the hold is armed and Play has not been pressed).
++pub fn window_starts_portrait() -> bool {
++    *lock() == State::Waiting
++}
++
++/// For the engine loop, every turn while loading: true exactly once, on the first turn after Play released the
++/// hold, meaning "switch the window to landscape now". False when never armed, still waiting, or cancelled.
++pub fn take_landscape_switch() -> bool {
++    use std::sync::atomic::Ordering::SeqCst;
++    *lock() == State::Released && !LANDSCAPE_SWITCHED.swap(true, SeqCst)
++}
++
 +// ---- Quit Game back to the launcher (M24 stage 3, step 2; nothing calls `allow_quit_to_launcher` yet) ----
 +//
 +// Same rule as the hold: off unless the shell turns it on, so every build behaves as before. When it is on,
@@ -1853,6 +1874,24 @@ index 0000000..bc9d3a5
 +
 +    fn reset() {
 +        *lock() = State::Disarmed;
++    }
++
++    #[test]
++    fn orientation_follows_the_hold() {
++        let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
++        reset();
++        LANDSCAPE_SWITCHED.store(false, std::sync::atomic::Ordering::SeqCst);
++        // Never armed: landscape as always, and no switch is ever asked for.
++        assert!(!window_starts_portrait());
++        assert!(!take_landscape_switch());
++        arm();
++        assert!(window_starts_portrait());
++        assert!(!take_landscape_switch(), "still waiting for Play");
++        assert!(play());
++        assert!(!window_starts_portrait());
++        assert!(take_landscape_switch(), "the first turn after Play");
++        assert!(!take_landscape_switch(), "only once");
++        reset();
 +    }
 +
 +    #[test]
@@ -6062,7 +6101,7 @@ index 0000000..83dfc58
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-input/src/window.rs b/horizon/crates/horizon-client-input/src/window.rs
-index 4848eea..e020657 100644
+index 4848eea..5579ba7 100644
 --- a/horizon/crates/horizon-client-input/src/window.rs
 +++ b/horizon/crates/horizon-client-input/src/window.rs
 @@ -601,6 +601,13 @@ pub fn borderless_fullscreen(window: &winit::window::Window) -> winit::window::F
@@ -6079,21 +6118,27 @@ index 4848eea..e020657 100644
  /// A window created fullscreen that the system also marked maximized enters it again
  /// unmaximized ([`enter_fullscreen`]); only Windows does that.
  pub fn settle_created_fullscreen(window: &winit::window::Window, fullscreen: bool) {
-@@ -667,6 +674,13 @@ pub fn with_horizon_icon(
+@@ -667,6 +674,19 @@ pub fn with_horizon_icon(
      #[cfg(target_os = "windows")]
      let attributes =
          winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attributes, icon);
 +    // iMC (iOS): the app's Info.plist allows portrait for the launcher, so the game window says it is
 +    // landscape only. winit's default would let the game turn upright.
++    // While the app waits for Play (crate::ios_hold) the window is portrait, like the launcher over it, so the
++    // app does not start in landscape and turn; Play switches it to landscape (`Loading::about_to_wait`).
 +    #[cfg(target_os = "ios")]
 +    let attributes = winit::platform::ios::WindowAttributesExtIOS::with_valid_orientations(
 +        attributes,
-+        winit::platform::ios::ValidOrientations::Landscape,
++        if crate::ios_hold::window_starts_portrait() {
++            winit::platform::ios::ValidOrientations::Portrait
++        } else {
++            winit::platform::ios::ValidOrientations::Landscape
++        },
 +    );
      attributes
  }
  
-@@ -674,6 +688,15 @@ pub fn with_horizon_icon(
+@@ -674,6 +694,15 @@ pub fn with_horizon_icon(
  mod tests {
      use super::*;
  
@@ -8414,7 +8459,7 @@ index 0000000..1b72e1c
 +    }
 +}
 diff --git a/horizon/crates/horizon-client/src/game/loading_screen.rs b/horizon/crates/horizon-client/src/game/loading_screen.rs
-index 3769189..07c2e60 100644
+index 3769189..ae9aed3 100644
 --- a/horizon/crates/horizon-client/src/game/loading_screen.rs
 +++ b/horizon/crates/horizon-client/src/game/loading_screen.rs
 @@ -108,9 +108,14 @@ impl Loading {
@@ -8465,7 +8510,24 @@ index 3769189..07c2e60 100644
                  horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
                  self.renderer = Some(r);
              }
-@@ -292,9 +303,17 @@ impl Loading {
+@@ -242,6 +253,16 @@ impl Loading {
+             event_loop.exit();
+             return;
+         }
++        // iMC (iOS): the window waited for Play as a portrait window; the game is landscape (ios_hold).
++        #[cfg(target_os = "ios")]
++        if horizon_client_input::ios_hold::take_landscape_switch()
++            && let Some(w) = &self.window
++        {
++            winit::platform::ios::WindowExtIOS::set_valid_orientations(
++                &**w,
++                winit::platform::ios::ValidOrientations::Landscape,
++            );
++        }
+         if let Err(error) = self.poll_menu_resources() {
+             self.error = Some(error);
+             event_loop.exit();
+@@ -292,9 +313,17 @@ impl Loading {
              );
          }
      }
@@ -8484,7 +8546,7 @@ index 3769189..07c2e60 100644
          options.resources = loaded.root.clone();
          // StartupMenu owns world selection until it can hand it to Game.
          options.world = None;
-@@ -306,6 +325,7 @@ impl Loading {
+@@ -306,6 +335,7 @@ impl Loading {
              renderer.release_surface();
          }
          let renderer_at = Instant::now();
@@ -8492,7 +8554,7 @@ index 3769189..07c2e60 100644
          let renderer = startup::time("renderer.world", || {
              build_renderer(
                  window.clone(),
-@@ -328,7 +348,40 @@ impl Loading {
+@@ -328,7 +358,40 @@ impl Loading {
              "Horizon: world renderer ready after {} ms",
              self.started.elapsed().as_millis()
          );
@@ -8533,7 +8595,7 @@ index 3769189..07c2e60 100644
          // Audio is created on the main thread, after the core is ready.
          let audio = if !options.execution_role.is_client() {
              Audio::silent(&options.resources)
-@@ -341,7 +394,9 @@ impl Loading {
+@@ -341,7 +404,9 @@ impl Loading {
          let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));
          let game_at = Instant::now();
          let game_step = startup::step("handoff.start_game");
@@ -8544,7 +8606,7 @@ index 3769189..07c2e60 100644
              res,
              loaded.pack,
              gui,
-@@ -354,12 +409,34 @@ impl Loading {
+@@ -354,12 +419,34 @@ impl Loading {
              Some(self.settings.clone()),
              loaded.game_cpu,
              loaded.entity_models,
@@ -8582,7 +8644,7 @@ index 3769189..07c2e60 100644
          game.window = Some(window);
          game.renderer = Some(renderer);
          game.world_renderer_ready = true;
-@@ -380,10 +457,61 @@ impl Loading {
+@@ -380,10 +467,61 @@ impl Loading {
              renderer_ms,
              game_ms
          );
@@ -8645,7 +8707,7 @@ index 3769189..07c2e60 100644
  /// The application: the loading screen until the resources are ready, then
  /// the game itself, on the same event loop and window.
  pub(super) enum App {
-@@ -397,6 +525,16 @@ impl ApplicationHandler for App {
+@@ -397,6 +535,16 @@ impl ApplicationHandler for App {
              App::Ready(game) => game.resumed(event_loop),
          }
      }
@@ -8662,7 +8724,7 @@ index 3769189..07c2e60 100644
      fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
          match self {
              App::Loading(loading) => loading.window_event(event_loop, id, event),
-@@ -434,7 +572,7 @@ impl ApplicationHandler for App {
+@@ -434,7 +582,7 @@ impl ApplicationHandler for App {
                      None => Step::Waiting,
                      Some(Err(e)) => Step::Failed(e.into()),
                      Some(Ok(loaded)) => match loading.finish(loaded) {

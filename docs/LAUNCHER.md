@@ -26,7 +26,7 @@ two runs of the app:
 **Play without closing the app (experimental, off by default, written 2026-11-11, never built or run).**
 Turn on **Settings > Game > Experimental > Play without closing the app**, then close the app fully and open it again (the flag is read once, at launch, so it does nothing until then). The switch writes the line `inProcessPlay:true` in `Documents/Horizon/launcher.txt`; typing the line by hand works too (true, 1, yes or on, any capitals, stray spaces tolerated).
 Then `main.m` always starts the engine, arms its hold (`horizon_ios_arm_hold`), and the engine opens its window
-and waits. `EngineOverlay.swift` puts the SwiftUI launcher in a window of its own above that one (since 2026-11-11; the first version presented it from winit's controller, and the engine's black boot screen flashed in and out behind it). Play writes the signed-in
+and waits. `EngineOverlay.swift` puts the SwiftUI launcher in a window of its own above that one (since 2026-11-11; the first version presented it from winit's controller, and the engine's black boot screen flashed in and out behind it). The cover is raised from a `didFinishLaunching` observer registered before winit's, and while the hold waits the engine's window is portrait (`ios_hold::window_starts_portrait`), switched to landscape on Play. Play writes the signed-in
 account's session file, calls `horizon_ios_play()` (the engine's loader goes on), and dismisses the launcher.
 Quit Game still ends the process (returning to the launcher is the next step). Delete the line to go back to the
 relaunch. If the engine's window never appears the launcher is not shown (20 s limit, noted in the breadcrumb);

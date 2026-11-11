@@ -676,10 +676,16 @@ pub fn with_horizon_icon(
         winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attributes, icon);
     // iMC (iOS): the app's Info.plist allows portrait for the launcher, so the game window says it is
     // landscape only. winit's default would let the game turn upright.
+    // While the app waits for Play (crate::ios_hold) the window is portrait, like the launcher over it, so the
+    // app does not start in landscape and turn; Play switches it to landscape (`Loading::about_to_wait`).
     #[cfg(target_os = "ios")]
     let attributes = winit::platform::ios::WindowAttributesExtIOS::with_valid_orientations(
         attributes,
-        winit::platform::ios::ValidOrientations::Landscape,
+        if crate::ios_hold::window_starts_portrait() {
+            winit::platform::ios::ValidOrientations::Portrait
+        } else {
+            winit::platform::ios::ValidOrientations::Landscape
+        },
     );
     attributes
 }
