@@ -53,7 +53,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // ---- Network (main queue callbacks) ----
 - (void)searchText:(NSString *)text offset:(NSUInteger)offset completion:(void (^)(NSArray<HZModrinthProject *> *_Nullable projects, NSUInteger total, NSString *_Nullable error))done;
-- (void)newestVersionOf:(HZModrinthProject *)project completion:(void (^)(HZModrinthVersion *_Nullable version, NSString *_Nullable error))done;
+- (void)newestVersionOf:(HZModrinthProject *)project completion:(void (^)(HZModrinthVersion *_Nullable version, NSString *_Nullable error))done NS_SWIFT_NAME(newestVersion(of:completion:));
 @end
 
 NS_ASSUME_NONNULL_END

@@ -50,10 +50,10 @@ typedef NS_ENUM(NSInteger, HZMarketSupport) {
 @property (nonatomic, copy) NSArray<HZMarketRevoked *> *revoked;
 
 // The newest version of `project` for Minecraft `game` whose file was not taken down; nil if none.
-- (nullable HZMarketVersion *)installableVersionOf:(HZMarketProject *)project game:(NSString *)game;
+- (nullable HZMarketVersion *)installableVersionOf:(HZMarketProject *)project game:(NSString *)game NS_SWIFT_NAME(installableVersion(of:game:));
 // Why this project's file was taken down, or nil. `sha256` nil asks about the project as a whole.
-- (nullable HZMarketRevoked *)revocationFor:(NSString *)projectId sha256:(nullable NSString *)sha256;
-- (nullable HZMarketProject *)projectWithId:(NSString *)projectId;
+- (nullable HZMarketRevoked *)revocationFor:(NSString *)projectId sha256:(nullable NSString *)sha256 NS_SWIFT_NAME(revocation(for:sha256:));
+- (nullable HZMarketProject *)projectWithId:(NSString *)projectId NS_SWIFT_NAME(project(id:));
 
 // Parses and checks. On a problem returns nil and sets `error` to a sentence for the player.
 // A higher schema than 1 is refused with "update the app". A project that fails a rule makes the

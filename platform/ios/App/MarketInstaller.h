@@ -36,7 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Why `project`'s `version` cannot be installed, or nil. Covers: kind, signed, revoked, host, name,
 // size, and the registry file rules again (an installer that trusts the parser alone is one bug away).
-+ (nullable NSString *)refusalFor:(HZMarketProject *)project version:(HZMarketVersion *)version index:(HZMarketIndex *)index;
++ (nullable NSString *)refusalFor:(HZMarketProject *)project version:(HZMarketVersion *)version index:(HZMarketIndex *)index NS_SWIFT_NAME(refusal(for:version:index:));
 
 // The path (relative to home) a file of this project goes to, or nil for a kind that has no folder.
 + (nullable NSString *)relativePathForProject:(HZMarketProject *)project version:(HZMarketVersion *)version;
@@ -51,9 +51,9 @@ NS_ASSUME_NONNULL_BEGIN
 // ---- The record on disk ----
 
 - (NSArray<HZInstalledEntry *> *)installed;
-- (nullable HZInstalledEntry *)installedEntryForProject:(NSString *)projectId;
+- (nullable HZInstalledEntry *)installedEntryForProject:(NSString *)projectId NS_SWIFT_NAME(installedEntry(project:));
 // The same for a Modrinth pack (the record keys it by Modrinth's project id and source).
-- (nullable HZInstalledEntry *)installedEntryForModrinth:(NSString *)modrinthId;
+- (nullable HZInstalledEntry *)installedEntryForModrinth:(NSString *)modrinthId NS_SWIFT_NAME(installedEntry(modrinth:));
 - (nullable NSString *)removeModrinth:(NSString *)modrinthId;
 
 // ---- Doing it ----

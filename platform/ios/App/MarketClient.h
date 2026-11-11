@@ -31,7 +31,7 @@ typedef NS_ENUM(NSInteger, HZMarketSource) {
 - (instancetype)initWithCacheDirectory:(NSString *)cacheDirectory;
 
 // Calls `done` on the main queue. `force` skips the ten-minute freshness window (pull to refresh).
-- (void)loadForce:(BOOL)force completion:(void (^)(HZMarketResult *result))done;
+- (void)loadForce:(BOOL)force completion:(void (^)(HZMarketResult *result))done NS_SWIFT_NAME(load(force:completion:));
 
 + (NSString *)indexURL;
 + (NSTimeInterval)freshSeconds;   // 600

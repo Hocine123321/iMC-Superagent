@@ -79,7 +79,7 @@ struct SettingsTab: View {
                 case .marketplace: MarketplaceSettingsPage()
                 case .download: DownloadPage()
                 case .files: GameFilesPage()
-                case .fileManager: HostedNav(title: "File manager") { HZLauncherFileManagerController(path: "") }
+                case .fileManager: FileManagerPage(path: "")
                 case .diagnostics: HostedPage(title: "Diagnostics") { HZLauncherDiagnosticsController() }
                 case .about: AboutPage()
                 }

@@ -41,15 +41,15 @@ typedef NS_ENUM(NSInteger, HZDeleteRisk) {
 - (nullable NSArray<HZFileEntry *> *)listFolder:(NSString *)relativePath error:(NSString *_Nullable *_Nullable)error;
 
 // Bytes under a path (walks it: call off the main thread). A symlink is counted as itself, never followed.
-- (unsigned long long)sizeOf:(NSString *)relativePath;
+- (unsigned long long)sizeOf:(NSString *)relativePath NS_SWIFT_NAME(size(of:));
 
 // What deleting this would destroy, and the sentence to show before asking.
-- (HZDeleteRisk)deleteRiskOf:(NSString *)relativePath;
-+ (NSString *)warningForRisk:(HZDeleteRisk)risk name:(NSString *)name size:(unsigned long long)size;
+- (HZDeleteRisk)deleteRiskOf:(NSString *)relativePath NS_SWIFT_NAME(deleteRisk(of:));
++ (NSString *)warningForRisk:(HZDeleteRisk)risk name:(NSString *)name size:(unsigned long long)size NS_SWIFT_NAME(warning(for:name:size:));
 
 // A valid new name for a file or folder: not empty, not "." or "..", no "/" or "\\" or control
 // characters, at most 255 UTF-8 bytes. nil when fine, else the reason.
-+ (nullable NSString *)problemWithName:(NSString *)name;
++ (nullable NSString *)problemWithName:(NSString *)name NS_SWIFT_NAME(problem(withName:));
 
 // The changes themselves. Each returns nil on success or a message. None follows a symlink out.
 - (nullable NSString *)deletePath:(NSString *)relativePath;
@@ -57,7 +57,7 @@ typedef NS_ENUM(NSInteger, HZDeleteRisk) {
 - (nullable NSString *)createFolderNamed:(NSString *)name inside:(NSString *)relativeFolder;
 
 // The path of the parent folder ("" for the root), and the join of a folder and a name.
-+ (NSString *)parentOf:(NSString *)relativePath;
++ (NSString *)parentOf:(NSString *)relativePath NS_SWIFT_NAME(parent(of:));
 + (NSString *)join:(NSString *)folder name:(NSString *)name;
 @end
 

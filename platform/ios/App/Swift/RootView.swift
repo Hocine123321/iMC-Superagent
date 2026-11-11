@@ -28,7 +28,7 @@ struct RootView: View {
             .tabItem { Label("Play", systemImage: "play.circle.fill") }
             .tag(Tab.play)
 
-            Hosted { HZLauncherMarketplaceController() }
+            MarketplaceTab()
                 .tabItem { Label("Packs", systemImage: "shippingbox.fill") }
                 .tag(Tab.packs)
 
