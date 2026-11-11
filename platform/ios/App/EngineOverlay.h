@@ -1,5 +1,5 @@
 // Play without closing the app (M24 stage 3, OFF unless launcher.txt says inProcessPlay:true).
-// The engine (winit) owns the UIWindow; this presents the SwiftUI launcher over it and takes it away on Play.
+// The engine (winit) owns its UIWindow; the SwiftUI launcher lives in a window of its own above it (so the engine's boot screen is never seen) and is taken away on Play.
 #import <Foundation/Foundation.h>
 
 #ifdef __cplusplus

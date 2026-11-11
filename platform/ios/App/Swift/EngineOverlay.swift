@@ -1,74 +1,83 @@
 import SwiftUI
 import UIKit
 
-/// Presents the launcher over winit's window while the engine waits for Play (M24 stage 3, flag inProcessPlay).
+/// Puts the launcher over the engine while it waits for Play (M24 stage 3, flag inProcessPlay).
 ///
-/// The engine owns the UIWindow and its root view controller. This only presents a full-screen controller from the
-/// topmost one, and dismisses it on Play. Nothing here is tested on a device: the timing of winit creating its window
-/// (so the bounded retry), the orientation change from the landscape window to the portrait launcher, and the
-/// dismissal are the three things to look at on the phone.
+/// The engine owns the UIWindow and its root view controller, and while it waits for Play it paints its own black
+/// "Horizon" boot screen. Presenting the launcher from that window's controller (the first version) let that screen
+/// show for the polling gap at start, and again every time the scene turned between the landscape engine window and
+/// the portrait launcher: the boot screen flashed in and out. So the launcher now has a window of its own, above the
+/// engine's, created as soon as the application exists and filled with the launcher's background from its first frame.
+/// The engine's window is never uncovered while the launcher is up; on Play the scene is turned to landscape under
+/// the cover and the cover fades away only afterwards.
+///
+/// Nothing here is tested on a device except what the owner reports: the first version worked, with the flash.
 @objc(HZEngineOverlay)
 public final class EngineOverlay: NSObject {
-    private static var presented: UIViewController?
+    private static var cover: UIWindow?
     private static var begun = false
+    private static var observer: NSObjectProtocol?
 
-    /// Starts looking for winit's window. Once.
+    /// Starts. Once. The window is made as soon as a window scene exists (winit has called UIApplicationMain by then).
     @objc public static func begin() {
         guard !begun else { return }
         begun = true
-        attempt(left: 100)   // 100 x 0.2 s = 20 s
+        attempt(left: 100)   // 100 x 0.1 s = 10 s
     }
 
     /// The launcher is up (or about to be).
-    static var isPresented: Bool { presented != nil }
+    static var isPresented: Bool { cover != nil }
 
     private static func attempt(left: Int) {
-        guard let top = topController(), top.view.window != nil else {
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
             if left > 0 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { attempt(left: left - 1) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { attempt(left: left - 1) }
             } else {
-                // The window never appeared. Do not leave the player on a black screen with a waiting engine: the
-                // launcher itself would be gone, so say so in the log and let the engine's own screen show.
-                horizon_ios_breadcrumb("overlay: winit's window never appeared, no launcher")
+                horizon_ios_breadcrumb("overlay: no window scene appeared, no launcher")
                 // Switch the experiment off so the next open is the normal launcher, where Settings can reach it.
                 HZLauncherModel.shared()?.inProcessPlay = false
             }
             return
         }
-        guard presented == nil else { return }
+        guard cover == nil else { return }
+        let window = UIWindow(windowScene: scene)
+        window.windowLevel = UIWindow.Level.alert + 1       // above whatever winit shows, including its keyboard
+        window.backgroundColor = HZTheme.background()
         let host = OverlayHost(rootView: RootView())
         host.view.backgroundColor = HZTheme.background()
-        host.modalPresentationStyle = .fullScreen
-        host.modalPresentationCapturesStatusBarAppearance = true
-        presented = host
+        window.rootViewController = host
+        cover = window
         // The saved System / Dark / Light choice, as the launcher window had it.
         HZTheme.applyAppearanceToWindows()
-        top.present(host, animated: false) {
-            turn(host.view.window?.windowScene, to: .portrait)
-            horizon_ios_breadcrumb("overlay: launcher presented over the engine's window")
-        }
+        window.overrideUserInterfaceStyle = HZTheme.appearance() == .dark ? .dark
+            : HZTheme.appearance() == .light ? .light : .unspecified
+        window.isHidden = false
+        window.makeKeyAndVisible()
+        // The scene may start landscape (the engine's window asks for it); the launcher is portrait.
+        turn(scene, to: .portrait)
+        horizon_ios_breadcrumb("overlay: launcher window up over the engine's")
     }
 
-    /// Play was accepted by the engine: take the launcher away and turn the scene to landscape for the game.
+    /// Play was accepted by the engine: turn the scene to landscape under the cover, then fade the cover away.
     @objc public static func dismiss() {
-        guard let host = presented else { return }
-        let scene = host.view.window?.windowScene
-        presented = nil
-        host.dismiss(animated: true) {
-            turn(scene, to: .landscape)
-            horizon_ios_breadcrumb("overlay: launcher dismissed, game on screen")
+        guard let window = cover else { return }
+        let scene = window.windowScene
+        cover = nil
+        turn(scene, to: .landscape)
+        // The turn takes a moment; the cover stays until the scene is landscape (or 1.5 s, whichever is first), so the
+        // portrait-to-landscape swap and the engine's first frames happen out of sight.
+        waitForLandscape(scene, left: 15) {
+            UIView.animate(withDuration: 0.3, animations: { window.alpha = 0 }) { _ in
+                window.isHidden = true
+                horizon_ios_breadcrumb("overlay: launcher dismissed, game on screen")
+            }
         }
     }
 
-    /// The view controller to present from: the top of the key window of the foreground scene.
-    private static func topController() -> UIViewController? {
-        let windows = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-        let window = windows.first(where: \.isKeyWindow) ?? windows.first
-        var top = window?.rootViewController
-        while let next = top?.presentedViewController { top = next }
-        return top
+    private static func waitForLandscape(_ scene: UIWindowScene?, left: Int, then done: @escaping () -> Void) {
+        let landscape = scene?.interfaceOrientation.isLandscape ?? true
+        if landscape || left == 0 { done(); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { waitForLandscape(scene, left: left - 1, then: done) }
     }
 
     /// Asks the scene to turn now, rather than when the phone is next moved.
@@ -86,9 +95,10 @@ public final class EngineOverlay: NSObject {
     }
 }
 
-/// Portrait for the launcher; the engine's own controller is landscape only (A7), and a presented controller's
-/// mask is what the system asks while it is on top.
+/// Portrait for the launcher; the engine's own controller is landscape only (A7), and the key window's controller is
+/// the one the system asks while the cover is up.
 private final class OverlayHost: UIHostingController<RootView> {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .portrait }
+    override var prefersStatusBarHidden: Bool { false }
 }

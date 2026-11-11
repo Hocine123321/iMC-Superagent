@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
 
         if (inProcess) {
             horizon_ios_arm_hold();                 // the engine's loader waits for Play
-            HZEngineOverlayStart();                 // presents the launcher over winit's window
+            HZEngineOverlayStart();                 // puts the launcher in its own window above winit's
         }
         horizon_ios_breadcrumb("main: handing over to the engine");
         horizon_ios_main();
