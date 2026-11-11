@@ -1700,10 +1700,10 @@ index 0000000..04884ac
 +}
 diff --git a/horizon/crates/horizon-client-input/src/ios_hold.rs b/horizon/crates/horizon-client-input/src/ios_hold.rs
 new file mode 100644
-index 0000000..6966e9e
+index 0000000..bc9d3a5
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/ios_hold.rs
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,252 @@
 +//! The iOS app's "hold": the engine starts with the app, but waits for Play before it loads.
 +//!
 +//! Today Play on iOS relaunches the app (the launcher is one run, the game another). The in-process
@@ -1802,6 +1802,46 @@ index 0000000..6966e9e
 +    }
 +}
 +
++// ---- Quit Game back to the launcher (M24 stage 3, step 2; nothing calls `allow_quit_to_launcher` yet) ----
++//
++// Same rule as the hold: off unless the shell turns it on, so every build behaves as before. When it is on,
++// Quit Game asks [`request_quit`] first; a `true` answer means "the shell will take the engine back to Idle,
++// do not end the process", `false` means "end the process as always".
++
++static QUIT_ALLOWED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++static QUIT_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
++/// The shell says Quit Game may return to the launcher instead of ending the process.
++/// Only meaningful once the hold is armed; without it [`request_quit`] still answers `false`.
++pub fn allow_quit_to_launcher() {
++    QUIT_ALLOWED.store(true, std::sync::atomic::Ordering::SeqCst);
++}
++
++/// Quit Game was chosen. `true`: the request is recorded and the process must NOT end (the engine loop turns it
++/// into Idle through [`take_quit_request`]). `false`: not allowed, end the process as before.
++pub fn request_quit() -> bool {
++    use std::sync::atomic::Ordering::SeqCst;
++    if !armed() || !QUIT_ALLOWED.load(SeqCst) {
++        return false;
++    }
++    QUIT_REQUESTED.store(true, SeqCst);
++    true
++}
++
++/// For the engine loop, once per turn: whether a quit was requested since the last call (and clears it).
++pub fn take_quit_request() -> bool {
++    QUIT_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst)
++}
++
++/// The engine is back to Idle: the hold waits for Play again, so the next Play loads a fresh game.
++/// A cancelled hold stays cancelled.
++pub fn rearm_after_quit() {
++    let mut state = lock();
++    if *state == State::Released {
++        *state = State::Waiting;
++    }
++}
++
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
@@ -1874,6 +1914,46 @@ index 0000000..6966e9e
 +        assert!(play(), "pressing Play twice is harmless");
 +        cancel();
 +        assert_eq!(state(), State::Released, "a started game is not cancelled");
++    }
++
++    #[test]
++    fn quit_is_refused_unless_armed_and_allowed() {
++        let _serial = SERIAL.lock().unwrap();
++        reset();
++        QUIT_ALLOWED.store(false, std::sync::atomic::Ordering::SeqCst);
++        QUIT_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
++        assert!(!request_quit(), "disarmed: the process ends as always");
++        arm();
++        assert!(!request_quit(), "armed but not allowed: the process ends as always");
++        assert!(!take_quit_request());
++        allow_quit_to_launcher();
++        assert!(request_quit());
++        assert!(take_quit_request());
++        assert!(!take_quit_request(), "taking it clears it");
++        QUIT_ALLOWED.store(false, std::sync::atomic::Ordering::SeqCst);
++    }
++
++    #[test]
++    fn after_a_quit_the_next_play_loads_again() {
++        let _serial = SERIAL.lock().unwrap();
++        reset();
++        arm();
++        assert!(play());
++        rearm_after_quit();
++        assert_eq!(state(), State::Waiting);
++        let (sender, receiver) = mpsc::channel();
++        let loader = std::thread::spawn(move || sender.send(wait_for_play()).unwrap());
++        assert!(receiver.recv_timeout(Duration::from_millis(100)).is_err(), "must wait for the second Play");
++        assert!(play());
++        assert_eq!(receiver.recv_timeout(Duration::from_secs(5)), Ok(true));
++        loader.join().unwrap();
++        // A cancelled hold is not re-armed.
++        cancel();
++        reset();
++        arm();
++        cancel();
++        rearm_after_quit();
++        assert_eq!(state(), State::Cancelled);
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-input/src/keybinds.rs b/horizon/crates/horizon-client-input/src/keybinds.rs
@@ -8905,7 +8985,7 @@ index 14e7f92..48482bb 100644
          Err(e) => Err(e),
      }
 diff --git a/horizon/crates/horizon-client/src/game/startup_menu.rs b/horizon/crates/horizon-client/src/game/startup_menu.rs
-index 3fd7216..36238d4 100644
+index 3fd7216..b580545 100644
 --- a/horizon/crates/horizon-client/src/game/startup_menu.rs
 +++ b/horizon/crates/horizon-client/src/game/startup_menu.rs
 @@ -365,6 +365,14 @@ pub(super) fn spawn_loader(
@@ -8945,6 +9025,15 @@ index 3fd7216..36238d4 100644
                  // The startup menu runs before the game opens a control socket,
                  // and before its sound engine (no clicks, no volume previews,
                  // and no music tracks to list or play).
+@@ -743,6 +757,8 @@ impl Loading {
+ 
+     fn menu_action(&mut self, event_loop: &dyn EventLoopCtl, action: Action) {
+         match action {
++            // iOS in-process Play (off unless the shell allows it): Quit Game is a request to go back to the launcher.
++            Action::Quit if horizon_client_input::ios_hold::request_quit() => {}
+             Action::Quit => event_loop.exit(),
+             Action::Options => self.open_menu_options(Page::Main),
+             Action::Accessibility => self.open_menu_options(Page::Accessibility),
 diff --git a/horizon/crates/horizon-client/src/game/touch.rs b/horizon/crates/horizon-client/src/game/touch.rs
 new file mode 100644
 index 0000000..0967a8e
@@ -10768,6 +10857,19 @@ index 2a956b1..ffb545c 100644
                  .with_fullscreen(fullscreen.then_some(winit::window::Fullscreen::Borderless(None)))
                  .with_visible(!self.options.offscreen),
          ) {
+diff --git a/horizon/crates/horizon-client/src/game/world_session.rs b/horizon/crates/horizon-client/src/game/world_session.rs
+index 976ec58..ace07b2 100644
+--- a/horizon/crates/horizon-client/src/game/world_session.rs
++++ b/horizon/crates/horizon-client/src/game/world_session.rs
+@@ -24,6 +24,8 @@ impl Game<'_> {
+         match action {
+             // A splitscreen player's title never ends the process (P1's does).
+             Action::Quit if self.options.split_guest => {}
++            // iOS in-process Play (off unless the shell allows it): see startup_menu.rs.
++            Action::Quit if horizon_client_input::ios_hold::request_quit() => {}
+             Action::Quit => event_loop.exit(),
+             Action::Options => self.open_options(true),
+             Action::Accessibility => {
 diff --git a/horizon/crates/horizon-hdr/Cargo.toml b/horizon/crates/horizon-hdr/Cargo.toml
 index bd16669..b610a8f 100644
 --- a/horizon/crates/horizon-hdr/Cargo.toml

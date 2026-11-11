@@ -96,6 +96,46 @@ pub fn wait_for_play() -> bool {
     }
 }
 
+// ---- Quit Game back to the launcher (M24 stage 3, step 2; nothing calls `allow_quit_to_launcher` yet) ----
+//
+// Same rule as the hold: off unless the shell turns it on, so every build behaves as before. When it is on,
+// Quit Game asks [`request_quit`] first; a `true` answer means "the shell will take the engine back to Idle,
+// do not end the process", `false` means "end the process as always".
+
+static QUIT_ALLOWED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static QUIT_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The shell says Quit Game may return to the launcher instead of ending the process.
+/// Only meaningful once the hold is armed; without it [`request_quit`] still answers `false`.
+pub fn allow_quit_to_launcher() {
+    QUIT_ALLOWED.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Quit Game was chosen. `true`: the request is recorded and the process must NOT end (the engine loop turns it
+/// into Idle through [`take_quit_request`]). `false`: not allowed, end the process as before.
+pub fn request_quit() -> bool {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !armed() || !QUIT_ALLOWED.load(SeqCst) {
+        return false;
+    }
+    QUIT_REQUESTED.store(true, SeqCst);
+    true
+}
+
+/// For the engine loop, once per turn: whether a quit was requested since the last call (and clears it).
+pub fn take_quit_request() -> bool {
+    QUIT_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The engine is back to Idle: the hold waits for Play again, so the next Play loads a fresh game.
+/// A cancelled hold stays cancelled.
+pub fn rearm_after_quit() {
+    let mut state = lock();
+    if *state == State::Released {
+        *state = State::Waiting;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +208,45 @@ mod tests {
         assert!(play(), "pressing Play twice is harmless");
         cancel();
         assert_eq!(state(), State::Released, "a started game is not cancelled");
+    }
+
+    #[test]
+    fn quit_is_refused_unless_armed_and_allowed() {
+        let _serial = SERIAL.lock().unwrap();
+        reset();
+        QUIT_ALLOWED.store(false, std::sync::atomic::Ordering::SeqCst);
+        QUIT_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(!request_quit(), "disarmed: the process ends as always");
+        arm();
+        assert!(!request_quit(), "armed but not allowed: the process ends as always");
+        assert!(!take_quit_request());
+        allow_quit_to_launcher();
+        assert!(request_quit());
+        assert!(take_quit_request());
+        assert!(!take_quit_request(), "taking it clears it");
+        QUIT_ALLOWED.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn after_a_quit_the_next_play_loads_again() {
+        let _serial = SERIAL.lock().unwrap();
+        reset();
+        arm();
+        assert!(play());
+        rearm_after_quit();
+        assert_eq!(state(), State::Waiting);
+        let (sender, receiver) = mpsc::channel();
+        let loader = std::thread::spawn(move || sender.send(wait_for_play()).unwrap());
+        assert!(receiver.recv_timeout(Duration::from_millis(100)).is_err(), "must wait for the second Play");
+        assert!(play());
+        assert_eq!(receiver.recv_timeout(Duration::from_secs(5)), Ok(true));
+        loader.join().unwrap();
+        // A cancelled hold is not re-armed.
+        cancel();
+        reset();
+        arm();
+        cancel();
+        rearm_after_quit();
+        assert_eq!(state(), State::Cancelled);
     }
 }

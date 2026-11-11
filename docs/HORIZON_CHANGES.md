@@ -8,8 +8,8 @@ what `horizon/` holds now, why each exists, and how to put it back.
 ## How this stays true
 
 - **The baseline is commit `fa80441`** ("Move upstream Horizon into horizon/"), the pristine import.
-  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **62 files,
-  +9528 / -92: 19 new files, 43 modified, none deleted.** Only 92 upstream lines are removed or
+  Everything below is `git diff fa80441 HEAD -- horizon`. At the time of writing that is **63 files,
+  +9612 / -92: 19 new files, 44 modified, none deleted.** Only 92 upstream lines are removed or
   rewritten in total; everything else is added.
 - **The patches are the exact diff** (generated, not hand-written). When this prose and a patch
   disagree, the patch is right. There are two copies of the same diff:
@@ -35,7 +35,7 @@ could not be built without it) and some of it (the iMC Settings page, Auto Perfo
 goes beyond a touch fix. They are listed here as the facts they are, not as approved. **Each entry
 carries a risk, so you can decide what to keep when you rebase.**
 
-Entries are grouped by what they are for, not by file. Every one of the 62 files appears once, in
+Entries are grouped by what they are for, not by file. Every one of the 63 files appears once, in
 the index at the end.
 
 ---
@@ -428,7 +428,7 @@ Quit Game). Written and unit tested in the input crate (4 tests); the other edit
 
 | File | Change |
 |---|---|
-| `horizon/crates/horizon-client-input/src/ios_hold.rs` | **New, 150 lines with tests.** A process-wide state (`Disarmed`, `Waiting`, `Released`, `Cancelled`) behind a mutex and condvar: `arm`, `armed`, `play`, `cancel`, `state`, `wait_for_play`. No unsafe code, no dependency. |
+| `horizon/crates/horizon-client-input/src/ios_hold.rs` | **New, 252 lines with tests.** A process-wide state (`Disarmed`, `Waiting`, `Released`, `Cancelled`) behind a mutex and condvar: `arm`, `armed`, `play`, `cancel`, `state`, `wait_for_play`. No unsafe code, no dependency. |
 | `horizon/crates/horizon-client-input/src/lib.rs` | `pub mod ios_hold;` |
 | `horizon/crates/horizon-client/src/client_lib.rs` | `pub use horizon_client_input::ios_hold;` so the bridge reaches it as `horizon_client::ios_hold` and `Cargo.toml` and `Cargo.lock` do not change. |
 | `horizon/crates/horizon-client/src/game/startup_menu.rs` | `spawn_loader`: the loader thread first calls `ios_hold::wait_for_play()`. Unarmed it returns at once. If the hold is cancelled it sends `Done(Err)` and ends. |
@@ -442,7 +442,21 @@ top of `Loading::finish`. **Risk:** low with the hold unarmed (each hook is one 
 call that returns at once). Armed, the unknown is the phone: whether winit's window is presented behind the
 launcher and what the orientation change does.
 
-## F. Index: all 62 files
+### P.2 Quit Game request (2026-11-11, step 2a, groundwork only)
+
+Nothing calls it yet, so no behaviour changes. `ios_hold.rs` gains `allow_quit_to_launcher`, `request_quit`,
+`take_quit_request` and `rearm_after_quit` (2 more unit tests, 6 in all). The two Quit Game sites call
+`ios_hold::request_quit()` first: it answers `true` only when the hold is armed **and** the shell called
+`allow_quit_to_launcher` (nobody does), so the process still ends exactly as before. What is NOT written:
+the `App::Idle` state that drops the game and shows the launcher, and the bridge export that allows it.
+
+| File | Change |
+|---|---|
+| `horizon/crates/horizon-client-input/src/ios_hold.rs` | The four functions above and two tests. |
+| `horizon/crates/horizon-client/src/game/startup_menu.rs` | `menu_action`: `Action::Quit if ios_hold::request_quit() => {}` before the old arm. |
+| `horizon/crates/horizon-client/src/game/world_session.rs` | `title_action`: the same guard before `Action::Quit => event_loop.exit()`. |
+
+## F. Index: all 63 files
 
 `A` = new file, `M` = modified. Section in brackets.
 
@@ -504,6 +518,7 @@ A horizon/crates/horizon-client/src/game/touch_calibration.rs            [J1]
 A horizon/crates/horizon-client/src/game/touch_cursor.rs                 [N]
 A horizon/crates/horizon-client/src/game/touch_editor.rs                 [I1, K2, L2, O]
 M horizon/crates/horizon-client/src/game/window_handler.rs               [A4, C2]
+M horizon/crates/horizon-client/src/game/world_session.rs                [P]
 M horizon/crates/horizon-hdr/Cargo.toml                                  [A1]
 M horizon/crates/horizon-hdr/src/lib.rs                                  [A1]
 M horizon/crates/horizon-threads/src/process_memory.rs                   [A3]

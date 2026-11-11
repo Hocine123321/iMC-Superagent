@@ -757,6 +757,8 @@ impl Loading {
 
     fn menu_action(&mut self, event_loop: &dyn EventLoopCtl, action: Action) {
         match action {
+            // iOS in-process Play (off unless the shell allows it): Quit Game is a request to go back to the launcher.
+            Action::Quit if horizon_client_input::ios_hold::request_quit() => {}
             Action::Quit => event_loop.exit(),
             Action::Options => self.open_menu_options(Page::Main),
             Action::Accessibility => self.open_menu_options(Page::Accessibility),
