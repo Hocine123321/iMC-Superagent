@@ -68,6 +68,8 @@ final class Prefs: ObservableObject {
 
     // Game
     @Published var opensGameDirectly: Bool { didSet { HZLauncherModel.shared()!.opensGameDirectly = opensGameDirectly } }
+    /// Play without closing the app (experimental). Read by main.m at launch, so a change needs the app restarted.
+    @Published var inProcessPlay: Bool { didSet { HZLauncherModel.shared()!.inProcessPlay = inProcessPlay } }
     @Published var confirmPlay: Bool { didSet { LauncherFile.set("confirmPlay", String(confirmPlay)) } }
     @Published var keepAwake: Bool { didSet { LauncherFile.set("keepAwake", String(keepAwake)) } }
 
@@ -91,6 +93,7 @@ final class Prefs: ObservableObject {
         compactLists = HZPrefs.compactLists()
         showHead = LauncherFile.flag("showHead", default: true)
         opensGameDirectly = HZLauncherModel.shared()!.opensGameDirectly
+        inProcessPlay = HZLauncherModel.shared()!.inProcessPlay
         confirmPlay = LauncherFile.flag("confirmPlay", default: true)
         keepAwake = LauncherFile.flag("keepAwake", default: true)
         useModrinth = HZPrefs.useModrinth()
@@ -112,6 +115,7 @@ final class Prefs: ObservableObject {
         confirmPlay = true
         keepAwake = true
         opensGameDirectly = false
+        inProcessPlay = false
         useModrinth = false
         showMods = false
         showShaders = false

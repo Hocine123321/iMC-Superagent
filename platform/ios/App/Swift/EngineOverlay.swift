@@ -30,6 +30,8 @@ public final class EngineOverlay: NSObject {
                 // The window never appeared. Do not leave the player on a black screen with a waiting engine: the
                 // launcher itself would be gone, so say so in the log and let the engine's own screen show.
                 horizon_ios_breadcrumb("overlay: winit's window never appeared, no launcher")
+                // Switch the experiment off so the next open is the normal launcher, where Settings can reach it.
+                HZLauncherModel.shared()?.inProcessPlay = false
             }
             return
         }

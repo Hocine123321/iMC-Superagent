@@ -36,7 +36,7 @@ typedef NS_ENUM(NSInteger, HZFilesState) {
 // "Play without closing the app" (M24 stage 3, docs/IN_PROCESS_PLAY_DESIGN.md): launcher.txt line
 // `inProcessPlay:true`. OFF unless the file says so. When on, main.m starts the engine at launch, the
 // engine waits for Play, and the launcher is shown over the engine's window. Off keeps the relaunch.
-@property (nonatomic, readonly) BOOL inProcessPlay;
+@property (nonatomic) BOOL inProcessPlay;
 // Whether this open should skip the launcher and start the game. Call it before the crash
 // reporter is installed, because that rewrites the evidence this reads. False when the setting is
 // off, the files are not usable, the file <root>/open-launcher exists (delete it to go back), or

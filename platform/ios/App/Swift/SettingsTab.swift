@@ -252,6 +252,12 @@ struct GameSettingsPage: View {
                           detail: "Play closes the app and the game starts the next time it opens. This asks first.",
                           isOn: $prefs.confirmPlay)
             }
+            SectionLabel("Experimental")
+            GlassGroup {
+                ToggleRow(symbol: "play.rectangle.fill", title: "Play without closing the app",
+                          detail: "Untested. The game starts inside this run of the app and Play no longer closes it. Close the app fully and open it again for this to apply. If the app opens to a blank screen, turn it off by deleting the line inProcessPlay from launcher.txt in the Horizon folder.",
+                          isOn: $prefs.inProcessPlay)
+            }
             SectionLabel("Downloads")
             GlassGroup {
                 ToggleRow(symbol: "sun.max.fill", title: "Keep the screen on while downloading",

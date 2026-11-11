@@ -96,10 +96,29 @@
 
 - (BOOL)inProcessPlay {
     NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
-    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
-        if ([line hasPrefix:@"inProcessPlay:"]) return [[line substringFromIndex:14] hasPrefix:@"true"];
+    NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+    for (NSString *raw in [text componentsSeparatedByString:@"\n"]) {
+        NSString *line = [raw stringByTrimmingCharactersInSet:ws];   // tolerates "\r\n" files and stray spaces
+        if (![line.lowercaseString hasPrefix:@"inprocessplay:"]) continue;
+        NSString *v = [[[line substringFromIndex:14] stringByTrimmingCharactersInSet:ws] lowercaseString];
+        return [v isEqualToString:@"true"] || [v isEqualToString:@"1"] || [v isEqualToString:@"yes"] || [v isEqualToString:@"on"];
     }
     return NO;   // off by default
+}
+
+- (void)setInProcessPlay:(BOOL)on {
+    // Keeps the other lines of launcher.txt, like setOpensGameDirectly:.
+    NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+    NSMutableArray *kept = [NSMutableArray array];
+    for (NSString *raw in [old componentsSeparatedByString:@"\n"]) {
+        NSString *line = [raw stringByTrimmingCharactersInSet:ws];
+        if (line.length && ![line.lowercaseString hasPrefix:@"inprocessplay:"]) [kept addObject:line];
+    }
+    [kept addObject:[NSString stringWithFormat:@"inProcessPlay:%@", on ? @"true" : @"false"]];
+    NSString *text = [[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:_root withIntermediateDirectories:YES attributes:nil error:nil];
+    [text writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
 - (void)setOpensGameDirectly:(BOOL)on {
