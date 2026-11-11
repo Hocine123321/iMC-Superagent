@@ -99,6 +99,15 @@ jobs:
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS= \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee ../../xcodebuild.log | tail -60
+      # The runner's logs are not reachable from every tool, but check annotations are: the first compiler errors
+      # are repeated as annotations so a failed build says what is wrong without opening the full log.
+      - name: Report compiler errors as annotations
+        if: failure()
+        run: |
+          [ -f xcodebuild.log ] || exit 0
+          grep -E "error:" xcodebuild.log | sed -E 's#^.*/platform/ios/##' | sort -u | head -40 | while IFS= read -r l; do
+            echo "::error title=xcodebuild::$(printf '%s' "$l" | cut -c1-400)"
+          done || true
       - name: What was built
         working-directory: platform/ios
         run: |

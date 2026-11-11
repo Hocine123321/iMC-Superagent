@@ -27,6 +27,10 @@ targets:
       # there is no copy to drift and nothing in horizon/ changes. The About page reads it from the bundle.
       - path: ../../horizon/THIRD_PARTY_NOTICES.md
         buildPhase: resources
+      # The MIT licence requires its notice to travel with binary copies. Bundled from the upstream file itself
+      # (horizon/LICENSE), so nothing is copied into the source and nothing can drift.
+      - path: ../../horizon/LICENSE
+        buildPhase: resources
     # XcodeGen writes App/Info.plist from these properties at generation time, replacing whatever
     # the file held (a bare `path:` produced a 743-byte plist without our keys).
     info:

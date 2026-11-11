@@ -167,4 +167,3 @@ system's own controls turn into glass without any code, and the custom ones coul
 | `LauncherFileManager`, `FileBrowser` | The file manager and its rules |
 | `LauncherMarketplace`, `MarketIndex`, `MarketClient`, `MarketFetcher`, `MarketInstaller`, `MarketCells`, `ModrinthClient` | The Marketplace (`IOS_MARKETPLACE.md`) |
 | `LauncherDiagnostics`, `Diagnostics`, `CrashReporter`, `SessionLog` | Diagnostics, crash reports, the session log (`SESSION_LOG.md`) |
-| `LauncherAbout` | About and the third-party notices |

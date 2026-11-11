@@ -11,5 +11,4 @@
 #import "LauncherFileManager.h"
 #import "LauncherAccount.h"
 #import "LauncherDiagnostics.h"
-#import "LauncherAbout.h"
 #import "LauncherFiles.h"

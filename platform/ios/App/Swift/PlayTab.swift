@@ -1,32 +1,41 @@
 import SwiftUI
 
-/// The first tab: what is installed, and one big Play button.
+enum PlayRoute: Hashable { case download, files, account, diagnostics }
+
+/// The first tab: the state of the game, one big Play button, the way to the files, and what the phone has left.
 struct PlayTab: View {
     @ObservedObject var state: LauncherState
-    var openDownload: () -> Void
-    var openFiles: () -> Void
-    var openAccount: () -> Void
+    @ObservedObject private var prefs = Prefs.shared
+    @Environment(\.brand) private var brand
+    @Environment(\.brand2) private var brand2
+    var open: (PlayRoute) -> Void
 
     @State private var confirmPlay = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                heroCard
-                shortcuts
+            GlassStack(spacing: 18) {
+                VStack(spacing: 16) {
+                    header
+                    heroCard
+                    if state.hasCrash { crashCard }
+                    HStack(spacing: 14) {
+                        tile("Download", "arrow.down.circle.fill", "Get the game files from Mojang.", .brand) { open(.download) }
+                        tile("Game files", "folder.fill", "Import or check a prepared folder.", .brand2) { open(.files) }
+                    }
+                    storageCard
+                    footer
+                }
+                .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 40)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 40)
         }
         .scrollIndicators(.hidden)
-        .background(Backdrop())
-        .alert("Starting the game", isPresented: $confirmPlay) {
-            Button("Close app") { state.play() }
+        .screenBackground()
+        .alert("Start the game?", isPresented: $confirmPlay) {
+            Button("Close app and play") { state.play() }
             Button("Cancel", role: .cancel) { state.cancelPlay() }
         } message: {
-            Text("iMC Horizon will close now. Open it again and the game starts.")
+            Text("iMC Horizon closes now. Open it again and the game starts.")
         }
         .alert("Could not start", isPresented: $state.startFailed) {
             Button("OK", role: .cancel) {}
@@ -35,20 +44,22 @@ struct PlayTab: View {
         }
     }
 
+    // MARK: pieces
+
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: 14) {
+            BrandMark().frame(width: 52, height: 52)
+            VStack(alignment: .leading, spacing: 3) {
                 Text("MINECRAFT 26.3  ·  JAVA")
                     .font(.caption.weight(.semibold)).tracking(1.4).foregroundStyle(.secondary)
-                Text("iMC Horizon").font(.largeTitle.bold())
+                Text("iMC Horizon").font(.system(.largeTitle, design: .rounded).weight(.bold))
             }
-            Spacer()
-            Button(action: openAccount) {
+            Spacer(minLength: 0)
+            Button { Haptics.tap(); open(.account) } label: {
                 Image(systemName: state.accountName == nil ? "person.crop.circle" : "person.crop.circle.fill")
-                    .font(.title2).frame(width: 44, height: 44)
+                    .font(.title2).frame(width: 46, height: 46)
             }
-            .secondaryAction()
-            .circleShape()
+            .secondaryAction().circleShape()
             .accessibilityLabel(state.accountName.map { "Account, signed in as \($0)" } ?? "Account, not signed in")
         }
     }
@@ -62,58 +73,107 @@ struct PlayTab: View {
             Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             if state.isReady {
-                Button { confirmPlay = true } label: {
-                    Label("Play", systemImage: "play.fill").font(.title2.weight(.bold)).frame(maxWidth: .infinity, minHeight: 56)
+                Button { Haptics.tap(); tapPlay() } label: {
+                    Label("Play", systemImage: "play.fill")
+                        .font(.title2.weight(.bold)).frame(maxWidth: .infinity, minHeight: 58)
                 }
-                .primaryAction()
-                .controlSize(.large)
-                if let name = state.accountName {
-                    Text("Playing as \(name)").font(.footnote).foregroundStyle(.secondary)
-                } else {
-                    Text("Not signed in: the game starts offline.").font(.footnote).foregroundStyle(.secondary)
-                }
+                .primaryAction().tint(brand).controlSize(.large)
+                Text(state.accountName.map { "Playing as \($0)" } ?? "Not signed in: the game starts offline.")
+                    .font(.footnote).foregroundStyle(.secondary)
             } else {
-                Button(action: openFiles) {
-                    Label("Import game files", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, minHeight: 50)
+                Button { Haptics.tap(); open(.files) } label: {
+                    Label("Import game files", systemImage: "square.and.arrow.down")
+                        .font(.headline).frame(maxWidth: .infinity, minHeight: 52)
                 }
-                .primaryAction()
-                .controlSize(.large)
+                .primaryAction().tint(brand).controlSize(.large)
             }
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard()
+        .glassCard(cornerRadius: 32, tint: brand.opacity(0.22))
     }
 
-    private var shortcuts: some View {
-        VStack(spacing: 12) {
-            shortcut("Download from Mojang", "arrow.down.circle", "Get the game files directly on this phone.", openDownload)
-            shortcut("Game files", "folder", "Import or check the folder you prepared on a computer.", openFiles)
-        }
-    }
-
-    private func shortcut(_ title: String, _ symbol: String, _ sub: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private var crashCard: some View {
+        Button { Haptics.tap(); open(.diagnostics) } label: {
             HStack(spacing: 14) {
-                Image(systemName: symbol).font(.title3).frame(width: 30)
+                IconTile(symbol: "exclamationmark.triangle.fill", tone: .brand2, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.semibold))
-                    Text(sub).font(.footnote).foregroundStyle(.secondary)
+                    Text("The game stopped unexpectedly").font(.body.weight(.semibold))
+                    Text("There is a crash report. Open Diagnostics to read it or run a check.")
+                        .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 6)
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .padding(16).frame(maxWidth: .infinity).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .glassCard(cornerRadius: 22)
+        .glassCard(cornerRadius: 24, tint: brand2.opacity(0.22), interactive: true)
     }
+
+    private func tile(_ title: String, _ symbol: String, _ detail: String, _ tone: IconTile.Tone, _ action: @escaping () -> Void) -> some View {
+        Button { Haptics.tap(); action() } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                IconTile(symbol: symbol, tone: tone, size: 40)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(detail).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(16).frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .glassCard(cornerRadius: 26, interactive: true)
+    }
+
+    private var storageCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("On this phone").font(.headline)
+            HStack(alignment: .top) {
+                stat("Game files", state.isReady ? ByteText.string(state.resourceBytes) : "None")
+                Divider().frame(height: 36)
+                stat("Free space", ByteText.string(state.freeBytes))
+            }
+            // Enough room to download Minecraft and prepare it (the download plan says about 673 MB, and the
+            // download needs room for the old and new copy while it works).
+            let need: Int64 = 2_500_000_000
+            if !state.isReady {
+                MixBar(fraction: min(1, Double(state.freeBytes) / Double(need)))
+                Text(state.freeBytes >= need ? "Enough room to download the game."
+                                             : "Downloading needs about \(ByteText.string(need)) free.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(cornerRadius: 26)
+    }
+
+    private func stat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.system(.title3, design: .rounded).weight(.semibold))
+            Text(label).font(.footnote).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var footer: some View {
+        let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
+        return Text("Launcher \(version)  ·  Built on Horizon  ·  Not affiliated with Mojang or Microsoft")
+            .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center).padding(.top, 4)
+    }
+
+    private func tapPlay() {
+        if prefs.confirmPlay { confirmPlay = true } else { state.play() }
+    }
+
+    // MARK: words
 
     private var dotColor: Color {
         switch state.files {
-        case .ready: return Look.accent
-        case .damaged: return Look.danger
-        case .missing: return Look.warning
+        case .ready: return Palette.ok
+        case .damaged: return brand2
+        case .missing: return Palette.warn
         case .checking: return .gray
         }
     }
@@ -128,9 +188,9 @@ struct PlayTab: View {
     private var detail: String {
         switch state.files {
         case .checking: return "One moment."
-        case .missing: return "Download them from Mojang, or import a folder you prepared on a computer. Preparing the files on this phone is not available yet."
+        case .missing: return "Download them from Mojang, or import a folder you prepared on a computer."
         case .damaged(let why): return why + " Import them again."
-        case .ready: return state.sizeText.isEmpty ? "Checking the size of the game files..." : "Game files \(state.sizeText) on this phone."
+        case .ready: return "Everything the game needs is on this phone."
         }
     }
 }

@@ -13,14 +13,14 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
 
 @implementation HZTheme
 
-+ (UIColor *)background    { return Dyn(RGB(0.07, 0.09, 0.11, 1), RGB(0.95, 0.96, 0.97, 1)); }
++ (UIColor *)background    { return Dyn(RGB(0.03, 0.04, 0.11, 1), RGB(0.95, 0.96, 0.99, 1)); }
 + (UIColor *)surface       { return Dyn([UIColor colorWithWhite:1 alpha:0.10], [UIColor colorWithWhite:0 alpha:0.06]); }
 + (UIColor *)text          { return Dyn(UIColor.whiteColor, RGB(0.07, 0.09, 0.11, 1)); }
 + (UIColor *)secondaryText { return Dyn([UIColor colorWithWhite:1 alpha:0.70], [UIColor colorWithWhite:0 alpha:0.62]); }
 + (UIColor *)tertiaryText  { return Dyn([UIColor colorWithWhite:1 alpha:0.50], [UIColor colorWithWhite:0 alpha:0.48]); }
-+ (UIColor *)accent        { return Dyn(RGB(0.36, 0.74, 0.33, 1), RGB(0.16, 0.55, 0.20, 1)); }
-+ (UIColor *)onAccent      { return Dyn(UIColor.blackColor, UIColor.whiteColor); }
-+ (UIColor *)danger        { return Dyn(RGB(1.00, 0.45, 0.45, 1), RGB(0.80, 0.15, 0.15, 1)); }
++ (UIColor *)accent        { return Dyn(RGB(0.36, 0.61, 1.00, 1), RGB(0.12, 0.37, 0.90, 1)); }
++ (UIColor *)onAccent      { return UIColor.whiteColor; }
++ (UIColor *)danger        { return Dyn(RGB(1.00, 0.35, 0.40, 1), RGB(0.82, 0.16, 0.24, 1)); }
 + (UIColor *)warning       { return Dyn(RGB(0.95, 0.65, 0.20, 1), RGB(0.75, 0.42, 0.00, 1)); }
 + (UIColor *)separator     { return Dyn([UIColor colorWithWhite:1 alpha:0.12], [UIColor colorWithWhite:0 alpha:0.12]); }
 + (UIColor *)codeBackground{ return Dyn([UIColor colorWithWhite:0 alpha:0.35], [UIColor colorWithWhite:0 alpha:0.05]); }
