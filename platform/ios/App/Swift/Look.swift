@@ -35,10 +35,11 @@ enum BlockGridCache {
     static func image(size: CGSize, cell: CGFloat, brand: Color, brand2: Color) -> UIImage? {
         guard size.width > 1, size.height > 1 else { return nil }
         let a = UIColor(brand), b = UIColor(brand2)
-        var c1: [CGFloat] = [0, 0, 0, 0], c2: [CGFloat] = [0, 0, 0, 0]
-        a.getRed(&c1[0], green: &c1[1], blue: &c1[2], alpha: &c1[3])
-        b.getRed(&c2[0], green: &c2[1], blue: &c2[2], alpha: &c2[3])
-        let k = "\(Int(size.width))x\(Int(size.height))/\(cell)/\(c1)/\(c2)"
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let k = "\(Int(size.width))x\(Int(size.height))/\(cell)/\(r1),\(g1),\(b1)/\(r2),\(g2),\(b2)"
         if k == key, let cached { return cached }
         let format = UIGraphicsImageRendererFormat.default()
         format.opaque = false
