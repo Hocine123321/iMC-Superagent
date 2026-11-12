@@ -347,6 +347,7 @@ struct MarketplaceTab: View {
                     let on = c.tab == t
                     Button { Haptics.select(); c.select(t) } label: {
                         Text(t.title).font(.subheadline.weight(on ? .bold : .medium))
+                            .lineLimit(1).fixedSize()
                             .padding(.horizontal, 16).padding(.vertical, 9)
                             .glassCapsule(tint: on ? brand.opacity(0.55) : nil, interactive: true)
                     }
@@ -354,8 +355,14 @@ struct MarketplaceTab: View {
                     .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.horizontal, 20).padding(.vertical, 6)
         }
+        // A fixed height and a margin below: the row is its own band, and the first card starts under it
+        // instead of sliding beneath the chips (owner's screenshot, 2026-11-12). The side padding is inside the
+        // scroll view so the chips can scroll to the screen edge while the first one lines up with the cards.
+        .frame(height: 50)
+        .padding(.horizontal, -20)
+        .padding(.bottom, 6)
     }
 }
 

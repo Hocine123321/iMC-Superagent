@@ -60,10 +60,11 @@ registered ID always wins):
 - scope `service::user.auth.xboxlive.com::MBI_SSL` instead of `XboxLive.signin offline_access`;
 - the Xbox ticket is the bare token, with no `d=` in front.
 
-**How to turn it on.** Put one line, the ID, in `Documents/Horizon/test-client-id.txt` (Files app, On
-My iPhone, iMC Horizon, Horizon), then restart the app. (The environment variable
+**How to turn it on.** Open Settings > Developer options (tap the app mark in About three times), paste the ID in
+"Test mode app ID" and tap Save; it applies to the next sign-in, no restart. (By hand it still works: one line, the ID,
+in `Documents/Horizon/test-client-id.txt` via the Files app, then restart the app.) (The environment variable
 `HORIZON_MSA_LEGACY_CLIENT_ID` also works, but a LiveContainer launch cannot set one.) To turn it
-off, delete the file. It is read once per run, never saved by the app and never put in a build. The
+off, delete the file. The app writes it only to that one file on the phone when you press Save (and deletes it on Remove), never puts it in a build, and never logs it; the Developer page shows only its first and last four characters. The
 Account screen says "test mode" while it is on.
 
 **Why it is only a fallback.**

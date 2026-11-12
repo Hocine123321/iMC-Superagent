@@ -23,13 +23,19 @@ NS_ASSUME_NONNULL_BEGIN
 NSString *_Nullable HZMicrosoftClientID(void);
 
 // TEST MODE, for the owner's own phone only. The environment variable HORIZON_MSA_LEGACY_CLIENT_ID,
-// or the file Documents/Horizon/test-client-id.txt (never filled by a build, never saved by the
-// app), names another launcher's app ID to sign in with while
+// or the file Documents/Horizon/test-client-id.txt (never filled by a build; written only by the player,
+// from Settings > Developer options or the Files app), names another launcher's app ID to sign in with while
 // Mojang has not approved this project's own. Those IDs are legacy Microsoft apps: they are refused
 // by the v2 endpoint this project uses and work only on login.live.com, with the old scope and a bare
 // Xbox ticket. It is used ONLY when HZMicrosoftClientID() is nil, so a registered ID always wins.
 // Returns nil when it is not set. See docs/IOS_SIGN_IN.md, "Test mode".
 NSString *_Nullable HZLegacyTestClientID(void);
+
+// Sets (a valid ID) or clears (empty or nil) the test ID kept in Documents/Horizon/test-client-id.txt, for
+// Settings > Developer options, so the player can paste it instead of making the file by hand. YES on success;
+// NO with `problem` set when the text is not an ID or the file cannot be written. Takes effect for the next
+// sign-in. Stored on this phone only, never in a build, never logged. Does not touch the environment variable.
+BOOL HZSetLegacyTestClientID(NSString *_Nullable value, NSString *_Nullable *_Nullable problem);
 
 // YES when sign-in will run in test mode (no registered ID, a legacy test ID set).
 BOOL HZSignInIsTestMode(void);

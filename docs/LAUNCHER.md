@@ -170,10 +170,12 @@ Features that are off by default because they are unfinished, untested or only u
 
 - **Unlock:** About > tap the app mark three times, each within two seconds of the last. The second tap shows "One more tap to open developer options"; the third turns developer mode on (`devMode:true` in `launcher.txt`, so it survives restarts), gives a success haptic and opens the page. Tapping three times again when it is already on just opens the page.
 - **Where it is afterwards:** a **Developer options** row under About in Settings, shown only while developer mode is on. **Turn off developer mode** (bottom of the page) removes the row again. It does not switch the features back off: each keeps the value it has. **Reset launcher settings** also turns developer mode off.
-- **What is on it:** the experimental feature switches (today: *Play without closing the app*, moved here from Settings > Game, same `inProcessPlay` line, same restart rule); the sign-in state (the build's own app ID, test mode, or not set up) and how to use the private test mode (the file `test-client-id.txt`, which the app still never writes or saves itself); and a read-only list of this build (launcher version, whether Play-without-closing and open-straight-into-the-game are on).
+- **What is on it:** the experimental feature switches (today: *Play without closing the app*, moved here from Settings > Game, same `inProcessPlay` line, same restart rule); the sign-in state (the build's own app ID, test mode, or not set up) and the private test mode: a field to paste another launcher's app ID (Paste, Save, Remove). It is written only to `Documents/Horizon/test-client-id.txt` on the phone (so the Files route still works), checked as letters, digits and dashes (8 to 64), shown masked, and applies to the next sign-in; and a read-only list of this build (launcher version, whether Play-without-closing and open-straight-into-the-game are on).
 - **Adding a feature to it:** a new off-by-default switch goes in `DeveloperPage.swift` under "Experimental features", with a `Prefs` property and a `launcher.txt` line like the others.
 
 Not a security boundary: anyone can find it. It only keeps unfinished things out of the normal settings.
+
+**Glass and the 2026-11-12 screenshots.** `GlassStack` no longer wraps its content in a `GlassEffectContainer`: a container merges glass shapes that are within its spacing into one, which pinched the Logs buttons (Share, Copy, trash) and the Marketplace tabs into waisted shapes. Each card and chip now stays its own shape. The Marketplace tab row is a fixed 50 pt band with space below it, so the first card no longer slides under the chips, and the Logs trash button is an explicit circle.
 
 ## The source files (`platform/ios/App`)
 
@@ -187,3 +189,4 @@ Not a security boundary: anyone can find it. It only keeps unfinished things out
 | `LauncherFileManager`, `FileBrowser` | The file manager and its rules |
 | `LauncherMarketplace`, `MarketIndex`, `MarketClient`, `MarketFetcher`, `MarketInstaller`, `MarketCells`, `ModrinthClient` | The Marketplace (`IOS_MARKETPLACE.md`) |
 | `LauncherDiagnostics`, `Diagnostics`, `CrashReporter`, `SessionLog` | Diagnostics, crash reports, the session log (`SESSION_LOG.md`) |
+

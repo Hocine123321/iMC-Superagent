@@ -12,7 +12,11 @@ struct DeveloperPage: View {
     @ObservedObject private var prefs = Prefs.shared
     @Environment(\.brand) private var brand
     @Environment(\.dismiss) private var dismiss
-    @State private var copied = false
+    @State private var idText = ""
+    @State private var idProblem: String? = nil
+    @State private var idSaved = false
+    @State private var storedID: String? = HZLegacyTestClientID()
+    @FocusState private var idFocused: Bool
 
     private var version: String { (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?" }
     private var build: String { (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?" }
@@ -32,22 +36,7 @@ struct DeveloperPage: View {
             GlassGroup {
                 stateRow("person.badge.key.fill", .brand2, "Sign-in mode", signInMode.value, signInMode.kind)
                 Sep()
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Test mode (private)").font(.body.weight(.semibold))
-                    Text("Signs in with another launcher's app ID while this project has none of its own. Not for sharing, and it can stop working at any time. To turn it on, put the ID on one line in test-client-id.txt in the Horizon folder (Files app, On My iPhone, iMC Horizon), then restart the app. Delete the file to turn it off. The app never saves the ID itself.")
-                        .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        Haptics.tap()
-                        UIPasteboard.general.string = "test-client-id.txt"
-                        copied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
-                    } label: {
-                        Label(copied ? "Copied" : "Copy the file name", systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 40)
-                    }
-                    .secondaryAction().tint(brand)
-                }
-                .padding(.horizontal, 16).padding(.vertical, 12)
+                testModeEditor
             }
 
             SectionLabel("This build")
@@ -71,6 +60,83 @@ struct DeveloperPage: View {
             .secondaryAction().tint(brand)
             .padding(.top, 6)
         }
+    }
+
+    /// Paste another launcher's app ID here instead of making test-client-id.txt in the Files app. Kept on this
+    /// phone only (the same file, so the Files route still works), never in a build, never logged.
+    private var testModeEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Test mode app ID (private)").font(.body.weight(.semibold))
+            Text("Signs in with another launcher's app ID while this project has none of its own. Not for sharing, and it can stop working at any time. The ID stays on this phone. Saved here, it applies to the next sign-in. A build with its own app ID ignores it.")
+                .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill").foregroundStyle(.secondary)
+                TextField("Paste the app ID", text: $idText)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
+                    .focused($idFocused)
+                    .submitLabel(.done)
+                    .onSubmit { saveID() }
+                if !idText.isEmpty {
+                    Button { idText = ""; idProblem = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain).accessibilityLabel("Clear the field")
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10).glassCapsule()
+            if let idProblem {
+                Text(idProblem).font(.footnote).foregroundStyle(Palette.red).fixedSize(horizontal: false, vertical: true)
+            } else if let storedID {
+                Text("Saved: \(masked(storedID)). \(idSaved ? "Applies to the next sign-in." : "")")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                Button {
+                    Haptics.tap()
+                    if let s = UIPasteboard.general.string { idText = s.trimmingCharacters(in: .whitespacesAndNewlines); idProblem = nil }
+                } label: { Label("Paste", systemImage: "doc.on.clipboard").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 36) }
+                    .secondaryAction().tint(brand)
+                Button { saveID() } label: {
+                    Label("Save", systemImage: "checkmark").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .primaryAction().tint(brand)
+                .disabled(idText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if storedID != nil {
+                Button(role: .destructive) { clearID() } label: {
+                    Text("Remove the saved ID").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .secondaryAction().tint(Palette.red)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    private func masked(_ id: String) -> String {
+        id.count <= 8 ? id : String(id.prefix(4)) + "..." + String(id.suffix(4))
+    }
+
+    private func saveID() {
+        var problem: NSString? = nil
+        if HZSetLegacyTestClientID(idText, &problem) {
+            Haptics.success()
+            idProblem = nil
+            idSaved = true
+            idText = ""
+            idFocused = false
+            storedID = HZLegacyTestClientID()
+        } else {
+            Haptics.warning()
+            idProblem = (problem as String?) ?? "That ID could not be saved."
+        }
+    }
+
+    private func clearID() {
+        var problem: NSString? = nil
+        _ = HZSetLegacyTestClientID(nil, &problem)
+        Haptics.tap()
+        idSaved = false
+        idProblem = nil
+        storedID = HZLegacyTestClientID()
     }
 
     private var warning: some View {

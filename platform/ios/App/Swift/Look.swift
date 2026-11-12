@@ -157,13 +157,12 @@ struct GlassStack<Content: View>: View {
         self.spacing = spacing
         self.content = content()
     }
-    var body: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
-        }
-    }
+    // Deliberately NOT a GlassEffectContainer. A container merges glass shapes that sit within `spacing` of each
+    // other into one blob, which pinched the Share / Copy / trash buttons and the Marketplace tabs into waisted
+    // shapes (owner's screenshots, 2026-11-12), and it makes the system re-evaluate every shape as the list
+    // scrolls. Each card and chip here is meant to stay its own shape, so they stand alone. The parameters stay
+    // so the call sites do not change.
+    var body: some View { content }
 }
 
 // MARK: - Building blocks

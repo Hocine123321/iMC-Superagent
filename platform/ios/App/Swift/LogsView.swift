@@ -77,7 +77,8 @@ struct LogsView: View {
                 Button { UIPasteboard.general.string = text; Haptics.success() } label: { Label("Copy", systemImage: "doc.on.doc").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 36) }
                     .secondaryAction().disabled(text.isEmpty)
                 Button(role: .destructive) { confirmDelete = true } label: { Image(systemName: "trash").font(.subheadline.weight(.semibold)).frame(width: 36, height: 36) }
-                    .secondaryAction().tint(brand2).disabled(path == nil)
+                    .secondaryAction().circleShape().tint(brand2).disabled(path == nil)
+                    .accessibilityLabel("Delete this file")
             }
         }
     }

@@ -19,37 +19,78 @@ NSString *HZMicrosoftClientID(void) {
     return id_;
 }
 
-static NSString *ReadLegacyTestClientID(void) {
-    // Never baked into a build, so it cannot be shared by accident. Two places, the first wins:
-    //  1. the environment variable HORIZON_MSA_LEGACY_CLIENT_ID (a desktop run, or a launcher that sets one);
-    //  2. the file Documents/Horizon/test-client-id.txt, which the player puts there with the Files
-    //     app (a LiveContainer launch cannot set environment variables). One line: the ID.
-    NSString *id_ = NSProcessInfo.processInfo.environment[@"HORIZON_MSA_LEGACY_CLIENT_ID"];
-    if (![id_ isKindOfClass:NSString.class] || id_.length == 0) {
-        NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-        NSString *file = [[docs stringByAppendingPathComponent:@"Horizon"] stringByAppendingPathComponent:@"test-client-id.txt"];
-        // Only a short file counts: an ID is 16 to 36 characters, so a stray large file is not read whole.
-        NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:file error:nil];
-        if (attrs && [attrs fileSize] > 0 && [attrs fileSize] <= 256) {
-            id_ = [NSString stringWithContentsOfFile:file encoding:NSUTF8StringEncoding error:nil];
-        }
-    }
-    if (![id_ isKindOfClass:NSString.class]) return nil;
-    id_ = [id_ stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    // A client ID is letters, digits and dashes only. Anything else is not an ID, so it is not used.
+// A client ID is letters, digits and dashes only, 8 to 64 long. Anything else is not an ID, so it is not used.
+static NSString *CleanClientID(NSString *raw) {
+    if (![raw isKindOfClass:NSString.class]) return nil;
+    NSString *id_ = [raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSCharacterSet *bad = [[NSCharacterSet characterSetWithCharactersInString:
         @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-"] invertedSet];
     if (id_.length < 8 || id_.length > 64 || [id_ rangeOfCharacterFromSet:bad].location != NSNotFound) return nil;
     return id_;
 }
 
-// Read once per run: the mode must not change under a sign-in that has started, and the file is
-// not read again for every request. (Put the file there, then restart the app.)
+static NSString *LegacyTestIDFile(void) {
+    NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    return [[docs stringByAppendingPathComponent:@"Horizon"] stringByAppendingPathComponent:@"test-client-id.txt"];
+}
+
+static NSString *ReadLegacyTestClientID(void) {
+    // Never baked into a build, so it cannot be shared by accident. Two places, the first wins:
+    //  1. the environment variable HORIZON_MSA_LEGACY_CLIENT_ID (a desktop run, or a launcher that sets one);
+    //  2. the file Documents/Horizon/test-client-id.txt: written by Settings > Developer options (where the
+    //     player pastes the ID), or put there by hand with the Files app. One line: the ID.
+    NSString *id_ = NSProcessInfo.processInfo.environment[@"HORIZON_MSA_LEGACY_CLIENT_ID"];
+    if (![id_ isKindOfClass:NSString.class] || id_.length == 0) {
+        NSString *file = LegacyTestIDFile();
+        // Only a short file counts: an ID is 16 to 36 characters, so a stray large file is not read whole.
+        NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:file error:nil];
+        if (attrs && [attrs fileSize] > 0 && [attrs fileSize] <= 256) {
+            id_ = [NSString stringWithContentsOfFile:file encoding:NSUTF8StringEncoding error:nil];
+        }
+    }
+    return CleanClientID(id_);
+}
+
+// Read once, and again only when the player sets or clears it in the app: the mode must not change under a
+// sign-in that has started, and the file is not read again for every request.
+static NSString *sCachedTestID;
+static BOOL sCachedTestIDLoaded;
+static NSObject *TestIDLock(void) {
+    static NSObject *lock; static dispatch_once_t once;
+    dispatch_once(&once, ^{ lock = [NSObject new]; });
+    return lock;
+}
+
 NSString *HZLegacyTestClientID(void) {
-    static NSString *cached;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ cached = ReadLegacyTestClientID(); });
-    return cached;
+    @synchronized (TestIDLock()) {
+        if (!sCachedTestIDLoaded) { sCachedTestID = ReadLegacyTestClientID(); sCachedTestIDLoaded = YES; }
+        return sCachedTestID;
+    }
+}
+
+BOOL HZSetLegacyTestClientID(NSString *value, NSString **problem) {
+    NSString *file = LegacyTestIDFile();
+    NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    @synchronized (TestIDLock()) {
+        if (trimmed.length == 0) {
+            [NSFileManager.defaultManager removeItemAtPath:file error:nil];
+        } else {
+            NSString *clean = CleanClientID(trimmed);
+            if (!clean) {
+                if (problem) *problem = @"That is not an app ID. It is letters, digits and dashes only, 8 to 64 characters.";
+                return NO;
+            }
+            [NSFileManager.defaultManager createDirectoryAtPath:[file stringByDeletingLastPathComponent]
+                                    withIntermediateDirectories:YES attributes:nil error:nil];
+            NSError *err = nil;
+            if (![clean writeToFile:file atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
+                if (problem) *problem = @"The ID could not be saved on this phone.";
+                return NO;
+            }
+        }
+        sCachedTestIDLoaded = NO;   // read again on the next ask
+    }
+    return YES;
 }
 
 BOOL HZSignInIsTestMode(void) { return HZMicrosoftClientID() == nil && HZLegacyTestClientID() != nil; }
