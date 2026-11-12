@@ -437,7 +437,7 @@ enum DiagnosticsSuite {
             await probe("Mojang", url: "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", get: true)
         }
         add("net-assets", "Network", "Mojang sounds and textures", "speaker.wave.2") { await probe("Mojang assets", url: "https://resources.download.minecraft.net/") }
-        add("net-registry", "Network", "Horizon Marketplace", "shippingbox") { await probe("Horizon registry", url: HZMarketClient.indexURL()) }
+        add("net-registry", "Network", "Horizon Marketplace", "shippingbox") { await probe("Horizon registry", url: HZMarketClient.indexURL() ?? "") }
         if useModrinth { add("net-modrinth", "Network", "Modrinth", "globe") { await probe("Modrinth", url: "https://api.modrinth.com/v2/", get: true) } }
         if showHead { add("net-skin", "Network", "Mojang skins", "person.crop.square") { await probe("Mojang skins", url: "https://sessionserver.mojang.com/") } }
 

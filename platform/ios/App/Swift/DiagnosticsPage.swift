@@ -208,7 +208,7 @@ struct DiagnosticsPage: View {
     }
 
     private func shareAll() {
-        let urls = HZLauncherModel.shared()!.diagnosticFiles()
+        let urls = HZLauncherModel.shared()!.diagnosticFiles() ?? []
         if urls.isEmpty { note = "There are no diagnostic files yet."; return }
         shareFiles = ShareFiles(urls: urls)
     }
