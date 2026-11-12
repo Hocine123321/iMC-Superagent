@@ -165,12 +165,25 @@ void HorizonInstallCrashReporter(NSString *root) {
 
     // Memory figures every second on the main run loop, and the marker follows the app state: the
     // marker holds the figures, so a system kill leaves them behind.
+    // Off the main thread (it was a 1 s NSTimer on the main run loop: a file write and a task_info call
+    // every second on the thread that also feeds the engine's window events and the launcher), and every
+    // 5 s. The signal handler reads gMemory itself, and the marker only has to be recent enough to tell
+    // a memory kill from a clean end, so five seconds loses nothing that matters.
     RefreshMemory();
-    [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
-        RefreshMemory();
-        NSString *s = [NSString stringWithFormat:@"last seen: %s\nbreadcrumb: %s\n", gMemory, gBreadcrumb];
-        [s writeToFile:marker atomically:NO encoding:NSUTF8StringEncoding error:nil];
-    }];
+    {
+        static dispatch_source_t timer;
+        dispatch_queue_t q = dispatch_queue_create("dev.imc.crashmarker", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(q, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
+                                  5 * NSEC_PER_SEC, NSEC_PER_SEC);
+        dispatch_source_set_event_handler(timer, ^{
+            RefreshMemory();
+            NSString *s = [NSString stringWithFormat:@"last seen: %s\nbreadcrumb: %s\n", gMemory, gBreadcrumb];
+            [s writeToFile:marker atomically:NO encoding:NSUTF8StringEncoding error:nil];
+        });
+        dispatch_resume(timer);
+    }
     // A run that lasted fifteen seconds was not a crash loop, whatever ends it: the count starts over.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         [fm removeItemAtPath:countFile error:nil];

@@ -20,35 +20,50 @@ final class LauncherState: ObservableObject {
     /// The Objective-C header has no nullability annotations, so shared() imports as optional.
     private var model: HZLauncherModel { HZLauncherModel.shared()! }
 
+    private var refreshing = false
+    private var refreshAgain = false
+
+    /// Reads the state of the game files, the account, the crash report and the disk. Every one of those is file
+    /// work, and the first version did all of it on the main thread at every tab change, page push and return to the
+    /// app: the manifest was parsed, the folder listed, up to 64 KB of each crash report read and analysed, all
+    /// before the next frame could be drawn. Now the reading happens on a utility queue and only the result is
+    /// published on the main thread. A refresh asked for while one is running runs once more afterwards, not in
+    /// parallel and not once per request.
     func refresh() {
+        if refreshing { refreshAgain = true; return }
+        refreshing = true
         let model = self.model
-        var problem: NSString?
-        let state = model.checkFiles(&problem)
-        switch state {
-        case .missing: files = .missing
-        case .damaged: files = .damaged((problem as String?) ?? "")
-        case .ready: files = .ready
-        @unknown default: files = .missing
-        }
-        let account = HZAccountStore.shared().account()
-        accountName = account?.name
-        accountUUID = account?.uuid
-        accountOwns = account?.owns ?? false
-        // A crash report the person has not opened yet (opening it in Diagnostics > Logs marks it seen).
-        if let c = CrashFiles.newest() { hasCrash = c.date.timeIntervalSince1970 > LauncherFile.number("crashSeen", default: 0) } else { hasCrash = false }
         let root = model.root as String
-        freeBytes = Self.freeSpace(at: root)
-        if state == .ready {
-            DispatchQueue.global(qos: .utility).async {
-                let bytes = Int64(clamping: model.resourcesSize())
-                DispatchQueue.main.async { self.resourceBytes = bytes }
+        DispatchQueue.global(qos: .userInitiated).async {
+            var problem: NSString?
+            let state = model.checkFiles(&problem)
+            let account = HZAccountStore.shared().account()
+            let name = account?.name, uuid = account?.uuid, owns = account?.owns ?? false
+            var crash = false
+            if let c = CrashFiles.newest() { crash = c.date.timeIntervalSince1970 > LauncherFile.number("crashSeen", default: 0) }
+            let free = Self.freeSpace(at: root)
+            let size: Int64 = state == .ready ? Int64(clamping: model.resourcesSize()) : 0
+            let why = (problem as String?) ?? ""
+            DispatchQueue.main.async {
+                switch state {
+                case .missing: self.files = .missing
+                case .damaged: self.files = .damaged(why)
+                case .ready: self.files = .ready
+                @unknown default: self.files = .missing
+                }
+                self.accountName = name
+                self.accountUUID = uuid
+                self.accountOwns = owns
+                self.hasCrash = crash
+                self.freeBytes = free
+                self.resourceBytes = size
+                self.refreshing = false
+                if self.refreshAgain { self.refreshAgain = false; self.refresh() }
             }
-        } else {
-            resourceBytes = 0
         }
     }
 
-    static func freeSpace(at path: String) -> Int64 {
+    nonisolated static func freeSpace(at path: String) -> Int64 {
         let url = URL(fileURLWithPath: path)
         if let v = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
            let n = v.volumeAvailableCapacityForImportantUsage { return n }

@@ -37,21 +37,58 @@ static NSString *BatteryStateName(NSInteger s) {
     }
 }
 
-static const char *kColumns = "seconds,footprint_mb,available_mb,thermal,low_power,battery_pct,battery_state,foreground";
+static const char *kColumns = "seconds,footprint_mb,available_mb,thermal,low_power,battery_pct,battery_state,foreground,main_ticks_per_s,main_stalls,main_worst_ms";
+
+// Main-thread responsiveness. A display link on the main run loop is asked for once per screen refresh; how many
+// ticks arrive per second, and how many gaps are long (over 50 ms) and how long the worst one is, says whether the
+// thread that feeds the engine's window events and the launcher is being held up. It is the cheapest honest
+// measure of "laggy" that needs no change to the engine: a tick is a counter increment and a clock read.
+// (The engine's own frame time is not measured here; that still needs an engine hook.)
+static volatile uint32_t gTicks;
+static volatile uint32_t gStalls;
+static volatile uint32_t gWorstMs;
+static CFTimeInterval gLastTick;
+
+@interface HZTickProbe : NSObject
+- (void)tick:(CADisplayLink *)link;
+@end
+@implementation HZTickProbe
+- (void)tick:(CADisplayLink *)link {
+    CFTimeInterval now = CACurrentMediaTime();
+    if (gLastTick > 0) {
+        uint32_t ms = (uint32_t)((now - gLastTick) * 1000.0);
+        if (ms > 50) gStalls++;
+        if (ms > gWorstMs) gWorstMs = ms;
+    }
+    gLastTick = now;
+    gTicks++;
+}
+@end
+static CADisplayLink *gLink;
 
 // seconds,footprint_mb,available_mb,thermal,low_power,battery_pct,battery_state,foreground
 // A value the system could not give is empty, never 0: a 0 would read as a measurement.
-NSString *HorizonSessionLogLine(double seconds, unsigned long long footprintMB,
+// The same line with the main-thread probe's three columns. ticksPerSecond < 0 means no reading (empty cells).
+NSString *HorizonSessionLogLineWithTicks(double seconds, unsigned long long footprintMB,
                                 unsigned long long availableMB, NSInteger thermal,
                                 BOOL lowPower, float battery, NSInteger batteryState,
-                                BOOL foreground) {
+                                BOOL foreground, double ticksPerSecond, unsigned stalls, unsigned worstMs) {
     NSString *fp = footprintMB == ULLONG_MAX ? @"" : [NSString stringWithFormat:@"%llu", footprintMB];
     NSString *av = availableMB == ULLONG_MAX ? @"" : [NSString stringWithFormat:@"%llu", availableMB];
     // UIDevice.batteryLevel is -1 when monitoring is off or the level is unknown.
     NSString *bat = battery < 0 ? @"" : [NSString stringWithFormat:@"%d", (int)lroundf(battery * 100.0f)];
-    return [NSString stringWithFormat:@"%.1f,%@,%@,%@,%d,%@,%@,%d", seconds, fp, av,
+    NSString *probe = ticksPerSecond < 0 ? @",," : [NSString stringWithFormat:@"%.1f,%u,%u", ticksPerSecond, stalls, worstMs];
+    return [NSString stringWithFormat:@"%.1f,%@,%@,%@,%d,%@,%@,%d,%@", seconds, fp, av,
             ThermalName(thermal), lowPower ? 1 : 0, bat, BatteryStateName(batteryState),
-            foreground ? 1 : 0];
+            foreground ? 1 : 0, probe];
+}
+
+NSString *HorizonSessionLogLine(double seconds, unsigned long long footprintMB,
+                                unsigned long long availableMB, NSInteger thermal,
+                                BOOL lowPower, float battery, NSInteger batteryState,
+                                BOOL foreground) {
+    return HorizonSessionLogLineWithTicks(seconds, footprintMB, availableMB, thermal, lowPower, battery,
+                                          batteryState, foreground, -1, 0, 0);
 }
 
 static unsigned long long FootprintMB(void) {
@@ -99,9 +136,18 @@ static void Sample(void) {
     UIDevice *dev = [UIDevice currentDevice];
     // batteryLevel and batteryState are plain property reads once monitoring is on (set on the
     // main thread at start); they are safe to read here.
-    NSString *line = HorizonSessionLogLine(seconds, FootprintMB(), AvailableMB(), pi.thermalState,
+    // Read and reset the probe's counters. The window is the time since the last sample, so the rate is per second
+    // whatever the timer's drift. In the background the display link does not fire: no reading, empty cells.
+    static CFAbsoluteTime lastSample;
+    CFAbsoluteTime nowAbs = CFAbsoluteTimeGetCurrent();
+    double window = lastSample > 0 ? nowAbs - lastSample : 0;
+    lastSample = nowAbs;
+    uint32_t ticks = gTicks, stalls = gStalls, worst = gWorstMs;
+    gTicks = 0; gStalls = 0; gWorstMs = 0;
+    double rate = (window > 0.5 && gForeground != 0 && ticks > 0) ? ticks / window : -1;
+    NSString *line = HorizonSessionLogLineWithTicks(seconds, FootprintMB(), AvailableMB(), pi.thermalState,
                                            pi.lowPowerModeEnabled, dev.batteryLevel,
-                                           dev.batteryState, gForeground != 0);
+                                           dev.batteryState, gForeground != 0, rate, stalls, worst);
     Append([line stringByAppendingString:@"\n"]);
     // A long session replaces the file rather than growing it without bound.
     if (gHandle && [gHandle offsetInFile] > kMaxBytes) StartNewFile();
@@ -125,6 +171,10 @@ void HorizonStartSessionLog(NSString *root) {
         // notification the app counts as in the foreground, which is where every run starts.
         UIApplication *app = [UIApplication sharedApplication];
         if (app) gForeground = app.applicationState != UIApplicationStateBackground;
+        // The main-thread probe (see HZTickProbe). Added to the main run loop, in common modes so a scroll or a
+        // touch does not pause it. Asked for the screen's own rate; it costs one counter and one clock read a tick.
+        gLink = [CADisplayLink displayLinkWithTarget:[HZTickProbe new] selector:@selector(tick:)];
+        [gLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
     });
     dispatch_queue_t q = dispatch_queue_create("dev.imc.sessionlog", DISPATCH_QUEUE_SERIAL);
     dispatch_set_target_queue(q, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));

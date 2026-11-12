@@ -91,7 +91,11 @@ public final class EngineOverlay: NSObject {
         waitForLandscape(scene, left: 15) {
             UIView.animate(withDuration: 0.3, animations: { window.alpha = 0 }) { _ in
                 window.isHidden = true
-                horizon_ios_breadcrumb("overlay: launcher dismissed, game on screen")
+                // Hiding a window does not stop what is in it: the SwiftUI tree (its glass layers, observers and
+                // any running timer) stays alive under the game and keeps taking the main thread's time. Taking
+                // the root controller away frees the whole launcher; nothing shows it again in this run.
+                window.rootViewController = nil
+                horizon_ios_breadcrumb("overlay: launcher dismissed and released, game on screen")
             }
         }
     }

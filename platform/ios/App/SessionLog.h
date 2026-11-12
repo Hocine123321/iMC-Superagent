@@ -21,3 +21,10 @@ NSString *HorizonSessionLogLine(double seconds, unsigned long long footprintMB,
                                 unsigned long long availableMB, NSInteger thermal,
                                 BOOL lowPower, float battery, NSInteger batteryState,
                                 BOOL foreground);
+
+// The same with the main-thread probe's columns (ticks per second, long gaps, worst gap in ms).
+// ticksPerSecond < 0 writes empty cells (no reading), never a 0.
+NSString *HorizonSessionLogLineWithTicks(double seconds, unsigned long long footprintMB,
+                                unsigned long long availableMB, NSInteger thermal,
+                                BOOL lowPower, float battery, NSInteger batteryState,
+                                BOOL foreground, double ticksPerSecond, unsigned stalls, unsigned worstMs);

@@ -14,22 +14,54 @@ struct BlockGrid: View {
     @Environment(\.brand2) private var brand2
 
     var body: some View {
-        Canvas { ctx, size in
-            let cols = Int(size.width / cell) + 1, rows = Int(size.height / cell) + 1
-            for r in 0..<rows {
-                for c in 0..<cols {
-                    // A fixed pseudo-random pattern (no animation, no state): the same picture every time.
-                    let h = (r &* 73856093) ^ (c &* 19349663)
-                    let v = Double(abs(h % 1000)) / 1000
-                    guard v > 0.58 else { continue }
-                    let rect = CGRect(x: CGFloat(c) * cell + 2, y: CGFloat(r) * cell + 2, width: cell - 4, height: cell - 4)
-                    let colour = (h & 4) == 0 ? brand : brand2
-                    ctx.fill(Path(roundedRect: rect, cornerRadius: 6), with: .color(colour.opacity(0.05 + (v - 0.58) * 0.30)))
-                }
+        // The squares are drawn once into a bitmap and the bitmap is what every screen shows. The first version ran
+        // a Canvas (hundreds of rounded rectangles, each with its own colour) every time a screen was built, and
+        // each tab and pushed page has its own backdrop, so the same picture was redrawn again and again.
+        GeometryReader { geo in
+            if let image = BlockGridCache.image(size: geo.size, cell: cell, brand: brand, brand2: brand2) {
+                Image(uiImage: image).resizable().frame(width: geo.size.width, height: geo.size.height)
             }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Keeps the last picture for each size and pair of colours, so it is drawn once.
+enum BlockGridCache {
+    private static var key = ""
+    private static var cached: UIImage?
+
+    static func image(size: CGSize, cell: CGFloat, brand: Color, brand2: Color) -> UIImage? {
+        guard size.width > 1, size.height > 1 else { return nil }
+        let a = UIColor(brand), b = UIColor(brand2)
+        var c1: [CGFloat] = [0, 0, 0, 0], c2: [CGFloat] = [0, 0, 0, 0]
+        a.getRed(&c1[0], green: &c1[1], blue: &c1[2], alpha: &c1[3])
+        b.getRed(&c2[0], green: &c2[1], blue: &c2[2], alpha: &c2[3])
+        let k = "\(Int(size.width))x\(Int(size.height))/\(cell)/\(c1)/\(c2)"
+        if k == key, let cached { return cached }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { rc in
+            let ctx = rc.cgContext
+            let cols = Int(size.width / cell) + 1, rows = Int(size.height / cell) + 1
+            for r in 0..<rows {
+                for col in 0..<cols {
+                    // A fixed pseudo-random pattern (no animation, no state): the same picture every time.
+                    let h = (r &* 73856093) ^ (col &* 19349663)
+                    let v = Double(abs(h % 1000)) / 1000
+                    guard v > 0.58 else { continue }
+                    let rect = CGRect(x: CGFloat(col) * cell + 2, y: CGFloat(r) * cell + 2, width: cell - 4, height: cell - 4)
+                    let colour = (h & 4) == 0 ? a : b
+                    ctx.setFillColor(colour.withAlphaComponent(0.05 + (v - 0.58) * 0.30).cgColor)
+                    ctx.addPath(UIBezierPath(roundedRect: rect, cornerRadius: 6).cgPath)
+                    ctx.fillPath()
+                }
+            }
+        }
+        key = k
+        cached = image
+        return image
     }
 }
 

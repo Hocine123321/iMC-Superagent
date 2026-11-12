@@ -40,6 +40,7 @@ Done when: Play starts with no app relaunch, Quit Game returns to the launcher, 
 Speed, time left, retry, a Play button whose label shows its state, clear empty states, error text that says what to do.
 
 ### 5. Measure and tune (M15, M17)
+**2026-11-12, lag report:** the app side was made lighter (launcher released after Play, file reads off the main thread, backdrop drawn once, crash marker every 5 s off the main thread) and `session-log.csv` gained `main_ticks_per_s`, `main_stalls`, `main_worst_ms` (see `SESSION_LOG.md`). Not measured on the phone. Next: a play test with the Mobile preset on and off, then the log and `latest.log`; engine frame times still need an engine hook.
 Clean exit, a fixed test route, frame times and battery numbers, frame cap and 60/120 Hz, Low Power and heat behaviour (the fork's 120 Hz change is one plist key, `CADisableMinimumFrameDurationOnPhone`).
 
 ### 6. Open question: preparing the game on the phone (M8a/M8b)
