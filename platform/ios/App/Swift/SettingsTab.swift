@@ -80,7 +80,7 @@ struct SettingsTab: View {
                 case .download: DownloadPage()
                 case .files: GameFilesPage()
                 case .fileManager: FileManagerPage(path: "")
-                case .diagnostics: HostedPage(title: "Diagnostics") { HZLauncherDiagnosticsController() }
+                case .diagnostics: DiagnosticsPage()
                 case .about: AboutPage()
                 }
             }

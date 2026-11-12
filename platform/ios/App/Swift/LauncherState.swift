@@ -34,7 +34,8 @@ final class LauncherState: ObservableObject {
         accountName = account?.name
         accountUUID = account?.uuid
         accountOwns = account?.owns ?? false
-        hasCrash = !((model.crashReportText() ?? "").isEmpty)
+        // A crash report the person has not opened yet (opening it in Diagnostics > Logs marks it seen).
+        if let c = CrashFiles.newest() { hasCrash = c.date.timeIntervalSince1970 > LauncherFile.number("crashSeen", default: 0) } else { hasCrash = false }
         let root = model.root as String
         freeBytes = Self.freeSpace(at: root)
         if state == .ready {

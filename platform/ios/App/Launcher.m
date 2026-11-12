@@ -26,7 +26,8 @@
     return YES;
 }
 - (UIInterfaceOrientationMask)application:(UIApplication *)application supportedInterfaceOrientationsForWindow:(UIWindow *)window {
-    return UIInterfaceOrientationMaskPortrait;
+    // Portrait, except while the touch editor is open (it asks for landscape, like the game).
+    return [HZLauncherOrientation mask];
 }
 @end
 

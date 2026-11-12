@@ -9,7 +9,7 @@ struct RootView: View {
     @State private var tab = Tab.play
     @State private var path: [PlayRoute] = []
 
-    enum Tab: Hashable { case play, packs, settings }
+    enum Tab: Hashable { case play, packs, controls, settings }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -21,7 +21,7 @@ struct RootView: View {
                         case .download: DownloadPage()
                         case .files: GameFilesPage()
                         case .account: AccountPage()
-                        case .diagnostics: HostedPage(title: "Diagnostics") { HZLauncherDiagnosticsController() }
+                        case .diagnostics: DiagnosticsPage(start: .logs)
                         }
                     }
             }
@@ -31,6 +31,10 @@ struct RootView: View {
             MarketplaceTab()
                 .tabItem { Label("Packs", systemImage: "shippingbox.fill") }
                 .tag(Tab.packs)
+
+            ControlsTab()
+                .tabItem { Label("Controls", systemImage: "gamecontroller.fill") }
+                .tag(Tab.controls)
 
             SettingsTab()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }

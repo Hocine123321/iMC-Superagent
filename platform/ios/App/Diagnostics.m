@@ -10,6 +10,8 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 #include <libkern/OSCacheControl.h>
+#include <mach/mach.h>
+#include <os/proc.h>
 
 // csops(2) is not in the public headers; it is the call every JIT-aware iOS app uses to read the
 // code-signing flags of a process. CS_DEBUGGED is set once a debugger has attached and allowed JIT.
@@ -125,6 +127,26 @@ static void DurableAppend(NSString *path, NSString *text) {
     write(fd, d.bytes, d.length);
     fcntl(fd, F_FULLFSYNC);
     close(fd);
+}
+
+unsigned long long HZDiagAvailableMemory(void) { return (unsigned long long)os_proc_available_memory(); }
+
+unsigned long long HZDiagFootprint(void) {
+    task_vm_info_data_t info;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) != KERN_SUCCESS) return 0;
+    return (unsigned long long)info.phys_footprint;
+}
+
+NSString *HZDiagEntitlement(NSString *name) { return Entitlement(name); }
+
+NSString *HZDiagMachine(void) { return DeviceModel(); }
+
+unsigned int HZDiagCodeSigningFlags(int *error) {
+    uint32_t cs = 0;
+    int rc = csops(getpid(), CS_OPS_STATUS, &cs, sizeof cs);
+    if (error) *error = rc == 0 ? 0 : errno;
+    return rc == 0 ? cs : 0;
 }
 
 NSString *HorizonWriteDiagnostics(NSString *root) {
