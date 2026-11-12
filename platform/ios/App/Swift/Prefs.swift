@@ -73,6 +73,9 @@ final class Prefs: ObservableObject {
     @Published var confirmPlay: Bool { didSet { LauncherFile.set("confirmPlay", String(confirmPlay)) } }
     @Published var keepAwake: Bool { didSet { LauncherFile.set("keepAwake", String(keepAwake)) } }
 
+    // Developer options (unlocked by tapping the app mark in About three times; see DeveloperPage.swift)
+    @Published var devMode: Bool { didSet { LauncherFile.set("devMode", String(devMode)) } }
+
     // Marketplace
     @Published var useModrinth: Bool { didSet { HZPrefs.setUseModrinth(useModrinth) } }
     @Published var showMods: Bool { didSet { HZPrefs.setShowMods(showMods) } }
@@ -95,6 +98,7 @@ final class Prefs: ObservableObject {
         opensGameDirectly = HZLauncherModel.shared()!.opensGameDirectly
         inProcessPlay = HZLauncherModel.shared()!.inProcessPlay
         confirmPlay = LauncherFile.flag("confirmPlay", default: true)
+        devMode = LauncherFile.flag("devMode", default: false)
         keepAwake = LauncherFile.flag("keepAwake", default: true)
         useModrinth = HZPrefs.useModrinth()
         showMods = HZPrefs.showMods()
@@ -114,6 +118,7 @@ final class Prefs: ObservableObject {
         showHead = true
         confirmPlay = true
         keepAwake = true
+        devMode = false
         opensGameDirectly = false
         inProcessPlay = false
         useModrinth = false

@@ -24,7 +24,7 @@ two runs of the app:
 4. Close the game and open the app: no flag, so the launcher is back.
 
 **Play without closing the app (experimental, off by default, written 2026-11-11, never built or run).**
-Turn on **Settings > Game > Experimental > Play without closing the app**, then close the app fully and open it again (the flag is read once, at launch, so it does nothing until then). The switch writes the line `inProcessPlay:true` in `Documents/Horizon/launcher.txt`; typing the line by hand works too (true, 1, yes or on, any capitals, stray spaces tolerated).
+Turn on **Settings > Developer options > Play without closing the app** (unlock Developer options first, see "Developer options" below), then close the app fully and open it again (the flag is read once, at launch, so it does nothing until then). The switch writes the line `inProcessPlay:true` in `Documents/Horizon/launcher.txt`; typing the line by hand works too (true, 1, yes or on, any capitals, stray spaces tolerated).
 Then `main.m` always starts the engine, arms its hold (`horizon_ios_arm_hold`), and the engine opens its window
 and waits. `EngineOverlay.swift` puts the SwiftUI launcher in a window of its own above that one (since 2026-11-11; the first version presented it from winit's controller, and the engine's black boot screen flashed in and out behind it). The cover is raised from a `didFinishLaunching` observer registered before winit's, and while the hold waits the engine's window is portrait (`ios_hold::window_starts_portrait`), switched to landscape on Play. Play writes the signed-in
 account's session file, calls `horizon_ios_play()` (the engine's loader goes on), and dismisses the launcher.
@@ -163,6 +163,17 @@ system's own controls turn into glass without any code, and the custom ones coul
 - **What the Marketplace shows** (owner's rule): resource packs and Installed by default. Mods, Shaders and Everything are
   tabs that exist only once their switch is on; Modrinth likewise. Checked by `launcher_prefs_check.py`.
 - **The ... menu** is grouped: Library (File manager, Game files), Tools (Diagnostics), Appearance, Settings, About.
+
+## Developer options (2026-11-12, never run on a phone)
+
+Features that are off by default because they are unfinished, untested or only useful to testers live on one page, **Developer options** (`Swift/DeveloperPage.swift`), hidden until unlocked, as on Android:
+
+- **Unlock:** About > tap the app mark three times, each within two seconds of the last. The second tap shows "One more tap to open developer options"; the third turns developer mode on (`devMode:true` in `launcher.txt`, so it survives restarts), gives a success haptic and opens the page. Tapping three times again when it is already on just opens the page.
+- **Where it is afterwards:** a **Developer options** row under About in Settings, shown only while developer mode is on. **Turn off developer mode** (bottom of the page) removes the row again. It does not switch the features back off: each keeps the value it has. **Reset launcher settings** also turns developer mode off.
+- **What is on it:** the experimental feature switches (today: *Play without closing the app*, moved here from Settings > Game, same `inProcessPlay` line, same restart rule); the sign-in state (the build's own app ID, test mode, or not set up) and how to use the private test mode (the file `test-client-id.txt`, which the app still never writes or saves itself); and a read-only list of this build (launcher version, whether Play-without-closing and open-straight-into-the-game are on).
+- **Adding a feature to it:** a new off-by-default switch goes in `DeveloperPage.swift` under "Experimental features", with a `Prefs` property and a `launcher.txt` line like the others.
+
+Not a security boundary: anyone can find it. It only keeps unfinished things out of the normal settings.
 
 ## The source files (`platform/ios/App`)
 

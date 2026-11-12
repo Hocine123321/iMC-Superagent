@@ -25,7 +25,7 @@ struct Page<Content: View>: View {
 
 /// The third tab: a short list of places. Each opens a page of its own.
 struct SettingsTab: View {
-    enum Route: Hashable { case account, look, game, marketplace, download, files, fileManager, diagnostics, about }
+    enum Route: Hashable { case account, look, game, marketplace, download, files, fileManager, diagnostics, about, developer }
     @State private var path: [Route] = []
     @ObservedObject private var prefs = Prefs.shared
     @State private var accountName: String? = nil
@@ -58,6 +58,11 @@ struct SettingsTab: View {
                             Sep()
                             link(.about, "info.circle.fill", .brand2, "About", "Version, licences, credits.")
                         }
+                        if prefs.devMode {
+                            GlassGroup {
+                                link(.developer, "hammer.fill", .brand, "Developer options", "Experimental features, for testers.")
+                            }
+                        }
                         Button(role: .destructive) { confirmReset = true } label: {
                             Text("Reset launcher settings").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
                         }
@@ -82,6 +87,7 @@ struct SettingsTab: View {
                 case .fileManager: FileManagerPage(path: "")
                 case .diagnostics: DiagnosticsPage()
                 case .about: AboutPage()
+                case .developer: DeveloperPage()
                 }
             }
             .alert("Reset launcher settings?", isPresented: $confirmReset) {
@@ -251,12 +257,6 @@ struct GameSettingsPage: View {
                 ToggleRow(symbol: "questionmark.circle.fill", tone: .brand2, title: "Ask before Play",
                           detail: "Play closes the app and the game starts the next time it opens. This asks first.",
                           isOn: $prefs.confirmPlay)
-            }
-            SectionLabel("Experimental")
-            GlassGroup {
-                ToggleRow(symbol: "play.rectangle.fill", title: "Play without closing the app",
-                          detail: "Untested. The game starts inside this run of the app and Play no longer closes it. Close the app fully and open it again for this to apply. If the app opens to a blank screen, turn it off by deleting the line inProcessPlay from launcher.txt in the Horizon folder.",
-                          isOn: $prefs.inProcessPlay)
             }
             SectionLabel("Downloads")
             GlassGroup {

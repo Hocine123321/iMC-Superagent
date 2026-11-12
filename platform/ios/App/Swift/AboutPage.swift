@@ -4,6 +4,13 @@ import SwiftUI
 /// (project.yml: horizon/LICENSE and horizon/THIRD_PARTY_NOTICES.md), so there is no copy to drift.
 struct AboutPage: View {
     @Environment(\.brand) private var brand
+    @ObservedObject private var prefs = Prefs.shared
+    // Developer options: three quick taps on the mark (see DeveloperPage.swift).
+    @State private var taps = 0
+    @State private var lastTap = Date.distantPast
+    @State private var hint: String? = nil
+    @State private var hintWork: DispatchWorkItem? = nil
+    @State private var openDeveloper = false
 
     private var version: String { (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?" }
     private var build: String { (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?" }
@@ -12,9 +19,16 @@ struct AboutPage: View {
         Page("About") {
             VStack(spacing: 14) {
                 BrandMark().frame(width: 96, height: 96)
+                    .contentShape(Rectangle())
+                    .onTapGesture { tapMark() }
                 Text("iMC Horizon").font(.system(.largeTitle, design: .rounded).weight(.bold))
                 Text("Launcher \(version) (\(build))  ·  Minecraft 26.3")
                     .font(.subheadline).foregroundStyle(.secondary)
+                if let hint {
+                    Text(hint).font(.footnote.weight(.semibold)).foregroundStyle(brand)
+                        .transition(.opacity)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
             }
             .padding(.vertical, 18).frame(maxWidth: .infinity)
 
@@ -39,6 +53,38 @@ struct AboutPage: View {
                 }.buttonStyle(.plain)
             }
         }
+        .navigationDestination(isPresented: $openDeveloper) { DeveloperPage() }
+    }
+
+    /// Three taps within two seconds of each other. From the second tap on, a line counts down (as Android does);
+    /// the third opens Developer options and keeps developer mode on. Already on: it just opens the page.
+    private func tapMark() {
+        let now = Date()
+        taps = now.timeIntervalSince(lastTap) > 2 ? 1 : taps + 1
+        lastTap = now
+        if taps >= 3 {
+            taps = 0
+            Haptics.success()
+            if !prefs.devMode { prefs.devMode = true }
+            show(nil)
+            openDeveloper = true
+            return
+        }
+        if prefs.devMode {
+            show(taps == 2 ? "You are already a developer. One more tap opens the options." : nil)
+        } else if taps == 2 {
+            Haptics.select()
+            show("One more tap to open developer options.")
+        }
+    }
+
+    private func show(_ text: String?) {
+        hintWork?.cancel()
+        withAnimation { hint = text }
+        guard text != nil else { hintWork = nil; return }
+        let work = DispatchWorkItem { withAnimation { hint = nil } }
+        hintWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
     private func card(_ title: String, _ body: String) -> some View {
