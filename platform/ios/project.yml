@@ -38,8 +38,12 @@ targets:
       properties:
         CFBundleDisplayName: iMC Horizon
         CFBundleName: iMC Horizon
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        # Stamped by CI (ios-app.yml, "Work out the version"): the release number vN is CFBundleVersion and
+        # HZBuildTag, the commit is HZCommit. A local build keeps the defaults under settings below.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        HZBuildTag: "$(HZ_BUILD_TAG)"
+        HZCommit: "$(HZ_COMMIT)"
         LSRequiresIPhoneOS: true
         UIRequiredDeviceCapabilities: [arm64, metal]
         UIStatusBarHidden: true
@@ -66,6 +70,11 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: App/Info.plist
+        # Version defaults for a local build; CI passes its own on the xcodebuild line.
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        HZ_BUILD_TAG: "dev"
+        HZ_COMMIT: "local"
         # Empty unless the build passes HZ_MSA_CLIENT_ID (xcodebuild HZ_MSA_CLIENT_ID=...): no sign-in then.
         HZ_MSA_CLIENT_ID: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

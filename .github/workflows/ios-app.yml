@@ -89,6 +89,23 @@ jobs:
       - name: Generate the Xcode project
         working-directory: platform/ios
         run: xcodegen generate
+      # The release number is worked out before the build so the app carries it: About shows
+      # "iMC Horizon v34 · Launcher 0.1.0 (34) · commit abc1234". Same rule as the publish step: one more
+      # than the highest vN already published. A build that will not be published is tagged vN-dev.
+      - name: Work out the version
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LAST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+            --jq '[.[].tagName | select(test("^v[0-9]+$")) | ltrimstr("v") | tonumber] | max // 0')
+          N=$((LAST + 1))
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then TAG="v$N"; else TAG="v$N-dev"; fi
+          SHORT=$(git rev-parse --short HEAD)
+          echo "number=$N" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "This build: $TAG (build $N), commit $SHORT"
       - name: Build the app (unsigned)
         working-directory: platform/ios
         run: |
@@ -98,6 +115,8 @@ jobs:
             -derivedDataPath build/dd \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO EXCLUDED_ARCHS= \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ steps.ver.outputs.number }} \
+            HZ_BUILD_TAG=${{ steps.ver.outputs.tag }} HZ_COMMIT=${{ steps.ver.outputs.commit }} \
             build 2>&1 | tee ../../xcodebuild.log | tail -60
       # The runner's logs are not reachable from every tool, but check annotations are: the first compiler errors
       # are repeated as annotations so a failed build says what is wrong without opening the full log.
@@ -221,11 +240,9 @@ jobs:
         run: |
           SHORT=$(git rev-parse --short HEAD)
           SUBJECT=$(git log -1 --pretty=%s)
-          # Next version: one more than the highest vN already published (the older build-N-sha
-          # releases do not count).
-          LAST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
-            --jq '[.[].tagName | select(test("^v[0-9]+$")) | ltrimstr("v") | tonumber] | max // 0')
-          TAG="v$((LAST + 1))"
+          # The version the app was built with ("Work out the version"), so the release and the
+          # About page always agree.
+          TAG="${{ steps.ver.outputs.tag }}"
           NOTES=$(printf 'Unsigned IPA for iPhone (sideload with AltStore, Sideloadly or similar).\n\nChange: %s\n\nCommit %s, workflow run %s.' "$SUBJECT" "$SHORT" "$RUN")
           cp Horizon-unsigned.ipa "iMC-Horizon-${TAG}.ipa"
           gh release create "$TAG" "iMC-Horizon-${TAG}.ipa" \
