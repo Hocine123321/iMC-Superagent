@@ -287,7 +287,7 @@ enum DiagnosticsSuite {
 
         // ---- Phone
         add("device", "Phone", "Model and system", "iphone") {
-            let id = HZDiagMachine()
+            let id: String = HZDiagMachine() ?? "unknown"
             let version = await MainActor.run { UIDevice.current.systemVersion }
             let name = marketingName(id) ?? "Unknown model"
             return Outcome(status: .info, detail: "\(name) (\(id)), iOS \(version).")
@@ -529,8 +529,8 @@ enum DiagnosticsSuite {
 
         // ---- Signing and JIT
         add("memlimit", "Signing", "Memory entitlements", "lock.shield") {
-            let inc = HZDiagEntitlement("com.apple.developer.kernel.increased-memory-limit")
-            let ext = HZDiagEntitlement("com.apple.developer.kernel.extended-virtual-addressing")
+            let inc: String = HZDiagEntitlement("com.apple.developer.kernel.increased-memory-limit") ?? "(could not read)"
+            let ext: String = HZDiagEntitlement("com.apple.developer.kernel.extended-virtual-addressing") ?? "(could not read)"
             let detail = "Increased memory limit: \(inc). Extended virtual addressing: \(ext)."
             if inc == "absent" { return Outcome(status: .warn, detail: detail, advice: "The signing tool removed the increased-memory-limit entitlement, so iOS applies its standard limit. Sign with a tool or account that keeps it.") }
             return Outcome(status: .pass, detail: detail)
@@ -538,8 +538,8 @@ enum DiagnosticsSuite {
         add("jit", "Signing", "JIT and debugger", "hammer") {
             var err: Int32 = 0
             let flags = HZDiagCodeSigningFlags(&err)
-            let allow = HZDiagEntitlement("com.apple.developer.cs.allow-jit")
-            let task = HZDiagEntitlement("get-task-allow")
+            let allow: String = HZDiagEntitlement("com.apple.developer.cs.allow-jit") ?? "(could not read)"
+            let task: String = HZDiagEntitlement("get-task-allow") ?? "(could not read)"
             if err != 0 { return Outcome(status: .info, detail: "The signing flags could not be read (error \(err)).") }
             let debugged = flags & 0x1000_0000 != 0
             return Outcome(status: .info, detail: "Debugger attached (JIT allowed by the system): \(debugged ? "yes" : "no"). allow-jit: \(allow). get-task-allow: \(task).")
