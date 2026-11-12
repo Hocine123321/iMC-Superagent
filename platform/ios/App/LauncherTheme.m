@@ -20,21 +20,113 @@ NSNotificationName const HZThemeChanged = @"HZThemeChanged";
 
 + (NSString *)settingsPath { return [[HZLauncherModel shared].root stringByAppendingPathComponent:@"launcher.txt"]; }
 
+// launcher.txt is read all over the launcher (every Marketplace row asks "compact lists?", every haptic asks for
+// "haptics", the backdrop asks for the mix) and the first version re-read and re-parsed the file for each question,
+// and wrote it again (read, edit, atomic write) for every tick of a slider. A drag of the "Backdrop colour" slider
+// was sixty file rewrites a second on the main thread.
+//
+// Now the parsed lines are kept in memory, tagged with the file's modification date and size, so an edit by hand or
+// by the other writers of this file (LauncherModel.m, main.m reads it before anything exists) is noticed: a stat
+// call, not a read. Writes change the memory at once and reach the disk on a utility queue, the latest value of a
+// key winning, so a drag is one write. Anything that reads the file directly calls +flushSettings first.
+static NSMutableDictionary<NSString *, NSString *> *gSettings;   // key -> value, the file's own lines
+static NSMutableArray<NSString *> *gOrder;                       // keys in file order, to keep it stable
+static NSDate *gStamp;                                           // modification date the memory was read at
+static unsigned long long gStampSize;
+static BOOL gDirty;                                              // memory is ahead of the disk
+static BOOL gFlushQueued;
+static dispatch_queue_t gQueue;                                  // serial: the file is only written here
+static NSObject *gLock;
+
+static void SettingsInit(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        gLock = [NSObject new];
+        gQueue = dispatch_queue_create("dev.imc.settings", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(gQueue, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    });
+}
+
+// Caller holds gLock.
+static void LoadIfChanged(NSString *path) {
+    NSDictionary *a = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+    NSDate *when = a[NSFileModificationDate];
+    unsigned long long size = [a fileSize];
+    if (gSettings && !gDirty && ((when == nil && gStamp == nil) || [when isEqualToDate:gStamp]) && size == gStampSize) return;
+    if (gSettings && gDirty) return;   // our own unwritten changes are newer than the disk
+    NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil] ?: @"";
+    gSettings = [NSMutableDictionary dictionary];
+    gOrder = [NSMutableArray array];
+    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
+        NSRange colon = [line rangeOfString:@":"];
+        if (!line.length) continue;
+        if (colon.location == NSNotFound) {          // not a key:value line: kept as it is, as the old rewrite did
+            NSString *k = [NSString stringWithFormat:@"\x01%lu", (unsigned long)gOrder.count];
+            [gOrder addObject:k];
+            gSettings[k] = line;
+            continue;
+        }
+        NSString *k = [line substringToIndex:colon.location];
+        if (!gSettings[k]) [gOrder addObject:k];
+        gSettings[k] = [line substringFromIndex:colon.location + 1];
+    }
+    gStamp = when;
+    gStampSize = size;
+}
+
+// Caller holds gLock. Writes the memory to the file.
+static void WriteNow(NSString *path, NSString *root) {
+    NSMutableString *out = [NSMutableString string];
+    for (NSString *k in gOrder) {
+        if ([k hasPrefix:@"\x01"]) [out appendFormat:@"%@\n", gSettings[k]];
+        else [out appendFormat:@"%@:%@\n", k, gSettings[k]];
+    }
+    [[NSFileManager defaultManager] createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:nil];
+    [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    NSDictionary *a = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+    gStamp = a[NSFileModificationDate];
+    gStampSize = [a fileSize];
+    gDirty = NO;
+}
+
++ (void)flushSettings {
+    SettingsInit();
+    NSString *root = [HZLauncherModel shared].root, *path = [self settingsPath];
+    @synchronized (gLock) { if (gDirty) WriteNow(path, root); }
+}
+
 + (NSString *)settingFor:(NSString *)key {
-    NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
-    NSString *prefix = [key stringByAppendingString:@":"];
-    for (NSString *line in [text componentsSeparatedByString:@"\n"]) if ([line hasPrefix:prefix]) return [line substringFromIndex:prefix.length];
-    return nil;
+    SettingsInit();
+    NSString *path = [self settingsPath];
+    @synchronized (gLock) {
+        LoadIfChanged(path);
+        return gSettings[key];
+    }
 }
 
 + (void)setSetting:(NSString *)value for:(NSString *)key {
-    NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
-    NSString *prefix = [key stringByAppendingString:@":"];
-    NSMutableArray *kept = [NSMutableArray array];
-    for (NSString *line in [old componentsSeparatedByString:@"\n"]) if (line.length && ![line hasPrefix:prefix]) [kept addObject:line];
-    [kept addObject:[prefix stringByAppendingString:value]];
-    [[NSFileManager defaultManager] createDirectoryAtPath:[HZLauncherModel shared].root withIntermediateDirectories:YES attributes:nil error:nil];
-    [[[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    SettingsInit();
+    NSString *path = [self settingsPath], *root = [HZLauncherModel shared].root;
+    BOOL queue = NO;
+    @synchronized (gLock) {
+        LoadIfChanged(path);
+        if (!gSettings[key]) [gOrder addObject:key];
+        else if ([gSettings[key] isEqualToString:value]) return;       // nothing changed: no write at all
+        gSettings[key] = value;
+        gDirty = YES;
+        if (!gFlushQueued) { gFlushQueued = YES; queue = YES; }
+    }
+    if (queue) {
+        // A short delay lets the rest of a slider drag land in the same write.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), gQueue, ^{
+            @synchronized (gLock) { gFlushQueued = NO; if (gDirty) WriteNow(path, root); }
+        });
+    }
+}
+
++ (void)forgetSettings {
+    SettingsInit();
+    @synchronized (gLock) { gSettings = nil; gOrder = nil; gStamp = nil; gStampSize = 0; gDirty = NO; }
 }
 
 #pragma mark - Appearance

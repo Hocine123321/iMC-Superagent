@@ -89,3 +89,21 @@ work that could be found by reading the app side, and added the `main_` columns 
 **What this does not fix.** If the game itself runs slowly (low frames with a quiet main thread), the cause is in the
 engine's render settings or the GPU, and needs the numbers first. The Mobile preset (iMC Settings) lowers render
 distance, cuts effects and caps the frame rate; try it and compare the `main_` columns and the heat.
+
+
+## Launcher lag, second pass (2026-11-12)
+
+The owner clarified that the lag is in the launcher, not the game. Found by reading the app, not yet measured on the
+phone (the `main_` columns above are how to check):
+
+| Change | Why |
+|---|---|
+| `launcher.txt` is read through an in-memory copy (`LauncherTheme.m`), checked against the file's date and size | Every setting question (compact lists, haptics, the backdrop mix, each Marketplace row) re-read and re-parsed the file |
+| Writes to `launcher.txt` are coalesced and made on a utility queue (about 0.4 s later; flushed on leaving the app and before Play) | A drag of "Backdrop colour" or "Colour balance" rewrote the file (read, edit, atomic write) sixty times a second on the main thread |
+| The backdrop is one bitmap (gradients, glows and grid), redrawn only when size, scheme, colours or mix change, at most about ten times a second during a drag | Four layers sat behind every glass card on every screen; glass samples what is behind it each frame it moves |
+| The tab bar observes only the accent (`AccentLook`), not all of `Prefs` | A slider drag rebuilt every tab sixty times a second |
+| `LongText` splits the log once per text | It split and joined up to 256 KB on every body pass, a keystroke in the log search included |
+| Haptic generators are kept and prepared | A new generator for every tap meant a late first tap |
+
+`LauncherModel.m` still writes `launcher.txt` itself for `openGame:` and `inProcessPlay:`; it flushes pending settings
+first and tells the cache to reload afterwards.

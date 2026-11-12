@@ -1,4 +1,5 @@
 #import "LauncherModel.h"
+#import "LauncherTheme.h"
 
 @implementation HZLauncherModel {
     NSString *_root, *_resources, *_home;
@@ -87,6 +88,7 @@
 - (NSString *)settingsPath { return [_root stringByAppendingPathComponent:@"launcher.txt"]; }
 
 - (BOOL)opensGameDirectly {
+    [HZTheme flushSettings];
     NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
     for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
         if ([line hasPrefix:@"openGame:"]) return [[line substringFromIndex:9] hasPrefix:@"1"];
@@ -95,6 +97,7 @@
 }
 
 - (BOOL)inProcessPlay {
+    [HZTheme flushSettings];
     NSString *text = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil];
     NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
     for (NSString *raw in [text componentsSeparatedByString:@"\n"]) {
@@ -107,6 +110,7 @@
 }
 
 - (void)setInProcessPlay:(BOOL)on {
+    [HZTheme flushSettings];   // settings still in memory reach the file before this rewrites it
     // Keeps the other lines of launcher.txt, like setOpensGameDirectly:.
     NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
     NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
@@ -119,9 +123,11 @@
     NSString *text = [[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
     [[NSFileManager defaultManager] createDirectoryAtPath:_root withIntermediateDirectories:YES attributes:nil error:nil];
     [text writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [HZTheme forgetSettings];   // the file changed under the memory copy
 }
 
 - (void)setOpensGameDirectly:(BOOL)on {
+    [HZTheme flushSettings];   // settings still in memory reach the file before this rewrites it
     // Keeps the other lines of launcher.txt (the appearance choice lives there too).
     NSString *old = [NSString stringWithContentsOfFile:[self settingsPath] encoding:NSUTF8StringEncoding error:nil] ?: @"";
     NSMutableArray *kept = [NSMutableArray array];
@@ -132,6 +138,7 @@
     NSString *text = [[kept componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
     [[NSFileManager defaultManager] createDirectoryAtPath:_root withIntermediateDirectories:YES attributes:nil error:nil];
     [text writeToFile:[self settingsPath] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [HZTheme forgetSettings];
 }
 
 - (BOOL)shouldSkipLauncher {

@@ -20,7 +20,9 @@ typedef NS_ENUM(NSInteger, HZAppearance) {
 
 // launcher.txt: one "key:value" per line. Reading and writing keeps every line the caller does not own.
 + (nullable NSString *)settingFor:(NSString *)key;
-+ (void)setSetting:(NSString *)value for:(NSString *)key;
++ (void)setSetting:(NSString *)value for:(NSString *)key;   // in memory at once, on disk within about half a second
++ (void)flushSettings;     // write anything not yet written; call before reading or replacing the file another way
++ (void)forgetSettings;    // drop the memory copy (the file was deleted or replaced)
 
 // How strongly the colour shows behind the launcher, 0 to 1 (the "glass:" line).
 + (float)glassStrength;

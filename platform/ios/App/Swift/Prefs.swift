@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import UIKit
 
 /// launcher.txt: one "key:value" per line, shared with the Objective-C side (main.m reads openGame:, HZTheme reads
@@ -7,23 +8,11 @@ enum LauncherFile {
     static var root: String { HZLauncherModel.shared()!.root }
     static var path: String { (root as NSString).appendingPathComponent("launcher.txt") }
 
-    static func get(_ key: String) -> String? {
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-        let prefix = key + ":"
-        for line in text.components(separatedBy: "\n") where line.hasPrefix(prefix) {
-            return String(line.dropFirst(prefix.count))
-        }
-        return nil
-    }
+    // Reads and writes go through HZTheme's in-memory copy of the file (LauncherTheme.m): a read is a stat call and a
+    // dictionary lookup, a write is in memory at once and on disk within half a second, a drag of a slider being one write.
+    static func get(_ key: String) -> String? { HZTheme.setting(for: key) }
 
-    static func set(_ key: String, _ value: String) {
-        let old = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-        let prefix = key + ":"
-        var kept = old.components(separatedBy: "\n").filter { !$0.isEmpty && !$0.hasPrefix(prefix) }
-        kept.append(prefix + value)
-        try? FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
-        try? (kept.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
-    }
+    static func set(_ key: String, _ value: String) { HZTheme.setSetting(value, for: key) }
 
     static func flag(_ key: String, default fallback: Bool) -> Bool {
         switch get(key) {
@@ -40,7 +29,9 @@ enum LauncherFile {
 
     /// Every launcher setting back to its default. The start-up line (openGame:) is a launcher setting too.
     static func resetAll() {
+        HZTheme.flushSettings()
         try? FileManager.default.removeItem(atPath: path)
+        HZTheme.forgetSettings()
     }
 }
 
@@ -131,21 +122,48 @@ final class Prefs: ObservableObject {
     }
 }
 
+/// Only the accent colour, for the views at the top of the tree. `Prefs` has twenty settings in one observable object, and
+/// a view that observes it is rebuilt when any of them changes: with the whole tab bar observing it, a slider drag in Look
+/// rebuilt every tab sixty times a second. The tab bar needs to know about the accent and nothing else.
+final class AccentLook: ObservableObject {
+    static let shared = AccentLook()
+    @Published private(set) var accent: Prefs.Accent
+    private var watch: AnyCancellable?
+    private init() {
+        accent = Prefs.shared.accent
+        watch = Prefs.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let a = Prefs.shared.accent
+                if a != self.accent { self.accent = a }
+            }
+    }
+    var brand: Color { accent == .red ? Palette.red : Palette.blue }
+    var brand2: Color { accent == .red ? Palette.blue : Palette.red }
+}
+
 enum Haptics {
+    // One generator of each kind, kept: making a new one for every tap costs a round trip to the haptics daemon, and
+    // the first impact after a pause is late. `prepare()` after a tap keeps the engine awake for the next one.
+    private static let light = UIImpactFeedbackGenerator(style: .light)
+    private static let selection = UISelectionFeedbackGenerator()
+    private static let notification = UINotificationFeedbackGenerator()
+
     static func tap() {
         guard Prefs.shared.haptics else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        light.impactOccurred(); light.prepare()
     }
     static func select() {
         guard Prefs.shared.haptics else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        selection.selectionChanged(); selection.prepare()
     }
     static func success() {
         guard Prefs.shared.haptics else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        notification.notificationOccurred(.success)
     }
     static func warning() {
         guard Prefs.shared.haptics else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        notification.notificationOccurred(.warning)
     }
 }

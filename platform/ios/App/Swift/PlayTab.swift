@@ -5,7 +5,6 @@ enum PlayRoute: Hashable { case download, files, account, diagnostics }
 /// The first tab: the state of the game, one big Play button, the way to the files, and what the phone has left.
 struct PlayTab: View {
     @ObservedObject var state: LauncherState
-    @ObservedObject private var prefs = Prefs.shared
     @Environment(\.brand) private var brand
     @Environment(\.brand2) private var brand2
     var open: (PlayRoute) -> Void
@@ -164,7 +163,7 @@ struct PlayTab: View {
     }
 
     private func tapPlay() {
-        if prefs.confirmPlay { confirmPlay = true } else { state.play() }
+        if Prefs.shared.confirmPlay { confirmPlay = true } else { state.play() }
     }
 
     // MARK: words

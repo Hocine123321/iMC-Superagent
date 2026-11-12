@@ -5,7 +5,7 @@ import UIKit
 /// ordinary tab bar. The launcher is portrait; the game is landscape (see LauncherHost).
 struct RootView: View {
     @StateObject private var state = LauncherState()
-    @ObservedObject private var prefs = Prefs.shared
+    @ObservedObject private var look = AccentLook.shared
     @State private var tab = Tab.play
     @State private var path: [PlayRoute] = []
 
@@ -40,12 +40,15 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(Tab.settings)
         }
-        .tint(prefs.brand)
-        .environment(\.brand, prefs.brand)
-        .environment(\.brand2, prefs.brand2)
+        .tint(look.brand)
+        .environment(\.brand, look.brand)
+        .environment(\.brand2, look.brand2)
         .onAppear { state.refresh() }
         .onChange(of: tab) { _ in state.refresh() }
         .onChange(of: path) { _ in state.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in state.refresh() }
+        // Settings are written to launcher.txt a moment after they change; make sure none is left behind.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in HZTheme.flushSettings() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in HZTheme.flushSettings() }
     }
 }

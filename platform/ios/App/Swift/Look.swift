@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import UIKit
 
 // iMC's look. The glass is ONLY the system's: `glassEffect`, `GlassEffectContainer`, `.glass` and `.glassProminent`
@@ -6,45 +7,107 @@ import UIKit
 
 // MARK: - The ground behind every screen
 
-/// A faint grid of squares, like a block world seen from above, tinted blue and red. It gives the glass something
-/// to refract: glass over a flat colour looks like a flat slab.
-struct BlockGrid: View {
-    var cell: CGFloat = 36
+/// The whole ground behind a screen, drawn ONCE into a single bitmap: navy at the top, wine at the bottom, a blue glow
+/// and a red glow in the corners, and a faint grid of squares like a block world seen from above, fading out downwards.
+/// "Colour balance" in Settings moves the mix; "Backdrop colour" sets how strong it is.
+///
+/// The first version was a ZStack of a linear gradient, two radial gradients and a masked Canvas, rebuilt for every tab
+/// and pushed page. Liquid Glass samples whatever is behind it on every frame it moves, so each card over that stack
+/// made the system composite four layers again while scrolling. One flat image behind the glass costs a texture read.
+/// The bitmap is kept for the last size, colours and mix, so a new screen reuses it and only a change in Settings
+/// draws it again.
+struct Backdrop: View {
+    @Environment(\.colorScheme) private var scheme
     @Environment(\.brand) private var brand
     @Environment(\.brand2) private var brand2
+    @ObservedObject private var look = BackdropLook.shared
 
     var body: some View {
-        // The squares are drawn once into a bitmap and the bitmap is what every screen shows. The first version ran
-        // a Canvas (hundreds of rounded rectangles, each with its own colour) every time a screen was built, and
-        // each tab and pushed page has its own backdrop, so the same picture was redrawn again and again.
         GeometryReader { geo in
-            if let image = BlockGridCache.image(size: geo.size, cell: cell, brand: brand, brand2: brand2) {
+            if let image = BackdropCache.image(size: geo.size, scheme: scheme, brand: brand, brand2: brand2,
+                                               strength: look.strength, balance: look.balance) {
                 Image(uiImage: image).resizable().frame(width: geo.size.width, height: geo.size.height)
+            } else {
+                Palette.ink
             }
         }
+        .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }
 
-/// Keeps the last picture for each size and pair of colours, so it is drawn once.
-enum BlockGridCache {
+/// Only what the backdrop depends on, so a change to any other setting does not redraw it (and a screen that shows the
+/// backdrop does not observe every preference in the app).
+final class BackdropLook: ObservableObject {
+    static let shared = BackdropLook()
+    @Published private(set) var strength: Double
+    @Published private(set) var balance: Double
+    private var watch: AnyCancellable?
+    private init() {
+        strength = Prefs.shared.intensity
+        balance = Prefs.shared.balance
+        watch = Prefs.shared.objectWillChange
+            .receive(on: DispatchQueue.main)          // after the change has landed
+            // A slider drag changes these sixty times a second; the picture is drawn at most about ten times a second
+            // while it moves, and once more when it stops.
+            .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let s = Prefs.shared.intensity, b = Prefs.shared.balance
+                if s != self.strength { self.strength = s }
+                if b != self.balance { self.balance = b }
+            }
+    }
+}
+
+enum BackdropCache {
     private static var key = ""
     private static var cached: UIImage?
 
-    static func image(size: CGSize, cell: CGFloat, brand: Color, brand2: Color) -> UIImage? {
+    static func image(size: CGSize, scheme: ColorScheme, brand: Color, brand2: Color, strength: Double, balance: Double) -> UIImage? {
         guard size.width > 1, size.height > 1 else { return nil }
-        let a = UIColor(brand), b = UIColor(brand2)
-        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
-        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
-        a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
-        b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
-        let k = "\(Int(size.width))x\(Int(size.height))/\(cell)/\(r1),\(g1),\(b1)/\(r2),\(g2),\(b2)"
+        let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light
+        let traits = UITraitCollection(userInterfaceStyle: style)
+        // The palette is dynamic (one colour for dark, one for light): resolve it for the scheme being drawn.
+        let ink = UIColor(Palette.ink).resolvedColor(with: traits)
+        let wine = UIColor(Palette.wine).resolvedColor(with: traits)
+        let c1 = UIColor(brand).resolvedColor(with: traits)
+        let c2 = UIColor(brand2).resolvedColor(with: traits)
+        func rgb(_ c: UIColor) -> String {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return String(format: "%.3f,%.3f,%.3f", r, g, b)
+        }
+        let k = "\(Int(size.width))x\(Int(size.height))/\(scheme == .dark)/\(rgb(c1))/\(rgb(c2))/\(String(format: "%.2f", strength))/\(String(format: "%.2f", balance))"
         if k == key, let cached { return cached }
+
+        let s = strength * 2                                          // 1 at the default
+        let base = scheme == .dark ? 0.50 : 0.30
+        // Balance 0 is all brand, 1 is all the other one; the middle is an even mix.
+        let a1 = min(0.95, base * s * min(1.4, 2 * (1 - balance)))
+        let a2 = min(0.95, base * s * min(1.4, 2 * balance))
+
         let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
+        format.opaque = true
+        format.scale = min(format.scale, 2)                           // smooth gradients need no more
         let image = UIGraphicsImageRenderer(size: size, format: format).image { rc in
             let ctx = rc.cgContext
+            let space = CGColorSpaceCreateDeviceRGB()
+            func gradient(_ colours: [UIColor], _ locations: [CGFloat]) -> CGGradient {
+                CGGradient(colorsSpace: space, colors: colours.map { $0.cgColor } as CFArray, locations: locations)!
+            }
+            // Navy to wine, top to bottom.
+            ctx.drawLinearGradient(gradient([ink, wine], [0, 1]), start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            // The two glows, clear at their edge.
+            func glow(_ colour: UIColor, alpha: Double, at centre: CGPoint, radius: CGFloat) {
+                ctx.drawRadialGradient(gradient([colour.withAlphaComponent(alpha), colour.withAlphaComponent(0)], [0, 1]),
+                                       startCenter: centre, startRadius: 0, endCenter: centre, endRadius: radius, options: [])
+            }
+            glow(c1, alpha: a1, at: .zero, radius: 560)
+            glow(c2, alpha: a2, at: CGPoint(x: size.width, y: size.height), radius: 620)
+            // The grid, fading out downwards (the mask the old version used, applied while drawing).
+            let cell: CGFloat = 36
             let cols = Int(size.width / cell) + 1, rows = Int(size.height / cell) + 1
             for r in 0..<rows {
                 for col in 0..<cols {
@@ -53,8 +116,8 @@ enum BlockGridCache {
                     let v = Double(abs(h % 1000)) / 1000
                     guard v > 0.58 else { continue }
                     let rect = CGRect(x: CGFloat(col) * cell + 2, y: CGFloat(r) * cell + 2, width: cell - 4, height: cell - 4)
-                    let colour = (h & 4) == 0 ? a : b
-                    ctx.setFillColor(colour.withAlphaComponent(0.05 + (v - 0.58) * 0.30).cgColor)
+                    let fade = max(0, 1 - Double(rect.midY / size.height))
+                    ctx.setFillColor(((h & 4) == 0 ? c1 : c2).withAlphaComponent((0.05 + (v - 0.58) * 0.30) * fade).cgColor)
                     ctx.addPath(UIBezierPath(roundedRect: rect, cornerRadius: 6).cgPath)
                     ctx.fillPath()
                 }
@@ -63,30 +126,6 @@ enum BlockGridCache {
         key = k
         cached = image
         return image
-    }
-}
-
-/// Navy at the top, wine at the bottom, a blue glow and a red glow in the corners, and the block grid fading out
-/// downwards. "Colour balance" in Settings moves the mix; "Backdrop colour" sets how strong it is.
-struct Backdrop: View {
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.brand) private var brand
-    @Environment(\.brand2) private var brand2
-    @ObservedObject private var prefs = Prefs.shared
-
-    var body: some View {
-        let strength = prefs.intensity * 2                       // 1 at the default
-        let base = scheme == .dark ? 0.50 : 0.30
-        // Balance 0 is all brand, 1 is all the other one; the middle is an even mix.
-        let a1 = min(0.95, base * strength * min(1.4, 2 * (1 - prefs.balance)))
-        let a2 = min(0.95, base * strength * min(1.4, 2 * prefs.balance))
-        ZStack {
-            LinearGradient(colors: [Palette.ink, Palette.wine], startPoint: .top, endPoint: .bottom)
-            RadialGradient(colors: [brand.opacity(a1), .clear], center: .topLeading, startRadius: 0, endRadius: 560)
-            RadialGradient(colors: [brand2.opacity(a2), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 620)
-            BlockGrid().mask(LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom))
-        }
-        .ignoresSafeArea()
     }
 }
 
@@ -330,18 +369,28 @@ struct LongText: View {
     var font: Font = .system(size: 11, design: .monospaced)
     var linesPerChunk = 40
 
-    private var chunks: [String] {
-        let lines = text.components(separatedBy: "\n")
-        return stride(from: 0, to: lines.count, by: linesPerChunk).map {
-            lines[$0..<min($0 + linesPerChunk, lines.count)].joined(separator: "\n")
-        }
-    }
+    /// Split once per text. The first version split and joined every line of a log (up to 256 KB) each time the body was
+    /// evaluated, which is every time anything in the page changed, a keystroke in the search box included.
+    @State private var chunks: [String] = []
+    @State private var splitFrom: Int = -1
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
                 Text(chunk).font(font).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+        .onAppear { split() }
+        .onChange(of: text) { _ in split() }
+    }
+
+    private func split() {
+        let key = text.hashValue
+        guard key != splitFrom else { return }
+        splitFrom = key
+        let lines = text.components(separatedBy: "\n")
+        chunks = stride(from: 0, to: lines.count, by: linesPerChunk).map {
+            lines[$0..<min($0 + linesPerChunk, lines.count)].joined(separator: "\n")
         }
     }
 }

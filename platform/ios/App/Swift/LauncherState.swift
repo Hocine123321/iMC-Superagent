@@ -74,6 +74,7 @@ final class LauncherState: ObservableObject {
     /// The same Play as before: the game is a separate run of the app, so leave the one-shot flag and exit.
     /// (Replaced by an in-process start in M24 stage 3.)
     func play() {
+        HZTheme.flushSettings()      // the game reads launcher.txt itself, and may be a new run of the app
         // Play without closing the app (flag inProcessPlay:true): the engine is already running and waiting.
         if HZIsInProcessPlay() { playInProcess(); return }
         guard model.setStartGameFlag() else { startFailed = true; return }
