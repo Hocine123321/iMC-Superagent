@@ -17,6 +17,10 @@ The game already runs on the phone (confirmed 2026-11-10). What is left is the l
 - Telemetry stays as it is. The file manager stays inside `Documents/Horizon` and asks before deleting. The Marketplace never installs native mods.
 - Removed by the owner and not coming back: world backup and export, signature and update checks, multiplayer polish (old M16, M21, M23), custom extra buttons.
 
+## Done since this plan was written
+
+- 2026-11-11 and 12: the launcher was remade in SwiftUI with a blue and red palette on system glass, a new app icon, a touch editor, an expanded Account page, a Diagnostics check-up and more settings (`LAUNCHER.md`, `SESSION_LOG.md`). It has not been seen on a phone yet; the first thing to do with the next build is to go through every tab.
+
 ## The order
 
 ### 1. Toolchain: Xcode 26 (in progress)

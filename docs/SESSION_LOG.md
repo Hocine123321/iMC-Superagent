@@ -107,3 +107,23 @@ phone (the `main_` columns above are how to check):
 
 `LauncherModel.m` still writes `launcher.txt` itself for `openGame:` and `inProcessPlay:`; it flushes pending settings
 first and tells the cache to reload afterwards.
+
+## Launcher overhaul (2026-11-11 and 12)
+
+The owner asked for the whole launcher to be remade: a red and blue palette on system Liquid Glass, a new app icon, a touch
+editor inside the launcher, a bigger Account page, a Diagnostics page that is a real tool, and more settings.
+
+| Done | Where |
+|---|---|
+| Blue and red palette, system-glass design system, backdrop with a blue and a red glow and a block grid; accent blue or red, colour balance, backdrop strength | `Palette.swift`, `Look.swift`, `Prefs.swift` |
+| Every screen rewritten in SwiftUI: Play, Packs (Marketplace and project pages), Controls, Settings (Look, Game, Marketplace), Account, Download, Game files, File manager, Diagnostics, About; the UIKit screens and glass controls are gone | `platform/ios/App/Swift/` |
+| New app icon (a glass block, blue and red, over navy and wine; light, dark and tinted) | `tools/make_app_icon.py`, `Assets.xcassets` |
+| Touch editor in the launcher: full-screen landscape, drag, size, opacity, hide; reads and writes the game's own `horizon-touch-layout.txt` | `TouchEditor.swift`, `ControlsModel.swift` |
+| Game settings in the launcher (touch, menus, calibration, Auto Performance) through the game's own `horizon-imc.txt` | `ControlsTab.swift` |
+| Account page: the player's head (from Mojang's servers, optional), sign-in code card with timer, ownership, last checked, check again, sign out, switch account | `AccountPage.swift`, `SkinHead.swift` |
+| Diagnostics check-up (about thirty checks the person runs, advice, a shareable report, tools) and Logs (crash reading, filters, memory chart) | `DiagnosticsEngine.swift`, `DiagnosticsPage.swift`, `LogsView.swift` |
+
+Not yet seen on a phone. The first builds failed on missing bridging-header imports and optional strings; CI now repeats the
+compiler's first errors as annotations (`ios-app.yml`, "Report compiler errors as annotations"), which is how they were read.
+Another session worked in the same repository at the same time (lag passes, Developer options, in-process Play); the two
+sets of commits were rebased onto each other without conflict except one duplicate fix.

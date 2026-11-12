@@ -7,9 +7,33 @@ summary: What the native launcher screens do, how Play works, the look and Setti
 
 The app opens to a native launcher, not to the game. Source: `platform/ios/App/Launcher*.{h,m}` and, since v36, `platform/ios/App/Swift/`.
 
-## The SwiftUI shell (M24 stage 2, built 2026-11-10, not yet seen on a phone)
+## The launcher UI, remade (2026-11-11 and 12; compiled on CI, not yet seen on a phone)
 
-`Launcher.m` now makes `HZLauncherHost.makeRoot()` (`Swift/LauncherHost.swift`) the window's root. It is a system `TabView` with three tabs: **Play** (`PlayTab.swift`: status card, Play, shortcuts to Download and Game files, the round Account button), **Packs** (the UIKit Marketplace, hosted) and **Settings** (`SettingsTab.swift`: Preferences, File manager, Game files, Diagnostics, About). Glass comes only from the system (`glassEffect`, `.glass`, `.glassProminent` on iOS 26 and later; materials and bordered buttons before), see `Swift/Look.swift`. The Objective-C screens are reused unchanged through `Swift/Hosted.swift`; Play still uses the relaunch described below (`LauncherState.play()`). **Where this page describes the old UIKit Home, its "..." menu and its tab bar, that layout is gone; the screens it lists are all still reachable, now from Settings or the Play tab.** The Home, Second pass and Look notes below are kept as history; `HZTheme` still supplies the colours.
+Every launcher screen is SwiftUI now (`platform/ios/App/Swift/`); the Objective-C side keeps only the logic (account,
+download, marketplace, file rules, diagnostics readings). `Launcher.m` makes `HZLauncherHost.makeRoot()` the window's root.
+
+**Look.** A blue and a red (`Palette.swift`, dynamic for dark and light) over a navy-to-wine ground with a faint block grid
+(`Backdrop`, `BlockGrid` in `Look.swift`). The accent is blue or red (Settings > Look), with a colour balance slider and a backdrop strength.
+Glass is only the system's: `glassEffect`, `GlassEffectContainer`, `.glass` and `.glassProminent` on iOS 26 and later, the system's
+materials before that; nothing imitates glass. The mark (`BrandMark`) is drawn in code and matches the app icon
+(`tools/make_app_icon.py` writes the three icon files).
+
+**Tabs** (the system tab bar): **Play**, **Packs**, **Controls**, **Settings**.
+
+| Tab / page | File | What it does |
+|---|---|---|
+| Play | `PlayTab.swift` | Game state, Play, Download and Game files tiles, storage, a banner for a crash report not yet opened |
+| Packs | `MarketplaceTab.swift`, `MarketDetailPage.swift` | The Marketplace: tabs, search, rows with icons, a page per project with install, update, remove, and the mod switch |
+| Controls | `ControlsTab.swift`, `TouchEditor.swift`, `ControlsModel.swift` | The game's touch and performance settings (the same `horizon-imc.txt` the game reads), and the **touch editor**: full-screen landscape, drag a button, size, opacity, hide; saved to `horizon-touch-layout.txt` (the game's own format; the extra buttons' lines are kept) |
+| Settings | `SettingsTab.swift` | Account card, then Look, Game, Marketplace, Download, Game files, File manager, Diagnostics, About |
+| Account | `AccountPage.swift`, `SkinHead.swift` | Profile with the player's head (cut from the skin on Mojang's servers, off in Settings > Game), the sign-in code card, ownership, check again, sign out, switch account |
+| Download, Game files | `DownloadPage.swift`, `GameFilesPage.swift` | The download (a ring-less progress card, speed, time left) and importing, checking and deleting the prepared files |
+| File manager | `FileManagerPage.swift` | A list with swipe actions, rename, new folder, add files, text viewer, share |
+| Diagnostics | `DiagnosticsEngine.swift`, `DiagnosticsPage.swift`, `LogsView.swift` | **Check-up**: about thirty checks the person runs (phone, memory left, heat, storage, game files, network reachability and speed to Microsoft, Xbox, Mojang and the registry, account, settings files, last crash and session, signing and JIT), with advice, a report to share, and tools. **Logs**: crash report with a plain reading, game log with filters, session timeline chart, start-up report |
+| About | `AboutPage.swift` | Version, what this is, licences (the upstream `LICENSE` and notices are bundled unchanged) |
+
+The old UIKit screens (Home, Settings, Account, Download, Files, File manager, Marketplace, Diagnostics, About) and the
+glass UIKit controls were removed. `HZTheme` keeps only the appearance setting, `launcher.txt` and the window colour.
 
 ## How Play works
 
@@ -52,7 +76,7 @@ next open is the launcher with the crash report on the Diagnostics screen.
 
 If the flag is set but the files fail the check, the launcher opens instead of the engine.
 
-## Screens
+## Screens (the earlier UIKit launcher, kept as history; replaced by the table above)
 
 - **Home** (redesigned 2026-11-10, never run): name and versions, a status card for the game files,
   a large **Play**, and a 2x2 grid of the things needed most (Download, Marketplace, Game files,
@@ -182,11 +206,11 @@ Not a security boundary: anyone can find it. It only keeps unfinished things out
 | Files | What they do |
 |---|---|
 | `main.m`, `GameSession` | Entry point and the Play / flag logic; the signed-in profile handed to the engine |
-| `Launcher`, `LauncherModel`, `Swift/*` | The window and the SwiftUI shell (tabs, Play tab, Settings list, hosting of the UIKit screens), and the shared model (game folder, checks, diagnostics list) |
-| `LauncherSettings`, `LauncherPrefs`, `LauncherTheme`, `GlassControls` | The Settings page, the saved choices, colours and buttons, and the plain controls (the file name is from the glass version) |
-| `LauncherFiles`, `LauncherDownload`, `DownloadPlan`, `Downloader`, `DownloadStore` | Game files, and downloading Minecraft (`IOS_DOWNLOAD_PLAN.md`) |
-| `LauncherAccount`, `AccountClient`, `AccountModel`, `AccountStore` | Sign-in (`IOS_SIGN_IN.md`) |
-| `LauncherFileManager`, `FileBrowser` | The file manager and its rules |
-| `LauncherMarketplace`, `MarketIndex`, `MarketClient`, `MarketFetcher`, `MarketInstaller`, `MarketCells`, `ModrinthClient` | The Marketplace (`IOS_MARKETPLACE.md`) |
-| `LauncherDiagnostics`, `Diagnostics`, `CrashReporter`, `SessionLog` | Diagnostics, crash reports, the session log (`SESSION_LOG.md`) |
+| `Launcher`, `LauncherModel`, `Swift/*` | The window and the SwiftUI launcher (see the table above), and the shared model (game folder, checks, diagnostics list) |
+| `LauncherPrefs`, `LauncherTheme` | The saved Marketplace choices; the appearance setting, `launcher.txt` and the window colour |
+| `DownloadPlan`, `Downloader`, `DownloadStore`, `DownloadRate` | Downloading Minecraft (`IOS_DOWNLOAD_PLAN.md`) |
+| `AccountClient`, `AccountModel`, `AccountStore` | Sign-in (`IOS_SIGN_IN.md`) |
+| `FileBrowser` | The file manager's rules |
+| `MarketIndex`, `MarketClient`, `MarketFetcher`, `MarketInstaller`, `ModrinthClient` | The Marketplace (`IOS_MARKETPLACE.md`) |
+| `Diagnostics`, `CrashReporter`, `SessionLog` | The start-up report and the small readings the check-up uses, crash reports, the session log (`SESSION_LOG.md`) |
 
