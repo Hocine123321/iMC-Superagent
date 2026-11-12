@@ -20,6 +20,8 @@ struct DeveloperPage: View {
 
     private var version: String { (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?" }
     private var build: String { (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?" }
+    private var tag: String { (Bundle.main.infoDictionary?["HZBuildTag"] as? String) ?? "dev" }
+    private var commit: String { (Bundle.main.infoDictionary?["HZCommit"] as? String) ?? "local" }
 
     var body: some View {
         Page("Developer options") {
@@ -41,7 +43,7 @@ struct DeveloperPage: View {
 
             SectionLabel("This build")
             GlassGroup {
-                stateRow("shippingbox.fill", .brand, "Launcher", "\(version) (\(build))", .info)
+                stateRow("shippingbox.fill", .brand, "Launcher", "\(tag) · \(version) (\(build)) · \(commit)", .info)
                 Sep()
                 stateRow("play.rectangle", .brand2, "Play without closing", prefs.inProcessPlay ? "On (next start)" : "Off", prefs.inProcessPlay ? .warn : .info)
                 Sep()

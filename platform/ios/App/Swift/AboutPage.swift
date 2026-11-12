@@ -14,6 +14,9 @@ struct AboutPage: View {
 
     private var version: String { (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?" }
     private var build: String { (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?" }
+    /// The release this IPA was published as (vN), and its commit; stamped by CI, "dev"/"local" otherwise.
+    private var tag: String { (Bundle.main.infoDictionary?["HZBuildTag"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "dev" }
+    private var commit: String { (Bundle.main.infoDictionary?["HZCommit"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "local" }
 
     var body: some View {
         Page("About") {
@@ -22,8 +25,11 @@ struct AboutPage: View {
                     .contentShape(Rectangle())
                     .onTapGesture { tapMark() }
                 Text("iMC Horizon").font(.system(.largeTitle, design: .rounded).weight(.bold))
+                Text("Build \(tag)").font(.headline).foregroundStyle(brand)
                 Text("Launcher \(version) (\(build))  ·  Minecraft 26.3")
                     .font(.subheadline).foregroundStyle(.secondary)
+                Text("Commit \(commit)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
                 if let hint {
                     Text(hint).font(.footnote.weight(.semibold)).foregroundStyle(brand)
                         .transition(.opacity)
