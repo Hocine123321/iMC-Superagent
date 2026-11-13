@@ -199,6 +199,12 @@ pub struct Touch {
     out: Vec<Action>,
 }
 
+/// Whether a finger that has rested on empty air since `began` should now keep using, given the
+/// player's settings and the time `now` (seconds). Off, never; on, once `delay` has passed.
+pub fn air_hold_due(enabled: bool, began: f64, now: f64, delay: f64) -> bool {
+    enabled && now - began >= delay
+}
+
 /// What a quick tap on the world means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum WorldStyle {
@@ -746,6 +752,14 @@ mod tests {
         // Finger 2 is a world finger (it looks), it must not move the stick.
         assert_eq!(t.stick(), [0.0, 0.0]);
         assert_eq!(t.stick_origin(), Some((200.0, 800.0)));
+    }
+
+    #[test]
+    fn holding_on_air_only_counts_when_enabled_and_after_its_delay() {
+        assert!(!air_hold_due(false, 0.0, 10.0, 0.8), "off never fires");
+        assert!(!air_hold_due(true, 0.0, 0.79, 0.8), "not before the delay");
+        assert!(air_hold_due(true, 0.0, 0.80, 0.8));
+        assert!(air_hold_due(true, 5.0, 5.9, 0.8), "counted from when the rest began");
     }
 
     fn bedrock() -> Touch {

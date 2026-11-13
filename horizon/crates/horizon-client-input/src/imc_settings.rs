@@ -67,10 +67,14 @@ pub enum Item {
     CursorDragGrab,
     /// Bedrock style on the world (tap hits or places, hold breaks) or the classic style.
     WorldControls,
+    /// Bedrock style: a finger resting on empty air keeps placing/using (off by default).
+    AirHold,
+    /// How long a finger rests on empty air before it keeps using.
+    AirHoldDelay,
 }
 
 impl Item {
-    pub const ALL: [Item; 25] = [
+    pub const ALL: [Item; 27] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
@@ -96,6 +100,8 @@ impl Item {
         Item::CursorHold,
         Item::CursorDragGrab,
         Item::WorldControls,
+        Item::AirHold,
+        Item::AirHoldDelay,
     ];
 
     /// The line's key in `horizon-imc.txt`.
@@ -126,6 +132,8 @@ impl Item {
             Item::CursorHold => "cursorHold",
             Item::CursorDragGrab => "cursorDragGrab",
             Item::WorldControls => "worldControls",
+            Item::AirHold => "airHold",
+            Item::AirHoldDelay => "airHoldDelay",
         }
     }
 
@@ -157,6 +165,8 @@ impl Item {
             Item::CursorHold => "Cursor hold to split",
             Item::CursorDragGrab => "Cursor drag grab",
             Item::WorldControls => "World controls",
+            Item::AirHold => "Hold on air to use",
+            Item::AirHoldDelay => "Air hold delay",
         }
     }
 
@@ -251,6 +261,12 @@ impl Item {
             Item::CursorDragGrab => {
                 "On: tap, then quickly touch again and drag to carry a stack. Off: that never happens, which stops a quick second tap from picking things up. Holding a stack is still done by tapping it, moving the cursor, and tapping where it goes."
             }
+            Item::AirHold => {
+                "Bedrock world controls only. On: resting your finger on empty air (no block or mob under the crosshair) keeps using the item, so you can keep placing. Off: a rest on air does nothing, and a quick tap still places. Breaking a block by holding is not affected."
+            }
+            Item::AirHoldDelay => {
+                "How long your finger must rest on empty air before it keeps using. Longer means a thumb that lingers never starts placing by accident. Only matters when Hold on air to use is on."
+            }
             Item::WorldControls => {
                 "Bedrock: tap the world to hit or place, hold to break. Classic: tap hits, hold mines, and placing is only the Use button."
             }
@@ -271,6 +287,11 @@ const SAFE_MARGINS: [f32; 4] = [0.0, 0.5, 1.0, 1.5];
 const CURSOR_HOLDS: [f64; 4] = [0.50, 0.70, 0.90, 1.20];
 const CURSOR_HOLD_NAMES: [&str; 4] = ["Short", "Normal", "Long", "Longest"];
 const DEFAULT_CURSOR_HOLD: u8 = 1;
+/// How long a finger rests on empty air before it keeps using, in seconds. Well past the 0.25 s
+/// a hold takes to start breaking, because a resting thumb on air is usually not a request.
+const AIR_HOLDS: [f64; 4] = [0.60, 0.80, 1.00, 1.30];
+const AIR_HOLD_NAMES: [&str; 4] = ["Short", "Normal", "Long", "Longest"];
+const DEFAULT_AIR_HOLD: u8 = 1;
 /// The touch shifts, in physical pixels, by step. The middle one (index 2) is no shift. Five
 /// steps, because every setting comes round in at most six clicks (a test holds them to it) and
 /// a phone has no room for a long click-through. 8 px is a small part of the screen but the size
@@ -337,6 +358,10 @@ pub struct ImcSettings {
     pub cursor_drag_grab: bool,
     /// Bedrock style world touch (true) or the classic style.
     pub bedrock_controls: bool,
+    /// A rest on empty air keeps using (Bedrock style). Off by default.
+    pub air_hold: bool,
+    /// Index into [`AIR_HOLDS`].
+    pub air_hold_delay: u8,
 }
 
 impl Default for ImcSettings {
@@ -364,6 +389,8 @@ impl Default for ImcSettings {
             cursor_drag_grab: false,
             // Classic until the player asks, so nothing changes under a thumb that is used to it.
             bedrock_controls: false,
+            air_hold: false,
+            air_hold_delay: DEFAULT_AIR_HOLD,
         }
     }
 }
@@ -454,6 +481,14 @@ impl ImcSettings {
                         s.cursor_drag_grab = v;
                     }
                 }
+                "airHold" => {
+                    if let Ok(v) = value.parse() {
+                        s.air_hold = v;
+                    }
+                }
+                "airHoldDelay" => {
+                    s.air_hold_delay = step(AIR_HOLDS.len()).unwrap_or(s.air_hold_delay);
+                }
                 "worldControls" => {
                     if let Ok(v) = value.parse() {
                         s.bedrock_controls = v;
@@ -469,7 +504,7 @@ impl ImcSettings {
     pub fn serialize(&self) -> String {
         format!(
             "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
-             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\ncursorHold:{}\ncursorDragGrab:{}\nworldControls:{}\n",
+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\ncursorHold:{}\ncursorDragGrab:{}\nworldControls:{}\nairHold:{}\nairHoldDelay:{}\n",
             self.controls,
             self.look_speed,
             self.stick_size,
@@ -495,6 +530,8 @@ impl ImcSettings {
             self.cursor_hold,
             self.cursor_drag_grab,
             self.bedrock_controls,
+            self.air_hold,
+            self.air_hold_delay,
         )
     }
 
@@ -527,6 +564,8 @@ impl ImcSettings {
             Item::CursorSpeed => name(&crate::touch_cursor::SPEED_NAMES, self.cursor_speed),
             Item::CursorHold => name(&CURSOR_HOLD_NAMES, self.cursor_hold),
             Item::CursorDragGrab => on_off(self.cursor_drag_grab),
+            Item::AirHold => on_off(self.air_hold),
+            Item::AirHoldDelay => name(&AIR_HOLD_NAMES, self.air_hold_delay),
             Item::WorldControls => {
                 if self.bedrock_controls {
                     "Bedrock"
@@ -590,6 +629,8 @@ impl ImcSettings {
             Item::CursorHold => turn(&mut self.cursor_hold, CURSOR_HOLDS.len()),
             Item::CursorDragGrab => self.cursor_drag_grab = !self.cursor_drag_grab,
             Item::WorldControls => self.bedrock_controls = !self.bedrock_controls,
+            Item::AirHold => self.air_hold = !self.air_hold,
+            Item::AirHoldDelay => turn(&mut self.air_hold_delay, AIR_HOLDS.len()),
             Item::AutoSensitivity => {
                 let mut i = self.auto_sensitivity_index();
                 turn(&mut i, Sensitivity::ALL.len());
@@ -612,6 +653,9 @@ impl ImcSettings {
             | Item::AutoRenderDistance
             | Item::AutoResolution => self.auto.enabled,
             Item::AutoMinDistance => self.auto.enabled && self.auto.use_render_distance,
+            // Only Bedrock world controls have a hold on air; its delay only matters when on.
+            Item::AirHold => self.bedrock_controls,
+            Item::AirHoldDelay => self.bedrock_controls && self.air_hold,
             _ => true,
         }
     }
@@ -644,6 +688,11 @@ impl ImcSettings {
     /// How long a resting finger waits before the cursor splits (`CURSOR_HOLDS`).
     pub fn cursor_hold_secs(&self) -> f64 {
         CURSOR_HOLDS[usize::from(self.cursor_hold).min(CURSOR_HOLDS.len() - 1)]
+    }
+
+    /// How long a finger rests on empty air before it keeps using (`AIR_HOLDS`).
+    pub fn air_hold_secs(&self) -> f64 {
+        AIR_HOLDS[usize::from(self.air_hold_delay).min(AIR_HOLDS.len() - 1)]
     }
 
     /// How far the cursor moves for a pixel of finger (`touch_cursor::SPEEDS`).
@@ -785,6 +834,34 @@ mod tests {
         assert_eq!(t.world_style, crate::touch::WorldStyle::Bedrock);
         d.apply(&mut t);
         assert_eq!(t.world_style, crate::touch::WorldStyle::Classic);
+    }
+
+    #[test]
+    fn holding_on_air_is_off_by_default_slower_than_breaking_and_kept_in_the_file() {
+        let d = ImcSettings::default();
+        assert!(!d.air_hold, "off until asked for");
+        assert!(d.air_hold_secs() >= 0.6, "well past the 0.25 s that starts breaking");
+        let mut s = d.clone();
+        s.cycle(Item::AirHold, false);
+        s.cycle(Item::AirHoldDelay, false);
+        assert_eq!(s.value(Item::AirHold), "On");
+        assert_eq!(s.value(Item::AirHoldDelay), "Long");
+        assert!(s.air_hold_secs() > d.air_hold_secs());
+        assert_eq!(ImcSettings::parse(&s.serialize()), s);
+        // An older file without the keys reads as off.
+        assert!(!ImcSettings::parse("touchControls:true\n").air_hold);
+        // A garbled delay falls back instead of panicking.
+        assert_eq!(ImcSettings::parse("airHoldDelay:99\n").air_hold_secs(), d.air_hold_secs());
+    }
+
+    #[test]
+    fn the_air_rows_grey_out_until_they_can_matter() {
+        let mut s = ImcSettings::default();
+        assert!(!s.is_active(Item::AirHold) && !s.is_active(Item::AirHoldDelay));
+        s.bedrock_controls = true;
+        assert!(s.is_active(Item::AirHold) && !s.is_active(Item::AirHoldDelay));
+        s.air_hold = true;
+        assert!(s.is_active(Item::AirHoldDelay));
     }
 
     #[test]
