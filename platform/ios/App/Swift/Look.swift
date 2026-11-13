@@ -65,6 +65,9 @@ enum BackdropCache {
     private static var key = ""
     private static var cached: UIImage?
 
+    /// Gives the bitmap back (the launcher is gone, the game needs the memory).
+    static func release() { key = ""; cached = nil }
+
     static func image(size: CGSize, scheme: ColorScheme, brand: Color, brand2: Color, strength: Double, balance: Double) -> UIImage? {
         guard size.width > 1, size.height > 1 else { return nil }
         let style: UIUserInterfaceStyle = scheme == .dark ? .dark : .light

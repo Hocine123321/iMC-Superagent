@@ -37,6 +37,8 @@ enum MarkdownLite {
 
     private static var memo: [Int: [Block]] = [:]
 
+    static func releaseMemo() { memo.removeAll() }
+
     /// Parsed once per text: a page that redraws while a download moves must not parse sixty thousand characters again.
     static func parse(_ source: String) -> [Block] {
         let key = source.hashValue

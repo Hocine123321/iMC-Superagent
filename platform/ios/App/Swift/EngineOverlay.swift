@@ -95,6 +95,8 @@ public final class EngineOverlay: NSObject {
                 // any running timer) stays alive under the game and keeps taking the main thread's time. Taking
                 // the root controller away frees the whole launcher; nothing shows it again in this run.
                 window.rootViewController = nil
+                // And the things the launcher kept for speed: the backdrop bitmap, parsed descriptions, cached images.
+                LauncherMemory.releaseAll()
                 horizon_ios_breadcrumb("overlay: launcher dismissed and released, game on screen")
             }
         }
