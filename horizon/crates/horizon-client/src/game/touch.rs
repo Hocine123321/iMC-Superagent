@@ -271,6 +271,9 @@ pub(super) struct TouchState {
     /// Bedrock style: what a finger resting on the world is holding, chosen once when the hold
     /// began so it never flips mid-hold.
     world_hold: Option<Button>,
+    /// Bedrock style: since when a finger has rested on empty air, waiting out the air hold delay
+    /// (`Hold on air to use`) before it keeps using. `None` when nothing waits.
+    air_wait: Option<f64>,
     /// A one-tick pulse waiting to be let go (a Bedrock tap), and the tick it was pressed on.
     pulse: Option<(Button, u8)>,
     /// Touch was used since the app started: the controls draw only then, so a desktop run with
@@ -302,6 +305,7 @@ impl Default for TouchState {
             pointer: (0.0, 0.0),
             sprint_held: false,
             world_hold: None,
+            air_wait: None,
             pulse: None,
             seen: false,
             back_finger: None,
@@ -472,6 +476,7 @@ impl Game<'_> {
         let actions = self.touch.logic.tick(now);
         self.touch_apply(event_loop, actions);
         self.touch_pulse_frame(event_loop);
+        self.touch_air_frame(event_loop);
         let stick = if self.touch.logic.mode() == Mode::Playing {
             self.touch.logic.stick()
         } else {
@@ -523,6 +528,7 @@ impl Game<'_> {
         if let Some((button, _)) = self.touch.pulse.take() {
             self.touch_button(event_loop, button, false);
         }
+        self.touch.air_wait = None;
         if let Some(button) = self.touch.world_hold.take() {
             self.touch_button(event_loop, button, false);
         }
@@ -717,6 +723,23 @@ impl Game<'_> {
         self.pick_unfiltered().is_some()
     }
 
+    /// A finger that rested on empty air keeps using once the air hold delay has passed.
+    fn touch_air_frame(&mut self, event_loop: &dyn EventLoopCtl) {
+        let Some(began) = self.touch.air_wait else {
+            return;
+        };
+        let now = self.touch.started.elapsed().as_secs_f64();
+        let imc = &self.settings.imc;
+        if horizon_client_input::touch::air_hold_due(imc.air_hold, began, now, imc.air_hold_secs()) {
+            self.touch.air_wait = None;
+            self.touch.world_hold = Some(Button::LeftTrigger);
+            self.touch_button(event_loop, Button::LeftTrigger, true);
+        } else if !imc.air_hold {
+            // Switched off while waiting.
+            self.touch.air_wait = None;
+        }
+    }
+
     /// Lets go of a Bedrock tap's press once the game has had a tick to see it. The pad keeps a
     /// press for a frame at least (`late_releases`), so releasing on the second frame is safe.
     fn touch_pulse_frame(&mut self, event_loop: &dyn EventLoopCtl) {
@@ -764,15 +787,18 @@ impl Game<'_> {
                 // A rest on the world breaks what the crosshair is on, or keeps placing when it
                 // is on nothing to break. Chosen when the hold begins and kept until it ends.
                 TouchAction::Hold(true) => {
-                    let button = if self.touch_aims_at_entity() || self.touch_aims_at_block() {
-                        Button::RightTrigger
-                    } else {
-                        Button::LeftTrigger
-                    };
-                    self.touch.world_hold = Some(button);
-                    self.touch_button(event_loop, button, true);
+                    if self.touch_aims_at_entity() || self.touch_aims_at_block() {
+                        self.touch.world_hold = Some(Button::RightTrigger);
+                        self.touch_button(event_loop, Button::RightTrigger, true);
+                    } else if self.settings.imc.air_hold {
+                        // Empty air: a rest there may be a thumb that lingered, so it only keeps
+                        // using after its own, longer delay (`touch_air_frame`). With the setting
+                        // off (the default) it does nothing; a quick tap still places.
+                        self.touch.air_wait = Some(self.touch.started.elapsed().as_secs_f64());
+                    }
                 }
                 TouchAction::Hold(false) => {
+                    self.touch.air_wait = None;
                     if let Some(button) = self.touch.world_hold.take() {
                         self.touch_button(event_loop, button, false);
                     }

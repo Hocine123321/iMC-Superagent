@@ -254,6 +254,8 @@ fn imc_description_key(item: horizon_client_input::imc_settings::Item) -> &'stat
         I::CursorHold => "horizon.imc.cursorHold.tooltip",
         I::CursorDragGrab => "horizon.imc.cursorDragGrab.tooltip",
         I::WorldControls => "horizon.imc.worldControls.tooltip",
+        I::AirHold => "horizon.imc.airHold.tooltip",
+        I::AirHoldDelay => "horizon.imc.airHoldDelay.tooltip",
     }
 }
 
@@ -730,6 +732,8 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                         vec![
                             m(I::Controls, None),
                             m(I::WorldControls, None),
+                            m(I::AirHold, None),
+                            m(I::AirHoldDelay, None),
                             m(I::DoubleTapJump, None),
                             m(I::LookSpeed, None),
                             m(I::HoldTime, None),
