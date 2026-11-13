@@ -17,15 +17,19 @@ import sys
 import capstone
 import lief
 
+# Each frame is found by substrings that must ALL appear in its mangled (Rust v0) name. Use only
+# stable pieces: module and item names with their length prefixes. Never paste a whole mangled
+# name: it carries crate hashes ("Cs4qHPzLtCqPq_5winit") and back-references ("NtB4_") that change
+# whenever the compiler or a dependency changes, which made this check fail on a good build.
 CHAIN = [
-    ("run_with", "4game8run_with"),
-    ("run_loading", "4game11run_loading"),
-    ("App::about_to_wait", "loading_screenNtB4_3AppNtNtCs4qHPzLtCqPq_5winit11application18ApplicationHandler13about_to_wait"),
-    ("Loading::finish", "7Loading6finish"),
-    ("Loading::finish_game", "7Loading11finish_game"),
-    ("start_boxed", "loading_screen11start_boxed"),
-    ("start_game", "loading_window10start_game"),
-    ("Game::new_boxed", "4Game9new_boxed"),
+    ("run_with", ("4game8run_with",)),
+    ("run_loading", ("4game11run_loading",)),
+    ("App::about_to_wait", ("loading_screen", "3App", "ApplicationHandler13about_to_wait")),
+    ("Loading::finish", ("7Loading6finish",)),
+    ("Loading::finish_game", ("7Loading11finish_game",)),
+    ("start_boxed", ("loading_screen11start_boxed",)),
+    ("start_game", ("loading_window10start_game",)),
+    ("Game::new_boxed", ("4Game9new_boxed",)),
 ]
 
 
@@ -56,8 +60,9 @@ def main():
 
     total, missing = 0.0, []
     print(f"{'frame':24s} {'KB':>7s}")
-    for label, key in CHAIN:
-        found = [s.value for s in m.symbols if key in s.name and "horizon_client" in s.name and s.value in starts]
+    for label, keys in CHAIN:
+        found = [s.value for s in m.symbols
+                 if "horizon_client" in s.name and all(k in s.name for k in keys) and s.value in starts]
         if not found:
             missing.append(label)
             print(f"{label:24s} {'?':>7s}  (symbol not found)")
@@ -67,7 +72,8 @@ def main():
         print(f"{label:24s} {kb:7.0f}")
     print(f"{'chain total':24s} {total:7.0f}   budget {budget:.0f} (main thread 1008, system frames ~100)")
     if missing:
-        print(f"::error::symbols not found: {missing}. The call chain changed; update CHAIN in this script.")
+        print(f"::error::symbols not found: {missing}. The call chain changed; update CHAIN in this script "
+              f"(match stable name pieces only, no crate hashes).")
         return 2
     if total > budget:
         print(f"::error::startup chain needs {total:.0f} KB of stack, budget {budget:.0f} KB")
