@@ -2334,8 +2334,14 @@ impl OptionsUi {
                 Action::Imc(what) => {
                     use crate::graphics_ui::ImcDo;
                     match what {
+                        // Each press steps to the next phone preset (Mobile, Battery saver,
+                        // Smooth); from custom settings the first press is Mobile.
                         ImcDo::MobilePreset => {
-                            crate::mobile_preset::apply(s);
+                            let next = crate::mobile_preset::current(s).map_or(
+                                crate::mobile_preset::Kind::Mobile,
+                                crate::mobile_preset::Kind::next,
+                            );
+                            crate::mobile_preset::apply_kind(next, s);
                             events.push(Event::Changed);
                         }
                         ImcDo::EditControls => events.push(Event::TouchEditor),

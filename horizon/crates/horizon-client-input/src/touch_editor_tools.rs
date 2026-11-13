@@ -136,7 +136,13 @@ pub fn problems(rects: &[Option<[f32; 4]>], safe: [f32; 4]) -> Vec<(usize, Probl
 
 /// The built-in layouts, by name. A layout is a nudge from the default (`touch_layout`), so
 /// each is a few moves.
-pub const BUILT_IN: [&str; 3] = ["Default", "Left-handed", "Compact"];
+pub const BUILT_IN: [&str; 5] = ["Default", "Left-handed", "Compact", "Bedrock", "Big thumbs"];
+
+/// Whether built-in layout `name` is made for Bedrock style world controls (a tap places, so
+/// there is no Use button). Applying it also switches that setting on.
+pub fn wants_bedrock_controls(name: &str) -> bool {
+    name == "Bedrock"
+}
 
 /// The built-in layout `name`, or `None` for a name that is not one.
 pub fn built_in(name: &str) -> Option<ControlLayout> {
@@ -163,6 +169,48 @@ pub fn built_in(name: &str) -> Option<ControlLayout> {
                 *s = Slot {
                     scale: 0.8,
                     opacity: 0.7,
+                    ..Slot::default()
+                };
+            }
+        }
+        // As Bedrock Edition lays touch out: a big Jump under the right thumb, Sneak beside it,
+        // Sprint up by the left stick, and no Use button, because a tap on the world places.
+        "Bedrock" => {
+            l.slots[0] = Slot {
+                scale: 1.25,
+                ..Slot::default()
+            }; // jump
+            l.slots[1] = Slot {
+                dx: -0.03,
+                dy: 0.02,
+                ..Slot::default()
+            }; // sneak
+            l.slots[2] = Slot {
+                dx: -0.78,
+                dy: -0.05,
+                opacity: 0.85,
+                ..Slot::default()
+            }; // run, over the stick
+            l.slots[3] = Slot {
+                shown: false,
+                ..Slot::default()
+            }; // use is a tap
+        }
+        // Bigger buttons for a big thumb, the top row a little smaller to leave the view clear.
+        "Big thumbs" => {
+            // Bigger buttons need more room: Sneak and Run step left, Use steps up.
+            for (i, dx, dy) in [(0, 0.0, -0.01), (1, -0.035, 0.0), (2, -0.035, -0.04), (3, 0.0, -0.06)] {
+                l.slots[i] = Slot {
+                    dx,
+                    dy,
+                    scale: 1.3,
+                    ..Slot::default()
+                };
+            }
+            for i in 4..9 {
+                l.slots[i] = Slot {
+                    scale: 0.9,
+                    opacity: 0.85,
                     ..Slot::default()
                 };
             }
@@ -415,6 +463,70 @@ mod tests {
     }
 
     #[test]
+    fn every_built_in_layout_stays_in_range() {
+        for name in BUILT_IN {
+            let l = built_in(name).unwrap();
+            for (i, s) in l.slots.iter().enumerate() {
+                assert_eq!(*s, s.clamped(), "{name} slot {i}");
+            }
+            // And survives the file.
+            assert_eq!(ControlLayout::parse(&l.serialize()), l, "{name}");
+        }
+    }
+
+    #[test]
+    fn bedrock_hides_only_use_and_asks_for_bedrock_controls() {
+        let l = built_in("Bedrock").unwrap();
+        let hidden: Vec<usize> = (0..SLOTS).filter(|i| !l.slots[*i].shown).collect();
+        assert_eq!(hidden, vec![3], "only Use is hidden");
+        assert!(l.slots[0].scale > 1.0, "a big Jump");
+        assert!(wants_bedrock_controls("Bedrock"));
+        assert!(!wants_bedrock_controls("Compact") && !wants_bedrock_controls("Default"));
+    }
+
+    #[test]
+    fn big_thumbs_enlarges_the_action_buttons_and_leaves_the_menu_buttons_alone() {
+        let l = built_in("Big thumbs").unwrap();
+        for i in 0..4 {
+            assert!(l.slots[i].scale > 1.0, "button {i}");
+        }
+        assert!(l.slots[super::super::touch_layout::CURSOR_SLOT].is_default());
+        assert!(l.slots[super::super::touch_layout::SHIFT_SLOT].is_default());
+    }
+
+    #[test]
+    fn the_new_built_ins_keep_their_buttons_on_the_screen_and_apart() {
+        use crate::touch_layout::Slot as _S;
+        let _ = _S::default();
+        // The same bases the game uses for the right thumb cluster, on an iPhone 12 landscape.
+        let size = PHONE;
+        let bases = [
+            [size.0 * 0.83, size.1 * 0.78, size.0 * 0.09, size.1 * 0.20],
+            [size.0 * 0.73, size.1 * 0.81, size.0 * 0.08, size.1 * 0.17],
+            [size.0 * 0.73, size.1 * 0.62, size.0 * 0.08, size.1 * 0.17],
+            [size.0 * 0.83, size.1 * 0.58, size.0 * 0.09, size.1 * 0.18],
+        ];
+        for name in ["Bedrock", "Big thumbs"] {
+            let l = built_in(name).unwrap();
+            let placed: Vec<[f32; 4]> = (0..4)
+                .filter(|i| l.slots[*i].shown)
+                .map(|i| l.slots[i].place(bases[i], size))
+                .collect();
+            for r in &placed {
+                assert!(r[0] >= 0.0 && r[1] >= 0.0 && r[0] + r[2] <= size.0 && r[1] + r[3] <= size.1, "{name}: {r:?}");
+            }
+            let apart = |a: &[f32; 4], b: &[f32; 4]| {
+                a[0] + a[2] <= b[0] || b[0] + b[2] <= a[0] || a[1] + a[3] <= b[1] || b[1] + b[3] <= a[1]
+            };
+            for (i, a) in placed.iter().enumerate() {
+                for b in &placed[i + 1..] {
+                    assert!(apart(a, b), "{name}: {a:?} overlaps {b:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn compact_shrinks_and_fades_every_button_within_the_allowed_range() {
         let l = built_in("Compact").unwrap();
         for s in l.slots {
@@ -469,7 +581,7 @@ mod tests {
         p.save("mine", &ControlLayout::default());
         assert_eq!(
             p.names(),
-            vec!["Default", "Left-handed", "Compact", "mine"]
+            vec!["Default", "Left-handed", "Compact", "Bedrock", "Big thumbs", "mine"]
         );
     }
 

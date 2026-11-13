@@ -22,6 +22,13 @@ use std::collections::HashMap;
 /// How many pixels of finger travel scroll one line (as plain touch does).
 const PIXELS_PER_LINE: f32 = 40.0;
 
+/// A finger may wander this many pixels and still be a tap. 10 was smaller than a thumb's own
+/// wobble on an iPhone, so a plain tap turned into a move and a drag.
+pub const DEFAULT_SLOP: f32 = 18.0;
+/// How long a finger must rest before it is a right click (a split). 0.45 s was shorter than the
+/// time a thumb rests on a stack while the eye finds the next slot.
+pub const DEFAULT_LONG_PRESS: f64 = 0.70;
+
 /// Where the cursor starts when a screen opens, as fractions of the screen.
 const START: (f32, f32) = (0.5, 0.5);
 
@@ -104,6 +111,16 @@ pub struct Cursor {
     pub long_press_secs: f64,
     /// A touch that lands within this long of a tap's lift (and not far from it) is a tap-drag.
     pub drag_window_secs: f64,
+    /// Whether a tap-drag may grab at all. Off by default: it was the main way a quick second tap
+    /// picked up a stack nobody meant to touch. Dragging a stack is then a held press.
+    pub allow_tap_drag: bool,
+    /// A tap-drag only grabs once the finger has travelled this many times the slop.
+    pub drag_grab_slops: f32,
+    /// Two clicks closer together than this many seconds are one: the second is dropped, so a
+    /// nervous double tap never picks a stack up and puts it straight back (or splits it).
+    pub min_click_gap: f64,
+    /// When the last click was sent.
+    last_click: Option<f64>,
     fingers: HashMap<FingerId, Finger>,
     /// When the last tap lifted, for the tap-drag.
     last_tap: Option<f64>,
@@ -121,10 +138,14 @@ impl Cursor {
             screen,
             pos: (screen.0 * START.0, screen.1 * START.1),
             speed: 1.0,
-            slop: 10.0,
+            slop: DEFAULT_SLOP,
             tap_secs: 0.25,
-            long_press_secs: 0.45,
+            long_press_secs: DEFAULT_LONG_PRESS,
             drag_window_secs: 0.30,
+            allow_tap_drag: false,
+            drag_grab_slops: 2.5,
+            min_click_gap: 0.12,
+            last_click: None,
             fingers: HashMap::new(),
             last_tap: None,
             left_down: None,
@@ -187,6 +208,7 @@ impl Cursor {
             Role::Pointer
         };
         let drag_armed = role == Role::Pointer
+            && self.allow_tap_drag
             && self
                 .last_tap
                 .is_some_and(|t| now - t <= self.drag_window_secs);
@@ -230,11 +252,16 @@ impl Cursor {
             Role::Pointer => {
                 if !f.moved && from_start > self.slop {
                     f.moved = true;
-                    // A tap-drag: the second touch, once it really moves, grabs.
-                    if f.drag_armed && self.left_down.is_none() {
-                        self.left_down = Some(id);
-                        self.out.push(Action::PointerLeft(true));
-                    }
+                }
+                // A tap-drag: the second touch grabs only when the setting allows it and the
+                // finger has gone clearly further than a wobble.
+                if f.drag_armed
+                    && self.allow_tap_drag
+                    && self.left_down.is_none()
+                    && from_start > self.slop * self.drag_grab_slops
+                {
+                    self.left_down = Some(id);
+                    self.out.push(Action::PointerLeft(true));
                 }
                 if f.moved {
                     // The travel that crossed the slop is spent on moving the pointer too, so
@@ -307,13 +334,20 @@ impl Cursor {
                     && !self.fingers.values().any(|o| o.role == Role::Scroll)
                     && now - f.since < self.tap_secs
                 {
-                    // A tap: the press and the release where the pointer is.
-                    self.out.push(Action::PointerTo {
-                        x: self.pos.0,
-                        y: self.pos.1,
-                    });
-                    self.out.push(Action::PointerLeft(true));
-                    self.out.push(Action::PointerLeft(false));
+                    // A tap: the press and the release where the pointer is, unless it follows
+                    // another click so closely that it is a nervous repeat.
+                    let repeat = self
+                        .last_click
+                        .is_some_and(|t| now - t < self.min_click_gap);
+                    if !repeat {
+                        self.out.push(Action::PointerTo {
+                            x: self.pos.0,
+                            y: self.pos.1,
+                        });
+                        self.out.push(Action::PointerLeft(true));
+                        self.out.push(Action::PointerLeft(false));
+                        self.last_click = Some(now);
+                    }
                     self.last_tap = Some(now);
                 } else {
                     self.last_tap = None;
@@ -341,6 +375,7 @@ impl Cursor {
         }
         self.fingers.clear();
         self.last_tap = None;
+        self.last_click = None;
         self.last_scroll_y = None;
         out
     }
@@ -383,6 +418,36 @@ pub mod switch {
     pub fn caption(cursor_on: bool) -> &'static str {
         if cursor_on { "Touch" } else { "Cursor" }
     }
+}
+
+/// The Shift button of the inventory screens: held, it adds the keyboard's Shift to every click
+/// (quick move a stack with one tap, the way Shift-click does on a computer). It sits under the
+/// Cursor/Touch button so the three corner buttons never overlap, and is only wanted on the
+/// screens that have slots.
+pub mod shift {
+    pub const WIDTH: f32 = 0.11;
+    pub const HEIGHT: f32 = 0.11;
+    pub const INSET_X: f32 = 0.02;
+    /// Below the Cursor/Touch button (which starts at 19% and is 11% tall).
+    pub const INSET_Y: f32 = 0.31;
+
+    /// The button as `[x, y, w, h]` in pixels on a screen of `size`.
+    pub fn rect(size: (f32, f32)) -> [f32; 4] {
+        [
+            size.0 * INSET_X,
+            size.1 * INSET_Y,
+            size.0 * WIDTH,
+            size.1 * HEIGHT,
+        ]
+    }
+
+    /// Whether a point is on the button.
+    pub fn contains(rect: [f32; 4], at: (f32, f32)) -> bool {
+        at.0 >= rect[0] && at.0 < rect[0] + rect[2] && at.1 >= rect[1] && at.1 < rect[1] + rect[3]
+    }
+
+    /// What the button shows.
+    pub const CAPTION: &str = "Shift";
 }
 
 #[cfg(test)]
@@ -508,12 +573,52 @@ mod tests {
         let mut c = cursor();
         c.down(F, (100.0, 100.0), 0.0);
         assert!(c.tick(0.2).is_empty());
-        assert_eq!(c.tick(0.5), vec![Action::PointerRight(true)]);
+        // A thumb resting while the eye looks around is not a split.
+        assert!(c.tick(0.5).is_empty(), "0.5 s of rest must not split a stack");
+        assert_eq!(c.tick(0.75), vec![Action::PointerRight(true)]);
         // Only once.
-        assert!(c.tick(0.6).is_empty());
+        assert!(c.tick(0.9).is_empty());
         assert!(c.holding());
-        assert_eq!(c.up(F, 0.9, false), vec![Action::PointerRight(false)]);
+        assert_eq!(c.up(F, 1.2, false), vec![Action::PointerRight(false)]);
         assert!(!c.holding());
+    }
+
+    #[test]
+    fn a_thumb_that_wobbles_a_little_is_still_a_tap() {
+        let mut c = cursor();
+        c.down(F, (100.0, 100.0), 0.0);
+        // 15 px of wobble is under the slop: nothing moves and the lift still clicks.
+        c.moved(F, (112.0, 109.0), 0.05);
+        assert_eq!(c.position(), (1266.0, 585.0));
+        let a = c.up(F, 0.12, false);
+        assert!(a.contains(&Action::PointerLeft(true)), "{a:?}");
+    }
+
+    #[test]
+    fn two_quick_taps_never_grab_by_default() {
+        let mut c = cursor();
+        c.down(F, (100.0, 100.0), 0.0);
+        c.up(F, 0.08, false);
+        // A second touch right after, which drags a good way: no left button goes down.
+        c.down(G, (100.0, 100.0), 0.2);
+        let a = c.moved(G, (400.0, 100.0), 0.25);
+        assert!(!a.contains(&Action::PointerLeft(true)), "{a:?}");
+        assert!(!c.holding());
+        assert!(c.up(G, 0.3, false).is_empty());
+    }
+
+    #[test]
+    fn a_nervous_double_tap_clicks_once() {
+        let mut c = cursor();
+        c.down(F, (100.0, 100.0), 0.0);
+        let first = c.up(F, 0.04, false);
+        assert!(first.contains(&Action::PointerLeft(true)));
+        c.down(G, (100.0, 100.0), 0.06);
+        let second = c.up(G, 0.09, false);
+        assert!(second.is_empty(), "a repeat within the gap is dropped: {second:?}");
+        // A deliberate second tap a moment later clicks.
+        c.down(F, (100.0, 100.0), 0.5);
+        assert!(c.up(F, 0.55, false).contains(&Action::PointerLeft(true)));
     }
 
     #[test]
@@ -527,15 +632,19 @@ mod tests {
     #[test]
     fn tap_then_drag_holds_the_left_button_until_the_finger_lifts() {
         let mut c = cursor();
+        c.allow_tap_drag = true;
         c.down(F, (100.0, 100.0), 0.0);
         c.up(F, 0.08, false);
         // The next touch is soon after the tap.
         c.down(G, (400.0, 400.0), 0.2);
-        let a = c.moved(G, (460.0, 400.0), 0.25);
+        // A small move is not a grab; a clear one is.
+        let a = c.moved(G, (420.0, 400.0), 0.22);
+        assert!(!a.contains(&Action::PointerLeft(true)), "{a:?}");
+        let a = c.moved(G, (480.0, 400.0), 0.25);
         assert!(a.contains(&Action::PointerLeft(true)), "{a:?}");
         assert!(c.holding());
-        let a = c.moved(G, (520.0, 400.0), 0.3);
-        assert!(a.contains(&Action::PointerTo { x: 1266.0 + 120.0, y: 585.0 }), "{a:?}");
+        let a = c.moved(G, (540.0, 400.0), 0.3);
+        assert!(a.contains(&Action::PointerTo { x: 1266.0 + 140.0, y: 585.0 }), "{a:?}");
         assert_eq!(c.up(G, 0.4, false), vec![Action::PointerLeft(false)]);
         assert!(!c.holding());
     }
@@ -564,6 +673,7 @@ mod tests {
     #[test]
     fn a_held_second_touch_after_a_tap_does_not_become_a_right_click() {
         let mut c = cursor();
+        c.allow_tap_drag = true;
         c.down(F, (100.0, 100.0), 0.0);
         c.up(F, 0.08, false);
         c.down(G, (100.0, 100.0), 0.2);
@@ -604,11 +714,12 @@ mod tests {
     fn a_cancelled_hold_or_drag_lets_go_of_its_button() {
         let mut c = cursor();
         c.down(F, (100.0, 100.0), 0.0);
-        c.tick(0.5);
+        c.tick(0.8);
         assert_eq!(c.cancel_all(), vec![Action::PointerRight(false)]);
         assert!(!c.holding());
 
         let mut c = cursor();
+        c.allow_tap_drag = true;
         c.down(F, (0.0, 0.0), 0.0);
         c.up(F, 0.05, false);
         c.down(G, (0.0, 0.0), 0.1);
@@ -689,6 +800,33 @@ mod tests {
         assert!(switch::fires(true, inside, r));
         assert!(!switch::fires(false, inside, r));
         assert!(!switch::fires(true, (0.0, 0.0), r));
+    }
+
+    #[test]
+    fn the_shift_button_sits_under_the_cursor_button_and_overlaps_nothing() {
+        let size = (2532.0, 1170.0);
+        let (sh, cu, ba) = (shift::rect(size), switch::rect(size), [
+            size.0 * 0.02,
+            size.1 * 0.04,
+            size.0 * 0.11,
+            size.1 * 0.13,
+        ]);
+        let apart = |a: [f32; 4], b: [f32; 4]| {
+            a[0] + a[2] <= b[0] || b[0] + b[2] <= a[0] || a[1] + a[3] <= b[1] || b[1] + b[3] <= a[1]
+        };
+        assert!(apart(sh, cu), "{sh:?} overlaps the cursor button {cu:?}");
+        assert!(apart(sh, ba), "{sh:?} overlaps Back {ba:?}");
+        assert!(sh[0] >= 0.0 && sh[1] >= 0.0 && sh[0] + sh[2] <= size.0 && sh[1] + sh[3] <= size.1);
+        // A thumb-sized target.
+        assert!(sh[2] >= 200.0 && sh[3] >= 100.0, "{sh:?}");
+    }
+
+    #[test]
+    fn the_shift_button_hit_test_is_half_open() {
+        let r = shift::rect((1000.0, 500.0));
+        assert!(shift::contains(r, (r[0] + 1.0, r[1] + 1.0)));
+        assert!(!shift::contains(r, (r[0] + r[2], r[1])));
+        assert!(!shift::contains(r, (0.0, 0.0)));
     }
 
     #[test]

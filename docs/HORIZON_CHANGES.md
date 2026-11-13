@@ -475,6 +475,28 @@ Unarmed (every other build and run) both calls answer "no" and the window is lan
 landscape on Play. Only `horizon-client-input` was type-checked for aarch64-apple-ios locally; `horizon-client`
 needs Apple's C toolchain (`ring`), so only CI compiles that hook.
 
+## Q. Bedrock-style touch, steadier cursor, Shift, presets (2026-11-13)
+
+All in files that already carry iMC changes; no new file, no dependency or `Cargo.lock` change. The
+pure logic is covered by `cargo test -p horizon-client-input` (339 tests) and the render crate's
+tests; the `game/` glue is compiled by CI only.
+
+| File | What changed |
+|---|---|
+| `horizon-client-input/src/touch_cursor.rs` | The cursor stopped picking up and splitting by accident: a right click needs a 0.70 s rest (was 0.45), the slop is 18 px (was 10), a tap-drag grab is off unless asked (`allow_tap_drag`) and needs 2.5 slops of travel, and a second tap within 0.12 s of a click is dropped (`min_click_gap`). New `shift` module: the Shift button's rectangle, under the Cursor button. |
+| `horizon-client-input/src/touch.rs` | `WorldStyle` (Classic or Bedrock) and two actions, `Tap` and `Hold(bool)`. Classic is unchanged. Bedrock: a quick tap is `Tap` (the game picks hit or use), a rest is `Hold`. |
+| `horizon-client-input/src/imc_settings.rs` | Three settings: World controls, Cursor hold to split, Cursor drag grab (stored as `worldControls`, `cursorHold`, `cursorDragGrab`; an older file reads the same). |
+| `horizon-client-input/src/touch_layout.rs` | `COUNT` 16 to 18: slots `cursor` and `shift` appended, so the player can move, size, fade and hide them. |
+| `horizon-client-input/src/touch_editor_tools.rs` | Two more built-in layouts, **Bedrock** (Use hidden) and **Big thumbs**, with tests that they stay in range, on screen and apart. |
+| `horizon-client-render/src/mobile_preset.rs`, `graphics_ui.rs`, `options_ui.rs` | The iMC "Mobile preset" row is now "Phone preset": it names what is on (Mobile, Battery saver, Smooth, or Custom once changed by hand) and each press steps to the next. Before, the press changed other pages and the row showed nothing. |
+| `horizon-client/src/game/touch.rs` | `PadKind::Menu` (Cursor, Shift) so the editor can arrange them; `Tap` and `Hold` resolved from what the crosshair is on (`pick_entity_hit`, `pick_unfiltered`). |
+| `horizon-client/src/game/touch_cursor.rs` | The Shift button: a finger on it holds the left Shift in `modifiers` until it lifts; the cursor's new settings reach the logic; both buttons follow the layout. |
+| `horizon-client/src/game/touch_editor.rs` | Edits the two menu buttons, checks overlaps per group, says what Save, Delete and a layout change did, and Cancel puts World controls back. |
+| `assets/horizon/lang/en_us.json` | Keys for the three settings; the preset row's text. |
+
+**Re-apply:** the `COUNT` constant and the two appended names in `touch_layout.rs`, the `PadKind::Menu`
+variant (a new match arm in `slot`, `label`, `base`), and the `Tap` and `Hold` arms in `touch_apply`.
+
 ## F. Index: all 63 files
 
 `A` = new file, `M` = modified. Section in brackets.

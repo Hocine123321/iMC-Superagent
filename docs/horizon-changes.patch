@@ -645,10 +645,10 @@ index 29560c8..fcffcdb 100644
 +}
 diff --git a/horizon/crates/horizon-client-input/src/imc_settings.rs b/horizon/crates/horizon-client-input/src/imc_settings.rs
 new file mode 100644
-index 0000000..04884ac
+index 0000000..cfb94a8
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/imc_settings.rs
-@@ -0,0 +1,1049 @@
+@@ -0,0 +1,1145 @@
 +//! iMC Settings: the settings that belong to the iOS app, not to Minecraft.
 +//!
 +//! Pure logic with no winit types and no game state, so it runs under `cargo test`. The values
@@ -712,10 +712,16 @@ index 0000000..04884ac
 +    CursorInventory,
 +    /// How fast the cursor travels for the finger's travel.
 +    CursorSpeed,
++    /// How long the finger rests before the cursor splits a stack.
++    CursorHold,
++    /// A quick second touch that drags may carry a stack (off: it never does).
++    CursorDragGrab,
++    /// Bedrock style on the world (tap hits or places, hold breaks) or the classic style.
++    WorldControls,
 +}
 +
 +impl Item {
-+    pub const ALL: [Item; 22] = [
++    pub const ALL: [Item; 25] = [
 +        Item::Controls,
 +        Item::LookSpeed,
 +        Item::StickSize,
@@ -738,6 +744,9 @@ index 0000000..04884ac
 +        Item::AutoResolution,
 +        Item::CursorInventory,
 +        Item::CursorSpeed,
++        Item::CursorHold,
++        Item::CursorDragGrab,
++        Item::WorldControls,
 +    ];
 +
 +    /// The line's key in `horizon-imc.txt`.
@@ -765,6 +774,9 @@ index 0000000..04884ac
 +            Item::AutoResolution => "autoResolution",
 +            Item::CursorInventory => "cursorInventory",
 +            Item::CursorSpeed => "cursorSpeed",
++            Item::CursorHold => "cursorHold",
++            Item::CursorDragGrab => "cursorDragGrab",
++            Item::WorldControls => "worldControls",
 +        }
 +    }
 +
@@ -793,6 +805,9 @@ index 0000000..04884ac
 +            Item::AutoResolution => "Lower resolution",
 +            Item::CursorInventory => "Cursor in inventory",
 +            Item::CursorSpeed => "Cursor speed",
++            Item::CursorHold => "Cursor hold to split",
++            Item::CursorDragGrab => "Cursor drag grab",
++            Item::WorldControls => "World controls",
 +        }
 +    }
 +
@@ -881,6 +896,15 @@ index 0000000..04884ac
 +            Item::CursorInventory => {
 +                "Shows the cursor whenever an inventory is open (your bag, chests, crafting, creative), without switching the whole game to cursor mode. It goes away when you close it. The Cursor button on the screen still switches everything."
 +            }
++            Item::CursorHold => {
++                "How long your finger must rest on a slot before the cursor right-clicks it (splits a stack or places one item). Longer means a resting thumb never splits by accident."
++            }
++            Item::CursorDragGrab => {
++                "On: tap, then quickly touch again and drag to carry a stack. Off: that never happens, which stops a quick second tap from picking things up. Holding a stack is still done by tapping it, moving the cursor, and tapping where it goes."
++            }
++            Item::WorldControls => {
++                "Bedrock: tap the world to hit or place, hold to break. Classic: tap hits, hold mines, and placing is only the Use button."
++            }
 +            Item::CursorSpeed => {
 +                "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots."
 +            }
@@ -894,6 +918,10 @@ index 0000000..04884ac
 +const MOVE_ZONES: [f32; 4] = [0.30, 0.40, 0.50, 0.60];
 +const HOLD_TIMES: [f64; 4] = [0.15, 0.25, 0.40, 0.60];
 +const SAFE_MARGINS: [f32; 4] = [0.0, 0.5, 1.0, 1.5];
++/// How long a finger rests on a slot before the cursor splits it, in seconds.
++const CURSOR_HOLDS: [f64; 4] = [0.50, 0.70, 0.90, 1.20];
++const CURSOR_HOLD_NAMES: [&str; 4] = ["Short", "Normal", "Long", "Longest"];
++const DEFAULT_CURSOR_HOLD: u8 = 1;
 +/// The touch shifts, in physical pixels, by step. The middle one (index 2) is no shift. Five
 +/// steps, because every setting comes round in at most six clicks (a test holds them to it) and
 +/// a phone has no room for a long click-through. 8 px is a small part of the screen but the size
@@ -954,6 +982,12 @@ index 0000000..04884ac
 +    pub cursor_inventory: bool,
 +    /// Index into [`crate::touch_cursor::SPEEDS`].
 +    pub cursor_speed: u8,
++    /// Index into [`CURSOR_HOLDS`].
++    pub cursor_hold: u8,
++    /// A tap then a drag may grab a stack.
++    pub cursor_drag_grab: bool,
++    /// Bedrock style world touch (true) or the classic style.
++    pub bedrock_controls: bool,
 +}
 +
 +impl Default for ImcSettings {
@@ -977,6 +1011,10 @@ index 0000000..04884ac
 +            auto: AutoConfig::default(),
 +            cursor_inventory: false,
 +            cursor_speed: crate::touch_cursor::NORMAL_SPEED,
++            cursor_hold: DEFAULT_CURSOR_HOLD,
++            cursor_drag_grab: false,
++            // Classic until the player asks, so nothing changes under a thumb that is used to it.
++            bedrock_controls: false,
 +        }
 +    }
 +}
@@ -1061,6 +1099,17 @@ index 0000000..04884ac
 +                "cursorSpeed" => {
 +                    s.cursor_speed = step(crate::touch_cursor::SPEEDS.len()).unwrap_or(s.cursor_speed);
 +                }
++                "cursorHold" => s.cursor_hold = step(CURSOR_HOLDS.len()).unwrap_or(s.cursor_hold),
++                "cursorDragGrab" => {
++                    if let Ok(v) = value.parse() {
++                        s.cursor_drag_grab = v;
++                    }
++                }
++                "worldControls" => {
++                    if let Ok(v) = value.parse() {
++                        s.bedrock_controls = v;
++                    }
++                }
 +                _ => {}
 +            }
 +        }
@@ -1071,7 +1120,7 @@ index 0000000..04884ac
 +    pub fn serialize(&self) -> String {
 +        format!(
 +            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
-+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\n",
++             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\ncursorHold:{}\ncursorDragGrab:{}\nworldControls:{}\n",
 +            self.controls,
 +            self.look_speed,
 +            self.stick_size,
@@ -1094,6 +1143,9 @@ index 0000000..04884ac
 +            self.auto.use_resolution,
 +            self.cursor_inventory,
 +            self.cursor_speed,
++            self.cursor_hold,
++            self.cursor_drag_grab,
++            self.bedrock_controls,
 +        )
 +    }
 +
@@ -1124,6 +1176,15 @@ index 0000000..04884ac
 +            Item::AutoResolution => on_off(self.auto.use_resolution),
 +            Item::CursorInventory => on_off(self.cursor_inventory),
 +            Item::CursorSpeed => name(&crate::touch_cursor::SPEED_NAMES, self.cursor_speed),
++            Item::CursorHold => name(&CURSOR_HOLD_NAMES, self.cursor_hold),
++            Item::CursorDragGrab => on_off(self.cursor_drag_grab),
++            Item::WorldControls => {
++                if self.bedrock_controls {
++                    "Bedrock"
++                } else {
++                    "Classic"
++                }
++            }
 +        }
 +    }
 +
@@ -1177,6 +1238,9 @@ index 0000000..04884ac
 +            Item::AutoResolution => self.auto.use_resolution = !self.auto.use_resolution,
 +            Item::CursorInventory => self.cursor_inventory = !self.cursor_inventory,
 +            Item::CursorSpeed => turn(&mut self.cursor_speed, crate::touch_cursor::SPEEDS.len()),
++            Item::CursorHold => turn(&mut self.cursor_hold, CURSOR_HOLDS.len()),
++            Item::CursorDragGrab => self.cursor_drag_grab = !self.cursor_drag_grab,
++            Item::WorldControls => self.bedrock_controls = !self.bedrock_controls,
 +            Item::AutoSensitivity => {
 +                let mut i = self.auto_sensitivity_index();
 +                turn(&mut i, Sensitivity::ALL.len());
@@ -1228,6 +1292,11 @@ index 0000000..04884ac
 +        MENU_SLOPS[usize::from(self.menu_touch).min(MENU_SLOPS.len() - 1)]
 +    }
 +
++    /// How long a resting finger waits before the cursor splits (`CURSOR_HOLDS`).
++    pub fn cursor_hold_secs(&self) -> f64 {
++        CURSOR_HOLDS[usize::from(self.cursor_hold).min(CURSOR_HOLDS.len() - 1)]
++    }
++
 +    /// How far the cursor moves for a pixel of finger (`touch_cursor::SPEEDS`).
 +    pub fn cursor_speed_scale(&self) -> f32 {
 +        crate::touch_cursor::speed_at(self.cursor_speed)
@@ -1249,6 +1318,11 @@ index 0000000..04884ac
 +        touch.feel.tap_secs = hold;
 +        touch.feel.long_press_secs = hold + 0.15;
 +        touch.double_tap_jump = self.double_tap_jump;
++        touch.world_style = if self.bedrock_controls {
++            crate::touch::WorldStyle::Bedrock
++        } else {
++            crate::touch::WorldStyle::Classic
++        };
 +        touch.feel.menu_slop_px = menu_slop_for(touch.screen()) * self.menu_slop_scale();
 +    }
 +}
@@ -1341,6 +1415,28 @@ index 0000000..04884ac
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
++
++    #[test]
++    fn world_controls_and_the_cursor_tuning_round_trip_and_default_to_the_old_way() {
++        let d = ImcSettings::default();
++        assert!(!d.bedrock_controls, "classic until the player asks");
++        assert!(!d.cursor_drag_grab, "no accidental grabs");
++        assert_eq!(d.cursor_hold_secs(), 0.70);
++        let mut s = d.clone();
++        s.cycle(Item::WorldControls, false);
++        s.cycle(Item::CursorHold, false);
++        s.cycle(Item::CursorDragGrab, false);
++        assert_eq!(s.value(Item::WorldControls), "Bedrock");
++        assert_eq!(s.value(Item::CursorHold), "Long");
++        assert_eq!(s.value(Item::CursorDragGrab), "On");
++        let back = ImcSettings::parse(&s.serialize());
++        assert_eq!(back, s);
++        let mut t = Touch::new((2532.0, 1170.0));
++        s.apply(&mut t);
++        assert_eq!(t.world_style, crate::touch::WorldStyle::Bedrock);
++        d.apply(&mut t);
++        assert_eq!(t.world_style, crate::touch::WorldStyle::Classic);
++    }
 +
 +    #[test]
 +    fn the_defaults_are_the_values_touch_had_before_it_had_settings() {
@@ -2055,10 +2151,10 @@ index 6d0df2c..5ddf781 100644
  pub mod window;
 diff --git a/horizon/crates/horizon-client-input/src/touch.rs b/horizon/crates/horizon-client-input/src/touch.rs
 new file mode 100644
-index 0000000..fd0dd49
+index 0000000..2d58248
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/touch.rs
-@@ -0,0 +1,1164 @@
+@@ -0,0 +1,1250 @@
 +//! Touch input for phones, as pure logic: fingers in, game intent out.
 +//!
 +//! No winit types, no clock of its own and no game state, so the whole thing runs under
@@ -2161,6 +2257,14 @@ index 0000000..fd0dd49
 +    Use(bool),
 +    /// Jump went down or up (a double tap on the world; see [`Touch::double_tap_jump`]).
 +    Jump(bool),
++    /// Bedrock style: a quick tap on the world. The game decides what it is from what the
++    /// crosshair is on: an entity is hit, anything else is used (a block is placed, a door
++    /// opens, an item is used).
++    Tap,
++    /// Bedrock style: a finger has rested on the world long enough to hold (`true`), or lifted
++    /// after holding (`false`). The game breaks while the crosshair is on a block or entity, and
++    /// keeps placing while it is on nothing it can break.
++    Hold(bool),
 +    /// Menu mode: move the pointer here (physical pixels).
 +    PointerTo { x: f32, y: f32 },
 +    /// Menu mode: the left button goes down or up.
@@ -2247,7 +2351,20 @@ index 0000000..fd0dd49
 +    sprint: bool,
 +    /// Treat a double tap on the world as a jump.
 +    pub double_tap_jump: bool,
++    /// How a tap on the world is read (`WorldStyle`).
++    pub world_style: WorldStyle,
 +    out: Vec<Action>,
++}
++
++/// What a quick tap on the world means.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
++pub enum WorldStyle {
++    /// A tap is one swing; placing is the Use button (how touch worked first).
++    #[default]
++    Classic,
++    /// As on Bedrock Edition: a tap hits what the crosshair is on if it is an entity and uses
++    /// (places, opens) otherwise; holding still breaks.
++    Bedrock,
 +}
 +
 +impl Touch {
@@ -2267,6 +2384,7 @@ index 0000000..fd0dd49
 +            last_tap: None,
 +            sprint: false,
 +            double_tap_jump: false,
++            world_style: WorldStyle::Classic,
 +            out: Vec::new(),
 +        }
 +    }
@@ -2332,7 +2450,10 @@ index 0000000..fd0dd49
 +    pub fn cancel_all(&mut self) -> Vec<Action> {
 +        let mut out = Vec::new();
 +        if self.attacking.take().is_some() {
-+            out.push(Action::Attack(false));
++            out.push(match self.world_style {
++                WorldStyle::Classic => Action::Attack(false),
++                WorldStyle::Bedrock => Action::Hold(false),
++            });
 +        }
 +        if self.using.take().is_some() {
 +            out.push(Action::Use(false));
@@ -2529,7 +2650,10 @@ index 0000000..fd0dd49
 +    fn world_hold(&mut self, id: FingerId, f: &Finger, now: f64) {
 +        if !f.dragged && self.attacking.is_none() && now - f.since >= self.feel.tap_secs {
 +            self.attacking = Some(id);
-+            self.out.push(Action::Attack(true));
++            self.out.push(match self.world_style {
++                WorldStyle::Classic => Action::Attack(true),
++                WorldStyle::Bedrock => Action::Hold(true),
++            });
 +        }
 +    }
 +
@@ -2548,12 +2672,21 @@ index 0000000..fd0dd49
 +            Role::World => {
 +                if self.attacking == Some(id) {
 +                    self.attacking = None;
-+                    self.out.push(Action::Attack(false));
++                    self.out.push(match self.world_style {
++                        WorldStyle::Classic => Action::Attack(false),
++                        WorldStyle::Bedrock => Action::Hold(false),
++                    });
 +                } else if !f.dragged && now - f.since < self.feel.tap_secs {
-+                    // A quick tap: one swing. The game samples keys once a tick, so the caller
++                    // A quick tap. Classic: one swing. Bedrock: the game picks hit or use from
++                    // what the crosshair is on. The game samples keys once a tick, so the caller
 +                    // holds the release back a tick (`pad.rs` `late_releases` does this already).
-+                    self.out.push(Action::Attack(true));
-+                    self.out.push(Action::Attack(false));
++                    match self.world_style {
++                        WorldStyle::Classic => {
++                            self.out.push(Action::Attack(true));
++                            self.out.push(Action::Attack(false));
++                        }
++                        WorldStyle::Bedrock => self.out.push(Action::Tap),
++                    }
 +                    if self.double_tap_jump
 +                        && let Some((t, p)) = self.last_tap
 +                        && now - t <= self.feel.double_tap_secs
@@ -2770,6 +2903,55 @@ index 0000000..fd0dd49
 +        // Finger 2 is a world finger (it looks), it must not move the stick.
 +        assert_eq!(t.stick(), [0.0, 0.0]);
 +        assert_eq!(t.stick_origin(), Some((200.0, 800.0)));
++    }
++
++    fn bedrock() -> Touch {
++        let mut t = touch();
++        t.world_style = WorldStyle::Bedrock;
++        t
++    }
++
++    #[test]
++    fn bedrock_a_quick_tap_is_a_tap_for_the_game_to_resolve() {
++        let mut t = bedrock();
++        t.down(1, (2000.0, 600.0), 0.0, &[]);
++        assert_eq!(t.up(1, 0.10), vec![Action::Tap]);
++    }
++
++    #[test]
++    fn bedrock_holding_still_holds_and_lifting_lets_go() {
++        let mut t = bedrock();
++        t.down(1, (2000.0, 600.0), 0.0, &[]);
++        assert!(t.tick(0.10).is_empty());
++        assert_eq!(t.tick(0.30), vec![Action::Hold(true)]);
++        assert!(t.tick(0.50).is_empty(), "only once");
++        assert_eq!(t.up(1, 0.9), vec![Action::Hold(false)]);
++    }
++
++    #[test]
++    fn bedrock_a_drag_still_only_looks() {
++        let mut t = bedrock();
++        t.down(1, (2000.0, 600.0), 0.0, &[]);
++        let a = t.moved(1, (2100.0, 600.0), 0.05);
++        assert!(a.iter().all(|x| matches!(x, Action::Look { .. })), "{a:?}");
++        assert!(t.tick(1.0).is_empty(), "a dragged finger never holds");
++        assert!(t.up(1, 1.1).is_empty(), "and never taps");
++    }
++
++    #[test]
++    fn bedrock_cancelling_lets_go_of_a_hold() {
++        let mut t = bedrock();
++        t.down(1, (2000.0, 600.0), 0.0, &[]);
++        t.tick(0.5);
++        assert_eq!(t.cancel_all(), vec![Action::Hold(false)]);
++    }
++
++    #[test]
++    fn classic_is_unchanged_by_the_new_style() {
++        let mut t = touch();
++        assert_eq!(t.world_style, WorldStyle::Classic);
++        t.down(1, (2000.0, 600.0), 0.0, &[]);
++        assert_eq!(t.up(1, 0.10), vec![Action::Attack(true), Action::Attack(false)]);
 +    }
 +
 +    #[test]
@@ -3491,10 +3673,10 @@ index 0000000..8a0fa97
 +}
 diff --git a/horizon/crates/horizon-client-input/src/touch_cursor.rs b/horizon/crates/horizon-client-input/src/touch_cursor.rs
 new file mode 100644
-index 0000000..bf8f2a7
+index 0000000..0e9b232
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/touch_cursor.rs
-@@ -0,0 +1,699 @@
+@@ -0,0 +1,837 @@
 +//! Cursor mode: the finger is a trackpad and a real pointer moves on the screen.
 +//!
 +//! Plain touch puts the pointer under the finger, so the finger covers what it aims at and a
@@ -3518,6 +3700,13 @@ index 0000000..bf8f2a7
 +
 +/// How many pixels of finger travel scroll one line (as plain touch does).
 +const PIXELS_PER_LINE: f32 = 40.0;
++
++/// A finger may wander this many pixels and still be a tap. 10 was smaller than a thumb's own
++/// wobble on an iPhone, so a plain tap turned into a move and a drag.
++pub const DEFAULT_SLOP: f32 = 18.0;
++/// How long a finger must rest before it is a right click (a split). 0.45 s was shorter than the
++/// time a thumb rests on a stack while the eye finds the next slot.
++pub const DEFAULT_LONG_PRESS: f64 = 0.70;
 +
 +/// Where the cursor starts when a screen opens, as fractions of the screen.
 +const START: (f32, f32) = (0.5, 0.5);
@@ -3601,6 +3790,16 @@ index 0000000..bf8f2a7
 +    pub long_press_secs: f64,
 +    /// A touch that lands within this long of a tap's lift (and not far from it) is a tap-drag.
 +    pub drag_window_secs: f64,
++    /// Whether a tap-drag may grab at all. Off by default: it was the main way a quick second tap
++    /// picked up a stack nobody meant to touch. Dragging a stack is then a held press.
++    pub allow_tap_drag: bool,
++    /// A tap-drag only grabs once the finger has travelled this many times the slop.
++    pub drag_grab_slops: f32,
++    /// Two clicks closer together than this many seconds are one: the second is dropped, so a
++    /// nervous double tap never picks a stack up and puts it straight back (or splits it).
++    pub min_click_gap: f64,
++    /// When the last click was sent.
++    last_click: Option<f64>,
 +    fingers: HashMap<FingerId, Finger>,
 +    /// When the last tap lifted, for the tap-drag.
 +    last_tap: Option<f64>,
@@ -3618,10 +3817,14 @@ index 0000000..bf8f2a7
 +            screen,
 +            pos: (screen.0 * START.0, screen.1 * START.1),
 +            speed: 1.0,
-+            slop: 10.0,
++            slop: DEFAULT_SLOP,
 +            tap_secs: 0.25,
-+            long_press_secs: 0.45,
++            long_press_secs: DEFAULT_LONG_PRESS,
 +            drag_window_secs: 0.30,
++            allow_tap_drag: false,
++            drag_grab_slops: 2.5,
++            min_click_gap: 0.12,
++            last_click: None,
 +            fingers: HashMap::new(),
 +            last_tap: None,
 +            left_down: None,
@@ -3684,6 +3887,7 @@ index 0000000..bf8f2a7
 +            Role::Pointer
 +        };
 +        let drag_armed = role == Role::Pointer
++            && self.allow_tap_drag
 +            && self
 +                .last_tap
 +                .is_some_and(|t| now - t <= self.drag_window_secs);
@@ -3727,11 +3931,16 @@ index 0000000..bf8f2a7
 +            Role::Pointer => {
 +                if !f.moved && from_start > self.slop {
 +                    f.moved = true;
-+                    // A tap-drag: the second touch, once it really moves, grabs.
-+                    if f.drag_armed && self.left_down.is_none() {
-+                        self.left_down = Some(id);
-+                        self.out.push(Action::PointerLeft(true));
-+                    }
++                }
++                // A tap-drag: the second touch grabs only when the setting allows it and the
++                // finger has gone clearly further than a wobble.
++                if f.drag_armed
++                    && self.allow_tap_drag
++                    && self.left_down.is_none()
++                    && from_start > self.slop * self.drag_grab_slops
++                {
++                    self.left_down = Some(id);
++                    self.out.push(Action::PointerLeft(true));
 +                }
 +                if f.moved {
 +                    // The travel that crossed the slop is spent on moving the pointer too, so
@@ -3804,13 +4013,20 @@ index 0000000..bf8f2a7
 +                    && !self.fingers.values().any(|o| o.role == Role::Scroll)
 +                    && now - f.since < self.tap_secs
 +                {
-+                    // A tap: the press and the release where the pointer is.
-+                    self.out.push(Action::PointerTo {
-+                        x: self.pos.0,
-+                        y: self.pos.1,
-+                    });
-+                    self.out.push(Action::PointerLeft(true));
-+                    self.out.push(Action::PointerLeft(false));
++                    // A tap: the press and the release where the pointer is, unless it follows
++                    // another click so closely that it is a nervous repeat.
++                    let repeat = self
++                        .last_click
++                        .is_some_and(|t| now - t < self.min_click_gap);
++                    if !repeat {
++                        self.out.push(Action::PointerTo {
++                            x: self.pos.0,
++                            y: self.pos.1,
++                        });
++                        self.out.push(Action::PointerLeft(true));
++                        self.out.push(Action::PointerLeft(false));
++                        self.last_click = Some(now);
++                    }
 +                    self.last_tap = Some(now);
 +                } else {
 +                    self.last_tap = None;
@@ -3838,6 +4054,7 @@ index 0000000..bf8f2a7
 +        }
 +        self.fingers.clear();
 +        self.last_tap = None;
++        self.last_click = None;
 +        self.last_scroll_y = None;
 +        out
 +    }
@@ -3880,6 +4097,36 @@ index 0000000..bf8f2a7
 +    pub fn caption(cursor_on: bool) -> &'static str {
 +        if cursor_on { "Touch" } else { "Cursor" }
 +    }
++}
++
++/// The Shift button of the inventory screens: held, it adds the keyboard's Shift to every click
++/// (quick move a stack with one tap, the way Shift-click does on a computer). It sits under the
++/// Cursor/Touch button so the three corner buttons never overlap, and is only wanted on the
++/// screens that have slots.
++pub mod shift {
++    pub const WIDTH: f32 = 0.11;
++    pub const HEIGHT: f32 = 0.11;
++    pub const INSET_X: f32 = 0.02;
++    /// Below the Cursor/Touch button (which starts at 19% and is 11% tall).
++    pub const INSET_Y: f32 = 0.31;
++
++    /// The button as `[x, y, w, h]` in pixels on a screen of `size`.
++    pub fn rect(size: (f32, f32)) -> [f32; 4] {
++        [
++            size.0 * INSET_X,
++            size.1 * INSET_Y,
++            size.0 * WIDTH,
++            size.1 * HEIGHT,
++        ]
++    }
++
++    /// Whether a point is on the button.
++    pub fn contains(rect: [f32; 4], at: (f32, f32)) -> bool {
++        at.0 >= rect[0] && at.0 < rect[0] + rect[2] && at.1 >= rect[1] && at.1 < rect[1] + rect[3]
++    }
++
++    /// What the button shows.
++    pub const CAPTION: &str = "Shift";
 +}
 +
 +#[cfg(test)]
@@ -4005,12 +4252,52 @@ index 0000000..bf8f2a7
 +        let mut c = cursor();
 +        c.down(F, (100.0, 100.0), 0.0);
 +        assert!(c.tick(0.2).is_empty());
-+        assert_eq!(c.tick(0.5), vec![Action::PointerRight(true)]);
++        // A thumb resting while the eye looks around is not a split.
++        assert!(c.tick(0.5).is_empty(), "0.5 s of rest must not split a stack");
++        assert_eq!(c.tick(0.75), vec![Action::PointerRight(true)]);
 +        // Only once.
-+        assert!(c.tick(0.6).is_empty());
++        assert!(c.tick(0.9).is_empty());
 +        assert!(c.holding());
-+        assert_eq!(c.up(F, 0.9, false), vec![Action::PointerRight(false)]);
++        assert_eq!(c.up(F, 1.2, false), vec![Action::PointerRight(false)]);
 +        assert!(!c.holding());
++    }
++
++    #[test]
++    fn a_thumb_that_wobbles_a_little_is_still_a_tap() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        // 15 px of wobble is under the slop: nothing moves and the lift still clicks.
++        c.moved(F, (112.0, 109.0), 0.05);
++        assert_eq!(c.position(), (1266.0, 585.0));
++        let a = c.up(F, 0.12, false);
++        assert!(a.contains(&Action::PointerLeft(true)), "{a:?}");
++    }
++
++    #[test]
++    fn two_quick_taps_never_grab_by_default() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        c.up(F, 0.08, false);
++        // A second touch right after, which drags a good way: no left button goes down.
++        c.down(G, (100.0, 100.0), 0.2);
++        let a = c.moved(G, (400.0, 100.0), 0.25);
++        assert!(!a.contains(&Action::PointerLeft(true)), "{a:?}");
++        assert!(!c.holding());
++        assert!(c.up(G, 0.3, false).is_empty());
++    }
++
++    #[test]
++    fn a_nervous_double_tap_clicks_once() {
++        let mut c = cursor();
++        c.down(F, (100.0, 100.0), 0.0);
++        let first = c.up(F, 0.04, false);
++        assert!(first.contains(&Action::PointerLeft(true)));
++        c.down(G, (100.0, 100.0), 0.06);
++        let second = c.up(G, 0.09, false);
++        assert!(second.is_empty(), "a repeat within the gap is dropped: {second:?}");
++        // A deliberate second tap a moment later clicks.
++        c.down(F, (100.0, 100.0), 0.5);
++        assert!(c.up(F, 0.55, false).contains(&Action::PointerLeft(true)));
 +    }
 +
 +    #[test]
@@ -4024,15 +4311,19 @@ index 0000000..bf8f2a7
 +    #[test]
 +    fn tap_then_drag_holds_the_left_button_until_the_finger_lifts() {
 +        let mut c = cursor();
++        c.allow_tap_drag = true;
 +        c.down(F, (100.0, 100.0), 0.0);
 +        c.up(F, 0.08, false);
 +        // The next touch is soon after the tap.
 +        c.down(G, (400.0, 400.0), 0.2);
-+        let a = c.moved(G, (460.0, 400.0), 0.25);
++        // A small move is not a grab; a clear one is.
++        let a = c.moved(G, (420.0, 400.0), 0.22);
++        assert!(!a.contains(&Action::PointerLeft(true)), "{a:?}");
++        let a = c.moved(G, (480.0, 400.0), 0.25);
 +        assert!(a.contains(&Action::PointerLeft(true)), "{a:?}");
 +        assert!(c.holding());
-+        let a = c.moved(G, (520.0, 400.0), 0.3);
-+        assert!(a.contains(&Action::PointerTo { x: 1266.0 + 120.0, y: 585.0 }), "{a:?}");
++        let a = c.moved(G, (540.0, 400.0), 0.3);
++        assert!(a.contains(&Action::PointerTo { x: 1266.0 + 140.0, y: 585.0 }), "{a:?}");
 +        assert_eq!(c.up(G, 0.4, false), vec![Action::PointerLeft(false)]);
 +        assert!(!c.holding());
 +    }
@@ -4061,6 +4352,7 @@ index 0000000..bf8f2a7
 +    #[test]
 +    fn a_held_second_touch_after_a_tap_does_not_become_a_right_click() {
 +        let mut c = cursor();
++        c.allow_tap_drag = true;
 +        c.down(F, (100.0, 100.0), 0.0);
 +        c.up(F, 0.08, false);
 +        c.down(G, (100.0, 100.0), 0.2);
@@ -4101,11 +4393,12 @@ index 0000000..bf8f2a7
 +    fn a_cancelled_hold_or_drag_lets_go_of_its_button() {
 +        let mut c = cursor();
 +        c.down(F, (100.0, 100.0), 0.0);
-+        c.tick(0.5);
++        c.tick(0.8);
 +        assert_eq!(c.cancel_all(), vec![Action::PointerRight(false)]);
 +        assert!(!c.holding());
 +
 +        let mut c = cursor();
++        c.allow_tap_drag = true;
 +        c.down(F, (0.0, 0.0), 0.0);
 +        c.up(F, 0.05, false);
 +        c.down(G, (0.0, 0.0), 0.1);
@@ -4189,6 +4482,33 @@ index 0000000..bf8f2a7
 +    }
 +
 +    #[test]
++    fn the_shift_button_sits_under_the_cursor_button_and_overlaps_nothing() {
++        let size = (2532.0, 1170.0);
++        let (sh, cu, ba) = (shift::rect(size), switch::rect(size), [
++            size.0 * 0.02,
++            size.1 * 0.04,
++            size.0 * 0.11,
++            size.1 * 0.13,
++        ]);
++        let apart = |a: [f32; 4], b: [f32; 4]| {
++            a[0] + a[2] <= b[0] || b[0] + b[2] <= a[0] || a[1] + a[3] <= b[1] || b[1] + b[3] <= a[1]
++        };
++        assert!(apart(sh, cu), "{sh:?} overlaps the cursor button {cu:?}");
++        assert!(apart(sh, ba), "{sh:?} overlaps Back {ba:?}");
++        assert!(sh[0] >= 0.0 && sh[1] >= 0.0 && sh[0] + sh[2] <= size.0 && sh[1] + sh[3] <= size.1);
++        // A thumb-sized target.
++        assert!(sh[2] >= 200.0 && sh[3] >= 100.0, "{sh:?}");
++    }
++
++    #[test]
++    fn the_shift_button_hit_test_is_half_open() {
++        let r = shift::rect((1000.0, 500.0));
++        assert!(shift::contains(r, (r[0] + 1.0, r[1] + 1.0)));
++        assert!(!shift::contains(r, (r[0] + r[2], r[1])));
++        assert!(!shift::contains(r, (0.0, 0.0)));
++    }
++
++    #[test]
 +    fn the_caption_names_the_mode_a_tap_switches_to() {
 +        assert_eq!(switch::caption(false), "Cursor");
 +        assert_eq!(switch::caption(true), "Touch");
@@ -4196,10 +4516,10 @@ index 0000000..bf8f2a7
 +}
 diff --git a/horizon/crates/horizon-client-input/src/touch_editor_tools.rs b/horizon/crates/horizon-client-input/src/touch_editor_tools.rs
 new file mode 100644
-index 0000000..e87da1f
+index 0000000..73f07e8
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/touch_editor_tools.rs
-@@ -0,0 +1,782 @@
+@@ -0,0 +1,894 @@
 +//! The touch controls editor's tools, as pure data: snapping a dragged button, finding buttons
 +//! that overlap or leave the safe area, and the named layouts (presets). No winit, no game state,
 +//! so every rule is tested here.
@@ -4338,7 +4658,13 @@ index 0000000..e87da1f
 +
 +/// The built-in layouts, by name. A layout is a nudge from the default (`touch_layout`), so
 +/// each is a few moves.
-+pub const BUILT_IN: [&str; 3] = ["Default", "Left-handed", "Compact"];
++pub const BUILT_IN: [&str; 5] = ["Default", "Left-handed", "Compact", "Bedrock", "Big thumbs"];
++
++/// Whether built-in layout `name` is made for Bedrock style world controls (a tap places, so
++/// there is no Use button). Applying it also switches that setting on.
++pub fn wants_bedrock_controls(name: &str) -> bool {
++    name == "Bedrock"
++}
 +
 +/// The built-in layout `name`, or `None` for a name that is not one.
 +pub fn built_in(name: &str) -> Option<ControlLayout> {
@@ -4365,6 +4691,48 @@ index 0000000..e87da1f
 +                *s = Slot {
 +                    scale: 0.8,
 +                    opacity: 0.7,
++                    ..Slot::default()
++                };
++            }
++        }
++        // As Bedrock Edition lays touch out: a big Jump under the right thumb, Sneak beside it,
++        // Sprint up by the left stick, and no Use button, because a tap on the world places.
++        "Bedrock" => {
++            l.slots[0] = Slot {
++                scale: 1.25,
++                ..Slot::default()
++            }; // jump
++            l.slots[1] = Slot {
++                dx: -0.03,
++                dy: 0.02,
++                ..Slot::default()
++            }; // sneak
++            l.slots[2] = Slot {
++                dx: -0.78,
++                dy: -0.05,
++                opacity: 0.85,
++                ..Slot::default()
++            }; // run, over the stick
++            l.slots[3] = Slot {
++                shown: false,
++                ..Slot::default()
++            }; // use is a tap
++        }
++        // Bigger buttons for a big thumb, the top row a little smaller to leave the view clear.
++        "Big thumbs" => {
++            // Bigger buttons need more room: Sneak and Run step left, Use steps up.
++            for (i, dx, dy) in [(0, 0.0, -0.01), (1, -0.035, 0.0), (2, -0.035, -0.04), (3, 0.0, -0.06)] {
++                l.slots[i] = Slot {
++                    dx,
++                    dy,
++                    scale: 1.3,
++                    ..Slot::default()
++                };
++            }
++            for i in 4..9 {
++                l.slots[i] = Slot {
++                    scale: 0.9,
++                    opacity: 0.85,
 +                    ..Slot::default()
 +                };
 +            }
@@ -4617,6 +4985,70 @@ index 0000000..e87da1f
 +    }
 +
 +    #[test]
++    fn every_built_in_layout_stays_in_range() {
++        for name in BUILT_IN {
++            let l = built_in(name).unwrap();
++            for (i, s) in l.slots.iter().enumerate() {
++                assert_eq!(*s, s.clamped(), "{name} slot {i}");
++            }
++            // And survives the file.
++            assert_eq!(ControlLayout::parse(&l.serialize()), l, "{name}");
++        }
++    }
++
++    #[test]
++    fn bedrock_hides_only_use_and_asks_for_bedrock_controls() {
++        let l = built_in("Bedrock").unwrap();
++        let hidden: Vec<usize> = (0..SLOTS).filter(|i| !l.slots[*i].shown).collect();
++        assert_eq!(hidden, vec![3], "only Use is hidden");
++        assert!(l.slots[0].scale > 1.0, "a big Jump");
++        assert!(wants_bedrock_controls("Bedrock"));
++        assert!(!wants_bedrock_controls("Compact") && !wants_bedrock_controls("Default"));
++    }
++
++    #[test]
++    fn big_thumbs_enlarges_the_action_buttons_and_leaves_the_menu_buttons_alone() {
++        let l = built_in("Big thumbs").unwrap();
++        for i in 0..4 {
++            assert!(l.slots[i].scale > 1.0, "button {i}");
++        }
++        assert!(l.slots[super::super::touch_layout::CURSOR_SLOT].is_default());
++        assert!(l.slots[super::super::touch_layout::SHIFT_SLOT].is_default());
++    }
++
++    #[test]
++    fn the_new_built_ins_keep_their_buttons_on_the_screen_and_apart() {
++        use crate::touch_layout::Slot as _S;
++        let _ = _S::default();
++        // The same bases the game uses for the right thumb cluster, on an iPhone 12 landscape.
++        let size = PHONE;
++        let bases = [
++            [size.0 * 0.83, size.1 * 0.78, size.0 * 0.09, size.1 * 0.20],
++            [size.0 * 0.73, size.1 * 0.81, size.0 * 0.08, size.1 * 0.17],
++            [size.0 * 0.73, size.1 * 0.62, size.0 * 0.08, size.1 * 0.17],
++            [size.0 * 0.83, size.1 * 0.58, size.0 * 0.09, size.1 * 0.18],
++        ];
++        for name in ["Bedrock", "Big thumbs"] {
++            let l = built_in(name).unwrap();
++            let placed: Vec<[f32; 4]> = (0..4)
++                .filter(|i| l.slots[*i].shown)
++                .map(|i| l.slots[i].place(bases[i], size))
++                .collect();
++            for r in &placed {
++                assert!(r[0] >= 0.0 && r[1] >= 0.0 && r[0] + r[2] <= size.0 && r[1] + r[3] <= size.1, "{name}: {r:?}");
++            }
++            let apart = |a: &[f32; 4], b: &[f32; 4]| {
++                a[0] + a[2] <= b[0] || b[0] + b[2] <= a[0] || a[1] + a[3] <= b[1] || b[1] + b[3] <= a[1]
++            };
++            for (i, a) in placed.iter().enumerate() {
++                for b in &placed[i + 1..] {
++                    assert!(apart(a, b), "{name}: {a:?} overlaps {b:?}");
++                }
++            }
++        }
++    }
++
++    #[test]
 +    fn compact_shrinks_and_fades_every_button_within_the_allowed_range() {
 +        let l = built_in("Compact").unwrap();
 +        for s in l.slots {
@@ -4671,7 +5103,7 @@ index 0000000..e87da1f
 +        p.save("mine", &ControlLayout::default());
 +        assert_eq!(
 +            p.names(),
-+            vec!["Default", "Left-handed", "Compact", "mine"]
++            vec!["Default", "Left-handed", "Compact", "Bedrock", "Big thumbs", "mine"]
 +        );
 +    }
 +
@@ -5368,10 +5800,10 @@ index 0000000..420641c
 +}
 diff --git a/horizon/crates/horizon-client-input/src/touch_layout.rs b/horizon/crates/horizon-client-input/src/touch_layout.rs
 new file mode 100644
-index 0000000..83dfc58
+index 0000000..7086586
 --- /dev/null
 +++ b/horizon/crates/horizon-client-input/src/touch_layout.rs
-@@ -0,0 +1,728 @@
+@@ -0,0 +1,737 @@
 +//! The player's own arrangement of the on-screen buttons, as pure data: no winit, no game state.
 +//!
 +//! Each button keeps only what the player changed, as a nudge from where the layout puts it
@@ -5385,8 +5817,14 @@ index 0000000..83dfc58
 +//! The file is `horizon-touch-layout.txt` beside `horizon-imc.txt`: one line per button,
 +//! `name:dx,dy,scale,opacity,shown`, written only when something differs from the default.
 +
-+/// How many buttons can be arranged (the nine pads, Back, and the six extras).
-+pub const COUNT: usize = 16;
++/// How many buttons can be arranged (the nine pads, Back, the six extras, and the menu buttons
++/// Cursor and Shift).
++pub const COUNT: usize = 18;
++
++/// The menu buttons' places in [`NAMES`]: after the extras, so a file saved before they existed
++/// still reads the same.
++pub const CURSOR_SLOT: usize = 16;
++pub const SHIFT_SLOT: usize = 17;
 +
 +/// Where the extras start in [`NAMES`]; they follow `touch_extras::Extra::ALL` in order.
 +pub const EXTRA_FIRST: usize = 10;
@@ -5395,7 +5833,7 @@ index 0000000..83dfc58
 +/// end, so a file saved by an older version still reads the same.
 +pub const NAMES: [&str; COUNT] = [
 +    "jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back", "chat",
-+    "debug", "shot", "view", "key1", "key2",
++    "debug", "shot", "view", "key1", "key2", "cursor", "shift",
 +];
 +
 +/// Largest move from the default, as a fraction of the screen's width or height. Enough to put a
@@ -5927,7 +6365,9 @@ index 0000000..83dfc58
 +        for (i, e) in Extra::ALL.iter().enumerate() {
 +            assert_eq!(NAMES[EXTRA_FIRST + i], e.name(), "{e:?}");
 +        }
-+        assert_eq!(EXTRA_FIRST + Extra::ALL.len(), COUNT);
++        assert_eq!(EXTRA_FIRST + Extra::ALL.len() + 2, COUNT);
++        assert_eq!(NAMES[CURSOR_SLOT], "cursor");
++        assert_eq!(NAMES[SHIFT_SLOT], "shift");
 +    }
 +
 +    #[test]
@@ -5935,6 +6375,7 @@ index 0000000..83dfc58
 +        let layout = ControlLayout::parse("jump:0.0100,0.0200,1.500,0.800,true\n");
 +        assert_eq!(layout.slots[0].scale, 1.5);
 +        assert!(layout.slots[EXTRA_FIRST..].iter().all(Slot::is_default));
++        assert!(layout.slots[CURSOR_SLOT].is_default() && layout.slots[SHIFT_SLOT].is_default());
 +    }
 +
 +    #[test]
@@ -6324,7 +6765,7 @@ index dc0ff58..b59bbd0 100644
          } else {
              assert_eq!(
 diff --git a/horizon/crates/horizon-client-render/src/graphics_ui.rs b/horizon/crates/horizon-client-render/src/graphics_ui.rs
-index 8c1c1c5..4e3c4b0 100644
+index 8c1c1c5..5b741e6 100644
 --- a/horizon/crates/horizon-client-render/src/graphics_ui.rs
 +++ b/horizon/crates/horizon-client-render/src/graphics_ui.rs
 @@ -29,15 +29,19 @@ pub enum Page {
@@ -6391,7 +6832,7 @@ index 8c1c1c5..4e3c4b0 100644
 +impl ImcDo {
 +    pub fn caption(self) -> &'static str {
 +        match self {
-+            ImcDo::MobilePreset => "Mobile preset",
++            ImcDo::MobilePreset => "Phone preset",
 +            ImcDo::EditControls => "Edit touch controls",
 +            ImcDo::Calibrate => "Calibrate touch",
 +            ImcDo::Reset => "Reset iMC settings",
@@ -6411,7 +6852,7 @@ index 8c1c1c5..4e3c4b0 100644
  }
  
  #[derive(Clone, Copy)]
-@@ -155,6 +201,59 @@ fn e(item: crate::extras::Item, cost: Cost) -> Setting {
+@@ -155,6 +201,62 @@ fn e(item: crate::extras::Item, cost: Cost) -> Setting {
      }
  }
  
@@ -6465,13 +6906,16 @@ index 8c1c1c5..4e3c4b0 100644
 +        I::AutoResolution => "horizon.imc.autoResolution.tooltip",
 +        I::CursorInventory => "horizon.imc.cursorInventory.tooltip",
 +        I::CursorSpeed => "horizon.imc.cursorSpeed.tooltip",
++        I::CursorHold => "horizon.imc.cursorHold.tooltip",
++        I::CursorDragGrab => "horizon.imc.cursorDragGrab.tooltip",
++        I::WorldControls => "horizon.imc.worldControls.tooltip",
 +    }
 +}
 +
  /// Every page's settings, in named groups of related rows.
  pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
      use Cost::*;
-@@ -618,10 +717,67 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
+@@ -618,10 +720,73 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                  ),
              ],
          ),
@@ -6484,6 +6928,7 @@ index 8c1c1c5..4e3c4b0 100644
 +                        "Touch controls",
 +                        vec![
 +                            m(I::Controls, None),
++                            m(I::WorldControls, None),
 +                            m(I::DoubleTapJump, None),
 +                            m(I::LookSpeed, None),
 +                            m(I::HoldTime, None),
@@ -6508,7 +6953,12 @@ index 8c1c1c5..4e3c4b0 100644
 +                    ),
 +                    (
 +                        "Cursor",
-+                        vec![m(I::CursorInventory, None), m(I::CursorSpeed, None)],
++                        vec![
++                            m(I::CursorInventory, None),
++                            m(I::CursorSpeed, None),
++                            m(I::CursorHold, None),
++                            m(I::CursorDragGrab, None),
++                        ],
 +                    ),
 +                    (
 +                        "Auto Performance",
@@ -6540,7 +6990,7 @@ index 8c1c1c5..4e3c4b0 100644
          for (_, groups) in &mut pages {
              for (_, rows) in groups {
                  rows.retain(|r| {
-@@ -1095,6 +1251,26 @@ impl Item {
+@@ -1095,6 +1260,26 @@ impl Item {
          if !self.available() {
              return Some("This feature is not yet available in Horizon.");
          }
@@ -6567,7 +7017,7 @@ index 8c1c1c5..4e3c4b0 100644
          match self {
              Item::Horizon(
                  H::Hdr
-@@ -1146,7 +1322,7 @@ impl Item {
+@@ -1146,7 +1331,7 @@ impl Item {
              && self.slider(s).is_none()
              && !matches!(
                  self,
@@ -6576,7 +7026,7 @@ index 8c1c1c5..4e3c4b0 100644
              )
      }
      /// On/off settings and their value.
-@@ -1182,6 +1358,8 @@ impl Item {
+@@ -1182,6 +1367,8 @@ impl Item {
              }
              Item::Vanilla(Opt::Vsync) => s.vsync,
              Item::Extra(e) => return e.switch(&s.extras),
@@ -6585,7 +7035,7 @@ index 8c1c1c5..4e3c4b0 100644
              Item::Vanilla(Opt::Fullscreen) => s.fullscreen,
              Item::Vanilla(Opt::ExclusiveFullscreen) => s.file.bool("exclusiveFullscreen"),
              Item::Vanilla(Opt::SmoothLighting) => s.smooth_lighting,
-@@ -1197,7 +1375,7 @@ impl Item {
+@@ -1197,7 +1384,7 @@ impl Item {
          match self {
              Item::Vanilla(o) => o.slider_position(s),
              Item::Horizon(h) => h.slider(s),
@@ -6594,7 +7044,7 @@ index 8c1c1c5..4e3c4b0 100644
          }
      }
      pub fn label(self, s: &Settings) -> Text {
-@@ -1212,6 +1390,11 @@ impl Item {
+@@ -1212,6 +1399,21 @@ impl Item {
                  Text::literal(e.caption_text()),
                  Text::literal(e.value(&s.extras)),
              ),
@@ -6602,11 +7052,21 @@ index 8c1c1c5..4e3c4b0 100644
 +                Text::literal(lang::get_or(&i.caption_key(), i.caption())),
 +                Text::literal(imc_value(i, s)),
 +            ),
++            // The preset row names what is on now and what a press does next, so a press that
++            // worked is visible and a preset changed by hand stops claiming to be on.
++            Item::ImcDo(ImcDo::MobilePreset) => {
++                let caption = lang::get_or(ImcDo::MobilePreset.caption_key(), "Phone preset");
++                let (now, next) = match crate::mobile_preset::current(s) {
++                    Some(k) => (k.name(), k.next().name()),
++                    None => ("Custom", crate::mobile_preset::Kind::Mobile.name()),
++                };
++                Text::literal(format!("{caption}: {now} (tap for {next})"))
++            }
 +            Item::ImcDo(d) => Text::literal(lang::get_or(d.caption_key(), d.caption())),
          }
      }
      pub fn set_slider(self, s: &mut Settings, v: f32) {
-@@ -1222,7 +1405,7 @@ impl Item {
+@@ -1222,7 +1424,7 @@ impl Item {
              // Options.applyGraphicsPreset, as Video Settings' slider does it.
              Item::Vanilla(o) => crate::options_ui::set_slider(o, s, v),
              Item::Horizon(h) => h.set_slider(s, v),
@@ -6615,7 +7075,7 @@ index 8c1c1c5..4e3c4b0 100644
          }
          self.touched(s);
      }
-@@ -1234,6 +1417,8 @@ impl Item {
+@@ -1234,6 +1436,8 @@ impl Item {
              Item::Vanilla(o) => o.cycle(s, back, framebuffer),
              Item::Horizon(h) => h.cycle(s, back),
              Item::Extra(e) => e.cycle(&mut s.extras, back),
@@ -6624,7 +7084,7 @@ index 8c1c1c5..4e3c4b0 100644
          }
          self.touched(s);
      }
-@@ -1242,6 +1427,8 @@ impl Item {
+@@ -1242,6 +1446,8 @@ impl Item {
          let presetless = matches!(
              self,
              Item::Extra(_)
@@ -6633,7 +7093,7 @@ index 8c1c1c5..4e3c4b0 100644
                  | Item::Horizon(
                      H::Preset
                          | H::BlueMapAutoDetect
-@@ -1283,7 +1470,7 @@ impl Item {
+@@ -1283,7 +1489,7 @@ impl Item {
          match self {
              Item::Vanilla(o) => o.slider_steps(),
              Item::Horizon(h) => h.slider_steps(),
@@ -6642,7 +7102,7 @@ index 8c1c1c5..4e3c4b0 100644
          }
      }
      pub fn step_slider(self, s: &mut Settings, forward: bool, width: f32) {
-@@ -1311,6 +1498,8 @@ pub enum Action {
+@@ -1311,6 +1517,8 @@ pub enum Action {
      Calibrate,
      /// Open the shader pack list.
      ShaderPacks,
@@ -6651,7 +7111,7 @@ index 8c1c1c5..4e3c4b0 100644
      Done,
  }
  
-@@ -1342,6 +1531,19 @@ fn parts(item: Item, s: &Settings, binding: bool) -> (String, Option<String>) {
+@@ -1342,6 +1550,19 @@ fn parts(item: Item, s: &Settings, binding: bool) -> (String, Option<String>) {
      shell::name_and_value(&item.label(s).plain())
  }
  
@@ -6671,7 +7131,7 @@ index 8c1c1c5..4e3c4b0 100644
  pub struct GraphicsUi {
      /// The list's scroll amount and its held scrollbar (`AbstractScrollArea`).
      scroll: ui::Scroll,
-@@ -1819,6 +2021,7 @@ impl GraphicsUi {
+@@ -1819,6 +2040,7 @@ impl GraphicsUi {
              }
              Item::Horizon(H::HdrCalibrate) => vec![Action::ButtonClick, Action::Calibrate],
              Item::Horizon(H::ShaderPacks) => vec![Action::ButtonClick, Action::ShaderPacks],
@@ -6679,7 +7139,7 @@ index 8c1c1c5..4e3c4b0 100644
              Item::Horizon(H::HdrKey) => {
                  vec![
                      Action::ButtonClick,
-@@ -2233,7 +2436,7 @@ mod tests {
+@@ -2233,7 +2455,7 @@ mod tests {
              false,
          );
          let (_, lines, _) = ui.layout(&s, size.0, size.1);
@@ -6688,7 +7148,7 @@ index 8c1c1c5..4e3c4b0 100644
      }
  
      #[test]
-@@ -2277,7 +2480,8 @@ mod tests {
+@@ -2277,7 +2499,8 @@ mod tests {
                  .is_some_and(|r| r.item == Item::Vanilla(Opt::Vsync))
          }));
          ui.search.set_value("hdr");
@@ -6698,7 +7158,7 @@ index 8c1c1c5..4e3c4b0 100644
          press(&mut ui, &mut s, (x + w / 2.0, y + h / 2.0));
          assert_eq!(ui.current(&ui.lines(&s).0), Some(Page::Hdr));
          let [x, y, ..] = cols.clear();
-@@ -2582,7 +2786,7 @@ mod tests {
+@@ -2582,7 +2805,7 @@ mod tests {
          // Up from Done: the page list's last page.
          ui.focus = Some(Target::Done);
          ui.key_modifiers(&mut s, K::ArrowUp, None, false, SIZE, FB);
@@ -7009,10 +7469,10 @@ index 870f961..3e3b73a 100644
          }
 diff --git a/horizon/crates/horizon-client-render/src/mobile_preset.rs b/horizon/crates/horizon-client-render/src/mobile_preset.rs
 new file mode 100644
-index 0000000..1008d06
+index 0000000..f95f512
 --- /dev/null
 +++ b/horizon/crates/horizon-client-render/src/mobile_preset.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,253 @@
 +//! The "Mobile" preset (iMC Settings > Mobile preset): the engine's own Performance preset, plus
 +//! what only a phone needs. Like the PvP preset it only changes values; every one stays adjustable
 +//! afterwards, one by one.
@@ -7039,6 +7499,80 @@ index 0000000..1008d06
 +
 +/// The frame cap the preset sets.
 +pub const MAX_FPS: u32 = 60;
++
++/// The phone presets the iMC page offers, in the order its row steps through them.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Kind {
++    /// The one that was always there: Performance values, battery mode, 60 FPS.
++    Mobile,
++    /// For a low battery or a hot phone: nearer, 30 FPS, battery mode.
++    BatterySaver,
++    /// For a phone on the charger: Balanced values, 60 FPS, no battery mode.
++    Smooth,
++}
++
++impl Kind {
++    pub const ALL: [Kind; 3] = [Kind::Mobile, Kind::BatterySaver, Kind::Smooth];
++
++    pub fn name(self) -> &'static str {
++        match self {
++            Kind::Mobile => "Mobile",
++            Kind::BatterySaver => "Battery saver",
++            Kind::Smooth => "Smooth",
++        }
++    }
++
++    /// The next one, wrapping.
++    pub fn next(self) -> Kind {
++        let i = Kind::ALL.iter().position(|k| *k == self).unwrap_or(0);
++        Kind::ALL[(i + 1) % Kind::ALL.len()]
++    }
++}
++
++/// Turns a phone preset on.
++pub fn apply_kind(kind: Kind, s: &mut Settings) {
++    match kind {
++        Kind::Mobile => apply(s),
++        Kind::BatterySaver => {
++            apply(s);
++            s.render_distance = 6;
++            s.simulation_distance = 5;
++            s.max_fps = 30;
++        }
++        Kind::Smooth => {
++            graphics::apply_preset(Preset::Balanced, s);
++            s.max_fps = MAX_FPS;
++            s.vsync = true;
++            s.view_bobbing = false;
++            let g = &mut s.horizon;
++            g.battery = false;
++            g.resolution_scale = 100;
++            g.lod_distance = 0;
++            g.upscaling = Upscaling::Native;
++            g.frame_generation = FrameGeneration::Off;
++            g.hdr = false;
++        }
++    }
++}
++
++/// Which phone preset the settings are exactly at now, or `None` once anything it sets has been
++/// changed by hand. The page shows this, so a press that worked is visible and a preset that was
++/// later edited stops claiming to be on.
++pub fn current(s: &Settings) -> Option<Kind> {
++    Kind::ALL.into_iter().find(|k| {
++        let mut want = s.clone();
++        apply_kind(*k, &mut want);
++        s.render_distance == want.render_distance
++            && s.simulation_distance == want.simulation_distance
++            && s.max_fps == want.max_fps
++            && s.vsync == want.vsync
++            && s.view_bobbing == want.view_bobbing
++            && s.clouds == want.clouds
++            && s.particles == want.particles
++            && s.horizon.battery == want.horizon.battery
++            && s.horizon.preset == want.horizon.preset
++    })
++}
 +
 +/// Turns the Mobile preset on.
 +pub fn apply(s: &mut Settings) {
@@ -7135,6 +7669,54 @@ index 0000000..1008d06
 +    }
 +
 +    #[test]
++    fn every_phone_preset_reads_back_as_itself_and_no_two_are_alike() {
++        for kind in Kind::ALL {
++            let mut s = Settings::default();
++            apply_kind(kind, &mut s);
++            assert_eq!(current(&s), Some(kind), "{kind:?}");
++        }
++        let (mut a, mut b) = (Settings::default(), Settings::default());
++        apply_kind(Kind::Mobile, &mut a);
++        apply_kind(Kind::BatterySaver, &mut b);
++        assert_ne!(a.render_distance, b.render_distance);
++        assert_ne!(a.max_fps, b.max_fps);
++    }
++
++    #[test]
++    fn a_change_by_hand_stops_the_preset_claiming_to_be_on() {
++        let mut s = Settings::default();
++        assert_eq!(current(&s), None, "a fresh install matches none");
++        apply_kind(Kind::Mobile, &mut s);
++        assert_eq!(current(&s), Some(Kind::Mobile));
++        s.render_distance = 10;
++        assert_eq!(current(&s), None);
++    }
++
++    #[test]
++    fn stepping_visits_all_three_and_wraps() {
++        let mut k = Kind::Mobile;
++        let mut seen = vec![k];
++        for _ in 0..3 {
++            k = k.next();
++            seen.push(k);
++        }
++        assert_eq!(seen, vec![Kind::Mobile, Kind::BatterySaver, Kind::Smooth, Kind::Mobile]);
++    }
++
++    #[test]
++    fn the_battery_saver_is_lighter_than_mobile_and_smooth_is_heavier() {
++        let get = |k| {
++            let mut s = Settings::default();
++            apply_kind(k, &mut s);
++            s
++        };
++        let (m, b, sm) = (get(Kind::Mobile), get(Kind::BatterySaver), get(Kind::Smooth));
++        assert!(b.render_distance < m.render_distance && m.render_distance < sm.render_distance);
++        assert!(b.max_fps < m.max_fps);
++        assert!(b.horizon.battery && m.horizon.battery && !sm.horizon.battery);
++    }
++
++    #[test]
 +    fn applying_twice_changes_nothing_more() {
 +        let once = mobile();
 +        let mut twice = mobile();
@@ -7145,7 +7727,7 @@ index 0000000..1008d06
 +    }
 +}
 diff --git a/horizon/crates/horizon-client-render/src/options_ui.rs b/horizon/crates/horizon-client-render/src/options_ui.rs
-index 8ee09de..4d27d24 100644
+index 8ee09de..3691bca 100644
 --- a/horizon/crates/horizon-client-render/src/options_ui.rs
 +++ b/horizon/crates/horizon-client-render/src/options_ui.rs
 @@ -1316,6 +1316,8 @@ pub enum Page {
@@ -7288,7 +7870,7 @@ index 8ee09de..4d27d24 100644
                      self.graphics.typing()
                  }
                  Page::Controller | Page::PadBinds => self.controller.typing(),
-@@ -2269,6 +2330,23 @@ impl OptionsUi {
+@@ -2269,6 +2330,29 @@ impl OptionsUi {
                      events.push(Event::OpenShaderOptions);
                      self.push(Page::ShaderPacks);
                  }
@@ -7296,8 +7878,14 @@ index 8ee09de..4d27d24 100644
 +                Action::Imc(what) => {
 +                    use crate::graphics_ui::ImcDo;
 +                    match what {
++                        // Each press steps to the next phone preset (Mobile, Battery saver,
++                        // Smooth); from custom settings the first press is Mobile.
 +                        ImcDo::MobilePreset => {
-+                            crate::mobile_preset::apply(s);
++                            let next = crate::mobile_preset::current(s).map_or(
++                                crate::mobile_preset::Kind::Mobile,
++                                crate::mobile_preset::Kind::next,
++                            );
++                            crate::mobile_preset::apply_kind(next, s);
 +                            events.push(Event::Changed);
 +                        }
 +                        ImcDo::EditControls => events.push(Event::TouchEditor),
@@ -7312,7 +7900,7 @@ index 8ee09de..4d27d24 100644
                  Action::Done => events.extend(self.back(s)),
              }
          }
-@@ -2356,6 +2434,7 @@ impl OptionsUi {
+@@ -2356,6 +2440,7 @@ impl OptionsUi {
              Page::Graphics => Some(crate::graphics_ui::Page::General),
              Page::GraphicsAdvanced => Some(crate::graphics_ui::Page::Advanced),
              Page::GraphicsHdr => Some(crate::graphics_ui::Page::Hdr),
@@ -7320,7 +7908,7 @@ index 8ee09de..4d27d24 100644
              _ => None,
          }
      }
-@@ -2380,12 +2459,15 @@ impl OptionsUi {
+@@ -2380,12 +2465,15 @@ impl OptionsUi {
              Page::NativeMod(_) => "Mod Settings",
              Page::ShaderPacks => "horizon.pages.shader_packs",
              Page::ShaderOptions => "horizon.pages.shader_options",
@@ -7339,7 +7927,7 @@ index 8ee09de..4d27d24 100644
              Page::Credits => "credits_and_attribution.screen.title",
              Page::Horizon => "horizon.pages.settings",
              Page::Studio => "horizon.pages.studio",
-@@ -2735,6 +2817,41 @@ impl OptionsUi {
+@@ -2735,6 +2823,41 @@ impl OptionsUi {
                  )
                  .collect()
              }
@@ -7381,7 +7969,7 @@ index 8ee09de..4d27d24 100644
              Page::Agent => {
                  let mut rows = vec![Row::Buttons(
                      self.extra_button(s, crate::extras::Item::AgentControl),
-@@ -3508,6 +3625,10 @@ impl OptionsUi {
+@@ -3508,6 +3631,10 @@ impl OptionsUi {
              {
                  *active = self.in_world && self.minecart_improvements;
              }
@@ -7392,7 +7980,7 @@ index 8ee09de..4d27d24 100644
          }
          self.row_bands = rows
              .bands
-@@ -4226,6 +4347,14 @@ impl OptionsUi {
+@@ -4226,6 +4353,14 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -7407,7 +7995,7 @@ index 8ee09de..4d27d24 100644
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -5162,6 +5291,14 @@ impl OptionsUi {
+@@ -5162,6 +5297,14 @@ impl OptionsUi {
                                  events.push(Event::Changed);
                              }
                          }
@@ -7422,7 +8010,7 @@ index 8ee09de..4d27d24 100644
                          Act::PlayMusicTrack(event, track) => {
                              events.push(Event::PlayMusicTrack(event, track));
                          }
-@@ -7472,6 +7609,8 @@ mod tests {
+@@ -7472,6 +7615,8 @@ mod tests {
                      Item::Vanilla(o) => format!("{o:?}"),
                      Item::Horizon(h) => format!("graphics:{h:?}"),
                      Item::Extra(e) => format!("extra:{e:?}"),
@@ -7431,7 +8019,7 @@ index 8ee09de..4d27d24 100644
                  };
                  graphics_rows.insert(id.clone());
                  put(id, "Graphics");
-@@ -7495,6 +7634,8 @@ mod tests {
+@@ -7495,6 +7640,8 @@ mod tests {
                          Act::Cycle(opt) => format!("{opt:?}"),
                          Act::Extra(e) => format!("extra:{e:?}"),
                          Act::PvpPreset => "pvp-preset".to_owned(),
@@ -7440,7 +8028,7 @@ index 8ee09de..4d27d24 100644
                          Act::Push(to) => {
                              ways_in
                                  .entry(format!("{to:?}"))
-@@ -7560,8 +7701,8 @@ mod tests {
+@@ -7560,8 +7707,8 @@ mod tests {
                      Opt::GraphicsBackend => "graphics-api".to_owned(),
                      o => format!("{o:?}"),
                  };
@@ -7451,7 +8039,7 @@ index 8ee09de..4d27d24 100644
                      continue;
                  }
                  assert!(
-@@ -7671,6 +7812,46 @@ mod tests {
+@@ -7671,6 +7818,46 @@ mod tests {
          assert!(pushes(&mut ui).contains(&Page::Controller));
      }
  
@@ -7650,10 +8238,10 @@ index 2ead838..6750b68 100644
          }
      }
 diff --git a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-index 7466983..c1d6d4f 100644
+index 7466983..a716d49 100644
 --- a/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
 +++ b/horizon/crates/horizon-client/assets/horizon/lang/en_us.json
-@@ -720,6 +720,88 @@
+@@ -720,6 +720,94 @@
    "horizon.pages.pvp": "PvP & HUD",
    "horizon.pages.pvp.tooltip": "Crosshair, HUD and PvP settings, all off by default. Nothing here shows what vanilla doesn't.",
    "horizon.pages.open.pvp": "PvP & HUD...",
@@ -7664,8 +8252,8 @@ index 7466983..c1d6d4f 100644
 +  "horizon.imc.header.screen": "Screen",
 +  "horizon.imc.header.cursor": "Cursor",
 +  "horizon.imc.reset": "Reset to defaults",
-+  "horizon.imc.mobile": "Mobile preset",
-+  "horizon.imc.mobile.tooltip": "One tap to settings that suit a phone: the Performance preset (render distance 8, simulation distance 6, no clouds, minimal particles), battery mode, 60 FPS with vsync, no view bobbing, and no upscaling, HDR or frame generation. Every setting stays yours to change afterwards. The Auto Performance block below keeps its own limits.",
++  "horizon.imc.mobile": "Phone preset",
++  "horizon.imc.mobile.tooltip": "Each tap steps to the next phone preset, and the row shows which one is on (Custom once you change something it sets). Mobile: render distance 8, simulation distance 6, no clouds, minimal particles, battery mode, 60 FPS with vsync. Battery saver: Mobile with render distance 6 and 30 FPS, for a low battery or a warm phone. Smooth: render distance 12, 60 FPS, no battery mode, for a phone on the charger. None of them touch upscaling, HDR or frame generation, and every setting stays yours to change afterwards.",
 +  "horizon.imc.editor": "Edit touch controls",
 +  "horizon.imc.calibrate": "Calibrate touch",
 +  "horizon.imc.calibrate.tooltip": "Fixes a touch that lands a little off, more toward the edges of the screen. Tap the five crosses with the tip of your finger; the game works out the correction and keeps it. Reset to none undoes it.",
@@ -7704,6 +8292,12 @@ index 7466983..c1d6d4f 100644
 +  "horizon.imc.safeMargin.tooltip": "Keeps the buttons away from the notch, the corners and the home bar.",
 +  "horizon.imc.cursorInventory": "Cursor in inventory",
 +  "horizon.imc.cursorInventory.tooltip": "Shows the cursor whenever an inventory is open (your bag, chests, crafting, creative), without switching the whole game to cursor mode. It goes away when you close it. The Cursor button on the screen still switches everything.",
++  "horizon.imc.cursorHold": "Cursor hold to split",
++  "horizon.imc.cursorHold.tooltip": "How long your finger must rest on a slot before the cursor right-clicks it (splits a stack or places one item). Longer means a resting thumb never splits by accident.",
++  "horizon.imc.cursorDragGrab": "Cursor drag grab",
++  "horizon.imc.cursorDragGrab.tooltip": "On: tap, then quickly touch again and drag to carry a stack. Off: that never happens, which stops a quick second tap from picking things up.",
++  "horizon.imc.worldControls": "World controls",
++  "horizon.imc.worldControls.tooltip": "Bedrock: tap the world to hit or place, hold to break. Classic: tap hits, hold mines, and placing is only the Use button.",
 +  "horizon.imc.cursorSpeed": "Cursor speed",
 +  "horizon.imc.cursorSpeed.tooltip": "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots.",
 +  "horizon.imc.autoSprint": "Auto sprint",
@@ -7742,7 +8336,7 @@ index 7466983..c1d6d4f 100644
    "horizon.pvp.header.crosshair": "Crosshair",
    "horizon.pvp.crosshair": "Custom crosshair",
    "horizon.pvp.crosshair_shape": "Shape",
-@@ -982,5 +1064,15 @@
+@@ -982,5 +1070,15 @@
    "horizon.recipe_transfer.missing": "Missing Items",
    "horizon.recipe_transfer.no_room": "Inventory full",
    "horizon.recipe_transfer.unavailable": "Recipe does not fit this menu",
@@ -8459,7 +9053,7 @@ index 0000000..1b72e1c
 +    }
 +}
 diff --git a/horizon/crates/horizon-client/src/game/loading_screen.rs b/horizon/crates/horizon-client/src/game/loading_screen.rs
-index 3769189..ae9aed3 100644
+index 3769189..7714380 100644
 --- a/horizon/crates/horizon-client/src/game/loading_screen.rs
 +++ b/horizon/crates/horizon-client/src/game/loading_screen.rs
 @@ -108,9 +108,14 @@ impl Loading {
@@ -8510,7 +9104,7 @@ index 3769189..ae9aed3 100644
                  horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
                  self.renderer = Some(r);
              }
-@@ -242,6 +253,16 @@ impl Loading {
+@@ -242,12 +253,32 @@ impl Loading {
              event_loop.exit();
              return;
          }
@@ -8527,7 +9121,34 @@ index 3769189..ae9aed3 100644
          if let Err(error) = self.poll_menu_resources() {
              self.error = Some(error);
              event_loop.exit();
-@@ -292,9 +313,17 @@ impl Loading {
+             return;
+         }
+         self.poll_menu_realms(event_loop);
++        // iMC (iOS, Play without closing the app): while the engine waits for Play the launcher covers this window, so
++        // nothing is drawn and the loop wakes only a few times a second. It used to render the title panorama at full
++        // speed behind the launcher, which heated the phone and competed with the launcher's own drawing. Never true
++        // unless the shell armed the hold, so every other build and run behaves as before.
++        if horizon_client_input::ios_hold::state() == horizon_client_input::ios_hold::State::Waiting {
++            event_loop.set_control_flow(ControlFlow::WaitUntil(
++                Instant::now() + std::time::Duration::from_millis(50),
++            ));
++            return;
++        }
+         if let Some(w) = &self.window {
+             if self.options.as_ref().is_some_and(|o| o.offscreen) {
+                 self.draw();
+@@ -258,6 +289,10 @@ impl Loading {
+         event_loop.set_control_flow(ControlFlow::Poll);
+     }
+     pub(super) fn draw(&mut self) {
++        // iMC (iOS): nothing is drawn while the hold waits for Play (see about_to_wait).
++        if horizon_client_input::ios_hold::state() == horizon_client_input::ios_hold::State::Waiting {
++            return;
++        }
+         let Some(size) = self
+             .renderer
+             .as_ref()
+@@ -292,9 +327,17 @@ impl Loading {
              );
          }
      }
@@ -8546,7 +9167,7 @@ index 3769189..ae9aed3 100644
          options.resources = loaded.root.clone();
          // StartupMenu owns world selection until it can hand it to Game.
          options.world = None;
-@@ -306,6 +335,7 @@ impl Loading {
+@@ -306,6 +349,7 @@ impl Loading {
              renderer.release_surface();
          }
          let renderer_at = Instant::now();
@@ -8554,7 +9175,7 @@ index 3769189..ae9aed3 100644
          let renderer = startup::time("renderer.world", || {
              build_renderer(
                  window.clone(),
-@@ -328,7 +358,40 @@ impl Loading {
+@@ -328,7 +372,40 @@ impl Loading {
              "Horizon: world renderer ready after {} ms",
              self.started.elapsed().as_millis()
          );
@@ -8595,7 +9216,7 @@ index 3769189..ae9aed3 100644
          // Audio is created on the main thread, after the core is ready.
          let audio = if !options.execution_role.is_client() {
              Audio::silent(&options.resources)
-@@ -341,7 +404,9 @@ impl Loading {
+@@ -341,7 +418,9 @@ impl Loading {
          let res: &'static Arc<Resources> = Box::leak(Box::new(loaded.resources));
          let game_at = Instant::now();
          let game_step = startup::step("handoff.start_game");
@@ -8606,7 +9227,7 @@ index 3769189..ae9aed3 100644
              res,
              loaded.pack,
              gui,
-@@ -354,12 +419,34 @@ impl Loading {
+@@ -354,12 +433,34 @@ impl Loading {
              Some(self.settings.clone()),
              loaded.game_cpu,
              loaded.entity_models,
@@ -8644,7 +9265,7 @@ index 3769189..ae9aed3 100644
          game.window = Some(window);
          game.renderer = Some(renderer);
          game.world_renderer_ready = true;
-@@ -380,10 +467,61 @@ impl Loading {
+@@ -380,10 +481,61 @@ impl Loading {
              renderer_ms,
              game_ms
          );
@@ -8707,7 +9328,7 @@ index 3769189..ae9aed3 100644
  /// The application: the loading screen until the resources are ready, then
  /// the game itself, on the same event loop and window.
  pub(super) enum App {
-@@ -397,6 +535,16 @@ impl ApplicationHandler for App {
+@@ -397,6 +549,16 @@ impl ApplicationHandler for App {
              App::Ready(game) => game.resumed(event_loop),
          }
      }
@@ -8724,7 +9345,7 @@ index 3769189..ae9aed3 100644
      fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
          match self {
              App::Loading(loading) => loading.window_event(event_loop, id, event),
-@@ -434,7 +582,7 @@ impl ApplicationHandler for App {
+@@ -434,7 +596,7 @@ impl ApplicationHandler for App {
                      None => Step::Waiting,
                      Some(Err(e)) => Step::Failed(e.into()),
                      Some(Ok(loaded)) => match loading.finish(loaded) {
@@ -9098,10 +9719,10 @@ index 3fd7216..b580545 100644
              Action::Accessibility => self.open_menu_options(Page::Accessibility),
 diff --git a/horizon/crates/horizon-client/src/game/touch.rs b/horizon/crates/horizon-client/src/game/touch.rs
 new file mode 100644
-index 0000000..0967a8e
+index 0000000..c305adf
 --- /dev/null
 +++ b/horizon/crates/horizon-client/src/game/touch.rs
-@@ -0,0 +1,896 @@
+@@ -0,0 +1,1006 @@
 +//! Touch on a phone: fingers become the inputs the game already has.
 +//!
 +//! The finger logic is `horizon_client_input::touch` (pure, unit tested). This file only
@@ -9172,6 +9793,16 @@ index 0000000..0967a8e
 +    Fixed(usize),
 +    /// An extra button, and its number among the extras that are showing (for its default place).
 +    Extra(Extra, usize),
++    /// A button of the menu screens (Cursor or Shift). The editor arranges it; play never hits it
++    /// as a world button (`pad_kinds` leaves it out, `editor_kinds` adds it).
++    Menu(MenuButton),
++}
++
++/// The buttons that only exist on screens with a pointer.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(super) enum MenuButton {
++    Cursor,
++    Shift,
 +}
 +
 +impl PadKind {
@@ -9182,6 +9813,8 @@ index 0000000..0967a8e
 +            PadKind::Extra(e, _) => {
 +                EXTRA_FIRST + Extra::ALL.iter().position(|x| *x == e).unwrap_or(0)
 +            }
++            PadKind::Menu(MenuButton::Cursor) => horizon_client_input::touch_layout::CURSOR_SLOT,
++            PadKind::Menu(MenuButton::Shift) => horizon_client_input::touch_layout::SHIFT_SLOT,
 +        }
 +    }
 +
@@ -9189,6 +9822,8 @@ index 0000000..0967a8e
 +        match self {
 +            PadKind::Fixed(i) => PADS[i].label,
 +            PadKind::Extra(e, _) => e.label(),
++            PadKind::Menu(MenuButton::Cursor) => "Cursor",
++            PadKind::Menu(MenuButton::Shift) => "Shift",
 +        }
 +    }
 +
@@ -9197,6 +9832,12 @@ index 0000000..0967a8e
 +    pub(super) fn base(self, size: (f32, f32), margin: f32) -> [f32; 4] {
 +        match self {
 +            PadKind::Fixed(i) => PADS[i].base(size, margin),
++            PadKind::Menu(MenuButton::Cursor) => {
++                horizon_client_input::touch_cursor::switch::rect(size)
++            }
++            PadKind::Menu(MenuButton::Shift) => {
++                horizon_client_input::touch_cursor::shift::rect(size)
++            }
 +            PadKind::Extra(_, n) => Pad {
 +                at: Anchor::TopLeft(0.0, 0.15 + 0.115 * n as f32, 0.07, 0.10),
 +                label: "",
@@ -9226,6 +9867,27 @@ index 0000000..0967a8e
 +                .map(|(n, e)| PadKind::Extra(e, n)),
 +        );
 +        kinds
++    }
++}
++
++impl Game<'_> {
++    /// Every button the touch editor arranges: the play buttons, then the two menu buttons.
++    pub(super) fn editor_kinds(&self) -> Vec<PadKind> {
++        let mut kinds = self.pad_kinds();
++        kinds.push(PadKind::Menu(MenuButton::Cursor));
++        kinds.push(PadKind::Menu(MenuButton::Shift));
++        kinds
++    }
++
++    /// Where a menu button stands: its base place moved by the player's arrangement, or `None`
++    /// when they hid it. In pixels on a screen of `size`.
++    pub(super) fn menu_button_rect(&self, button: MenuButton, size: (f32, f32)) -> Option<[f32; 4]> {
++        let kind = PadKind::Menu(button);
++        let slot = self.settings.touch_layout.slot(kind.slot());
++        if !slot.shown {
++            return None;
++        }
++        Some(slot.place(kind.base(size, 1.0), size))
 +    }
 +}
 +
@@ -9331,6 +9993,11 @@ index 0000000..0967a8e
 +    pub(super) pointer: (f32, f32),
 +    /// Auto-sprint is holding the Run button down now (`touch_sprint`).
 +    sprint_held: bool,
++    /// Bedrock style: what a finger resting on the world is holding, chosen once when the hold
++    /// began so it never flips mid-hold.
++    world_hold: Option<Button>,
++    /// A one-tick pulse waiting to be let go (a Bedrock tap), and the tick it was pressed on.
++    pulse: Option<(Button, u8)>,
 +    /// Touch was used since the app started: the controls draw only then, so a desktop run with
 +    /// a mouse never shows them.
 +    pub(super) seen: bool,
@@ -9359,6 +10026,8 @@ index 0000000..0967a8e
 +            holding: Vec::new(),
 +            pointer: (0.0, 0.0),
 +            sprint_held: false,
++            world_hold: None,
++            pulse: None,
 +            seen: false,
 +            back_finger: None,
 +            calibrating: None,
@@ -9427,6 +10096,10 @@ index 0000000..0967a8e
 +        }
 +        // The Cursor/Touch button, kept from the pointer like Back.
 +        if self.cursor_switch_event(id, touch.phase, at, size) {
++            return;
++        }
++        // The Shift button of the inventory screens, held while a finger is on it.
++        if self.shift_button_event(id, touch.phase, at, size) {
 +            return;
 +        }
 +        // Cursor mode: in a menu the finger moves a drawn pointer instead of being one.
@@ -9523,6 +10196,7 @@ index 0000000..0967a8e
 +        self.cursor_frame(event_loop, now);
 +        let actions = self.touch.logic.tick(now);
 +        self.touch_apply(event_loop, actions);
++        self.touch_pulse_frame(event_loop);
 +        let stick = if self.touch.logic.mode() == Mode::Playing {
 +            self.touch.logic.stick()
 +        } else {
@@ -9571,6 +10245,12 @@ index 0000000..0967a8e
 +        }
 +        let actions = self.touch.logic.cancel_all();
 +        self.touch_apply(event_loop, actions);
++        if let Some((button, _)) = self.touch.pulse.take() {
++            self.touch_button(event_loop, button, false);
++        }
++        if let Some(button) = self.touch.world_hold.take() {
++            self.touch_button(event_loop, button, false);
++        }
 +        self.cursor_release_all(event_loop);
 +        self.pad.set_injected_left([0.0; 2]);
 +        if std::mem::take(&mut self.touch.sprint_held) {
@@ -9752,6 +10432,29 @@ index 0000000..0967a8e
 +            && self.screen == Screen::Playing
 +    }
 +
++    /// The crosshair is on an entity before any block (`pick_entity.rs`).
++    fn touch_aims_at_entity(&self) -> bool {
++        self.pick_entity_hit().is_some()
++    }
++
++    /// The crosshair is on a block within reach.
++    fn touch_aims_at_block(&self) -> bool {
++        self.pick_unfiltered().is_some()
++    }
++
++    /// Lets go of a Bedrock tap's press once the game has had a tick to see it. The pad keeps a
++    /// press for a frame at least (`late_releases`), so releasing on the second frame is safe.
++    fn touch_pulse_frame(&mut self, event_loop: &dyn EventLoopCtl) {
++        if let Some((button, frames)) = self.touch.pulse {
++            if frames >= 1 {
++                self.touch.pulse = None;
++                self.touch_button(event_loop, button, false);
++            } else {
++                self.touch.pulse = Some((button, frames + 1));
++            }
++        }
++    }
++
 +    /// A controller button down or up on the virtual controller.
 +    fn touch_button(&mut self, event_loop: &dyn EventLoopCtl, button: Button, down: bool) {
 +        let _ = event_loop;
@@ -9771,6 +10474,34 @@ index 0000000..0967a8e
 +                }
 +                TouchAction::Use(down) => self.touch_button(event_loop, Button::LeftTrigger, down),
 +                TouchAction::Jump(down) => self.touch_button(event_loop, Button::South, down),
++                // Bedrock style. A tap hits an entity under the crosshair and uses anything
++                // else (places a block, opens a door, uses the item). The press is let go a
++                // frame later (`touch_pulse_frame`), as a tap's release is for a click.
++                TouchAction::Tap => {
++                    let button = if self.touch_aims_at_entity() {
++                        Button::RightTrigger
++                    } else {
++                        Button::LeftTrigger
++                    };
++                    self.touch_button(event_loop, button, true);
++                    self.touch.pulse = Some((button, 0));
++                }
++                // A rest on the world breaks what the crosshair is on, or keeps placing when it
++                // is on nothing to break. Chosen when the hold begins and kept until it ends.
++                TouchAction::Hold(true) => {
++                    let button = if self.touch_aims_at_entity() || self.touch_aims_at_block() {
++                        Button::RightTrigger
++                    } else {
++                        Button::LeftTrigger
++                    };
++                    self.touch.world_hold = Some(button);
++                    self.touch_button(event_loop, button, true);
++                }
++                TouchAction::Hold(false) => {
++                    if let Some(button) = self.touch.world_hold.take() {
++                        self.touch_button(event_loop, button, false);
++                    }
++                }
 +                TouchAction::PointerTo { x, y } => self.touch_pointer_to(event_loop, (x, y)),
 +                TouchAction::PointerLeft(down) => {
 +                    self.touch_pointer_button(event_loop, MouseButton::Left, down);
@@ -9903,7 +10634,7 @@ index 0000000..0967a8e
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
-+    use horizon_client_input::touch_layout::{COUNT, ControlLayout, NAMES, Slot};
++    use horizon_client_input::touch_layout::{COUNT, CURSOR_SLOT, ControlLayout, NAMES, Slot};
 +
 +    const PHONE: (f32, f32) = (2532.0, 1170.0);
 +
@@ -9917,14 +10648,14 @@ index 0000000..0967a8e
 +        // Back is the one slot of the first ten that is not a pad; the extras follow it.
 +        assert_eq!(EXTRA_FIRST, PADS.len() + 1);
 +        assert_eq!(NAMES[EXTRA_FIRST - 1], "back");
-+        assert_eq!(COUNT, EXTRA_FIRST + Extra::ALL.len());
++        assert_eq!(COUNT, EXTRA_FIRST + Extra::ALL.len() + 2);
 +    }
 +
 +    #[test]
 +    fn the_extras_have_their_own_slots_and_stay_on_the_screen() {
 +        for (n, e) in Extra::ALL.iter().enumerate() {
 +            let kind = PadKind::Extra(*e, n);
-+            assert!(kind.slot() >= EXTRA_FIRST && kind.slot() < COUNT);
++            assert!(kind.slot() >= EXTRA_FIRST && kind.slot() < CURSOR_SLOT);
 +            assert_eq!(NAMES[kind.slot()], e.name());
 +            let [x, y, w, h] = kind.base(PHONE, 1.0);
 +            assert!(x >= 0.0 && y >= 0.0 && x + w <= PHONE.0 && y + h <= PHONE.1, "{e:?}");
@@ -10161,10 +10892,10 @@ index 0000000..14482c5
 +}
 diff --git a/horizon/crates/horizon-client/src/game/touch_cursor.rs b/horizon/crates/horizon-client/src/game/touch_cursor.rs
 new file mode 100644
-index 0000000..8b3049e
+index 0000000..cc676ea
 --- /dev/null
 +++ b/horizon/crates/horizon-client/src/game/touch_cursor.rs
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,328 @@
 +//! Cursor mode on the phone: the glue between `horizon_client_input::touch_cursor` (the pure
 +//! trackpad logic, unit tested) and the game.
 +//!
@@ -10178,6 +10909,7 @@ index 0000000..8b3049e
 +//! world it plays no part: the world has its own controls, and the button there only chooses
 +//! what the next menu will use.
 +use super::event_loop::EventLoopCtl;
++use super::touch::MenuButton;
 +use super::{Game, Screen};
 +use horizon_client::hud::HudBatch;
 +use horizon_client_input::touch::FingerId;
@@ -10191,6 +10923,8 @@ index 0000000..8b3049e
 +    pub(super) switched: bool,
 +    /// The finger that went down on the switch button, and is not a pointer.
 +    switch_finger: Option<FingerId>,
++    /// The finger holding the Shift button down, and not a pointer.
++    shift_finger: Option<FingerId>,
 +    /// Whether the cursor was in use at the last look, to put the pointer in the middle when it
 +    /// starts and to let go of what it held when it stops.
 +    was_active: bool,
@@ -10202,6 +10936,7 @@ index 0000000..8b3049e
 +            logic: Cursor::new((1.0, 1.0)),
 +            switched: false,
 +            switch_finger: None,
++            shift_finger: None,
 +            was_active: false,
 +        }
 +    }
@@ -10242,12 +10977,68 @@ index 0000000..8b3049e
 +            && !self.prompt_open()
 +    }
 +
++    /// Where the Shift button is wanted: on the screens with slots (the inventory, chests,
++    /// crafting, creative), whether the cursor or plain touch is in use.
++    fn shift_wanted(&self) -> bool {
++        self.touch.seen
++            && self.settings.imc.controls
++            && self.touch.calibrating.is_none()
++            && self.touch_in_inventory()
++            && !self.prompt_open()
++    }
++
++    /// Holds or lets go of the keyboard's Shift, as a finger on the button does. Every click,
++    /// whichever way it is sent, then reads Shift as down (`has_shift_down`), so one tap on a
++    /// stack is a quick move.
++    fn shift_hold(&mut self, down: bool) {
++        self.press_modifier_key(winit::keyboard::KeyCode::ShiftLeft, down);
++    }
++
++    /// The Shift button's finger: a press on it is kept from the pointer and holds Shift until
++    /// the finger lifts, wherever it lifts. Returns whether the event was the button's.
++    pub(super) fn shift_button_event(
++        &mut self,
++        id: FingerId,
++        phase: TouchPhase,
++        at: (f32, f32),
++        size: (f32, f32),
++    ) -> bool {
++        match phase {
++            TouchPhase::Started => {
++                let on = self
++                    .menu_button_rect(MenuButton::Shift, size)
++                    .is_some_and(|r| horizon_client_input::touch_cursor::shift::contains(r, at));
++                if self.shift_wanted() && on && self.cursor_mode.shift_finger.is_none() {
++                    self.cursor_mode.shift_finger = Some(id);
++                    self.shift_hold(true);
++                    return true;
++                }
++                false
++            }
++            TouchPhase::Moved => self.cursor_mode.shift_finger == Some(id),
++            TouchPhase::Ended | TouchPhase::Cancelled => {
++                if self.cursor_mode.shift_finger != Some(id) {
++                    return false;
++                }
++                self.cursor_mode.shift_finger = None;
++                self.shift_hold(false);
++                true
++            }
++        }
++    }
++
 +    /// Keeps the cursor's start and end in step with the screen: a new use starts in the middle
 +    /// (or where the plain pointer last was), and ending one lets go of what it held.
 +    /// Returns the actions to apply.
 +    pub(super) fn cursor_follow(&mut self, size: (f32, f32)) -> Vec<horizon_client_input::touch::Action> {
 +        self.cursor_mode.logic.resize(size);
 +        self.cursor_mode.logic.speed = self.settings.imc.cursor_speed_scale();
++        self.cursor_mode.logic.long_press_secs = self.settings.imc.cursor_hold_secs();
++        self.cursor_mode.logic.allow_tap_drag = self.settings.imc.cursor_drag_grab;
++        // The slop follows the screen, as plain touch does, so a thumb is the same size on any
++        // phone; never under the cursor's own floor.
++        self.cursor_mode.logic.slop = horizon_client_input::touch::slop_for(size)
++            .max(horizon_client_input::touch_cursor::DEFAULT_SLOP);
 +        let active = self.cursor_active();
 +        let mut actions = Vec::new();
 +        if active && !self.cursor_mode.was_active {
@@ -10310,6 +11101,9 @@ index 0000000..8b3049e
 +        let actions = self.cursor_mode.logic.cancel_all();
 +        self.touch_apply(event_loop, actions);
 +        self.cursor_mode.switch_finger = None;
++        if self.cursor_mode.shift_finger.take().is_some() {
++            self.shift_hold(false);
++        }
 +        self.cursor_mode.was_active = false;
 +    }
 +
@@ -10322,7 +11116,10 @@ index 0000000..8b3049e
 +        at: (f32, f32),
 +        size: (f32, f32),
 +    ) -> bool {
-+        let rect = switch::rect(size);
++        // Where the player's arrangement puts it; hidden, it is not there to press.
++        let Some(rect) = self.menu_button_rect(MenuButton::Cursor, size) else {
++            return false;
++        };
 +        let on_button = at.0 >= rect[0]
 +            && at.0 < rect[0] + rect[2]
 +            && at.1 >= rect[1]
@@ -10356,9 +11153,13 @@ index 0000000..8b3049e
 +        if self.touch.calibrating.is_some() {
 +            return;
 +        }
-+        if self.cursor_switch_wanted() {
-+            let [x, y, w, h] = switch::rect((batch.width, batch.height));
-+            let atlas = &self.gui.atlas;
++        let size = (batch.width, batch.height);
++        let atlas = &self.gui.atlas;
++        let layout = &self.settings.touch_layout;
++        if self.cursor_switch_wanted()
++            && let Some([x, y, w, h]) = self.menu_button_rect(MenuButton::Cursor, size)
++        {
++            let opacity = layout.slot(horizon_client_input::touch_layout::CURSOR_SLOT).opacity;
 +            let down = self.cursor_mode.switch_finger.is_some();
 +            let on = self.cursor_mode.switched;
 +            // A lit button says the cursor is the choice; the caption says what a tap does.
@@ -10369,10 +11170,39 @@ index 0000000..8b3049e
 +            } else {
 +                0x7000_0000
 +            };
-+            batch.fill(atlas, x, y, w, h, fill);
++            batch.fill(atlas, x, y, w, h, super::touch::faded(fill, opacity));
 +            let label = switch::caption(on);
 +            let tw = HudBatch::text_width(atlas, label);
-+            batch.text(atlas, label, x + (w - tw) / 2.0, y + (h - 8.0) / 2.0, 0xFFFF_FFFF, true);
++            batch.text(
++                atlas,
++                label,
++                x + (w - tw) / 2.0,
++                y + (h - 8.0) / 2.0,
++                super::touch::faded(0xFFFF_FFFF, opacity),
++                true,
++            );
++        }
++        if self.shift_wanted()
++            && let Some([x, y, w, h]) = self.menu_button_rect(MenuButton::Shift, size)
++        {
++            let opacity = layout.slot(horizon_client_input::touch_layout::SHIFT_SLOT).opacity;
++            // Lit while held, so the player can see Shift is on.
++            let fill = if self.cursor_mode.shift_finger.is_some() {
++                0xA030_90FF
++            } else {
++                0x7000_0000
++            };
++            batch.fill(atlas, x, y, w, h, super::touch::faded(fill, opacity));
++            let label = horizon_client_input::touch_cursor::shift::CAPTION;
++            let tw = HudBatch::text_width(atlas, label);
++            batch.text(
++                atlas,
++                label,
++                x + (w - tw) / 2.0,
++                y + (h - 8.0) / 2.0,
++                super::touch::faded(0xFFFF_FFFF, opacity),
++                true,
++            );
 +        }
 +        if !self.cursor_active() {
 +            return;
@@ -10396,10 +11226,10 @@ index 0000000..8b3049e
 +}
 diff --git a/horizon/crates/horizon-client/src/game/touch_editor.rs b/horizon/crates/horizon-client/src/game/touch_editor.rs
 new file mode 100644
-index 0000000..9d95783
+index 0000000..01a9cad
 --- /dev/null
 +++ b/horizon/crates/horizon-client/src/game/touch_editor.rs
-@@ -0,0 +1,475 @@
+@@ -0,0 +1,522 @@
 +//! The touch controls editor (iMC Settings > Edit touch controls): the on-screen buttons drawn
 +//! exactly as they are in play, over the world, on a wide stage the player drags them around.
 +//! A panel on the right sets the size and opacity of the one picked, hides it or puts it back.
@@ -10440,6 +11270,11 @@ index 0000000..9d95783
 +    preset: usize,
 +    /// The lines the last snap landed on, drawn while the button is held.
 +    guides: Vec<Guide>,
++    /// What the last Save, Delete or layout change did, shown under the button's name so a press
++    /// that worked says so and one that could not says why.
++    notice: Option<String>,
++    /// World controls as they were on opening, for Cancel (the Bedrock layout switches them on).
++    bedrock_before: bool,
 +}
 +
 +/// A frame's colour for the picked button and for the others.
@@ -10474,6 +11309,8 @@ index 0000000..9d95783
 +            slider: None,
 +            preset: 0,
 +            guides: Vec::new(),
++            notice: None,
++            bedrock_before: self.settings.imc.bedrock_controls,
 +        });
 +        self.screen = Screen::TouchEditor;
 +        self.capture(false);
@@ -10487,6 +11324,7 @@ index 0000000..9d95783
 +        };
 +        if !keep {
 +            self.settings.touch_layout = editor.before;
++            self.settings.imc.bedrock_controls = editor.bedrock_before;
 +        }
 +        self.settings.save(&Self::options_path());
 +        if editor.from_options {
@@ -10501,7 +11339,7 @@ index 0000000..9d95783
 +    /// shown faintly on the stage so it can be picked and shown again.
 +    fn editor_pad_at(&self) -> Option<usize> {
 +        let size = self.gui_size();
-+        let kinds = self.pad_kinds();
++        let kinds = self.editor_kinds();
 +        (0..kinds.len()).rev().find(|&i| {
 +            let r = self.editor_pad_rect(kinds[i], size);
 +            let (cx, cy) = self.cursor;
@@ -10520,7 +11358,7 @@ index 0000000..9d95783
 +
 +    /// The button the editor has picked, or the first if the list got shorter under it.
 +    fn editor_kind(&self, picked: usize) -> PadKind {
-+        let kinds = self.pad_kinds();
++        let kinds = self.editor_kinds();
 +        kinds.get(picked).or(kinds.first()).copied().unwrap_or(PadKind::Fixed(0))
 +    }
 +
@@ -10532,7 +11370,7 @@ index 0000000..9d95783
 +
 +    /// Where every button stands now, `None` for a hidden one.
 +    fn editor_rects(&self, size: (f32, f32)) -> Vec<Option<[f32; 4]>> {
-+        self.pad_kinds()
++        self.editor_kinds()
 +            .into_iter()
 +            .map(|k| {
 +                self.settings
@@ -10566,11 +11404,20 @@ index 0000000..9d95783
 +        batch.fill(atlas, safe[0], safe[1], 1.0, safe[3], edge);
 +        batch.fill(atlas, safe[0] + safe[2], safe[1], 1.0, safe[3], edge);
 +
-+        let flagged: Vec<usize> = tools::problems(&self.editor_rects(size), safe)
++        // The play buttons are checked against each other and the menu buttons against each other:
++        // they are never on screen together, so one over the other is no problem.
++        let rects = self.editor_rects(size);
++        let play = self.pad_kinds().len();
++        let mut flagged: Vec<usize> = tools::problems(&rects[..play], safe)
 +            .into_iter()
 +            .map(|(i, _)| i)
 +            .collect();
-+        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
++        flagged.extend(
++            tools::problems(&rects[play..], safe)
++                .into_iter()
++                .map(|(i, _)| i + play),
++        );
++        for (i, kind) in self.editor_kinds().into_iter().enumerate() {
 +            let slot = self.settings.touch_layout.slot(kind.slot());
 +            let [x, y, w, h] = self.editor_pad_rect(kind, size);
 +            // A hidden button is drawn faintly, outlined, so it can still be found.
@@ -10671,6 +11518,9 @@ index 0000000..9d95783
 +            batch.text_styled(atlas, &Text::literal("Touch controls"), hx, 4.0, u32::MAX, true);
 +            let info = format!("{}{}", picked_kind.label(), if slot.shown { "" } else { "  hidden" });
 +            batch.text_styled(atlas, &Text::literal(&info), hx, 4.0 + 12.0, 0xFFFF_FF55, true);
++            if let Some(n) = self.touch_editor.as_ref().and_then(|e| e.notice.clone()) {
++                batch.text_styled(atlas, &Text::literal(&n), hx, 4.0 + 24.0, 0xFF55_FF55, true);
++            }
 +        }
 +    }
 +
@@ -10759,11 +11609,19 @@ index 0000000..9d95783
 +                if let Some(e) = &mut self.touch_editor {
 +                    e.preset = next;
 +                }
-+                if let Some(layout) = names
-+                    .get(next)
-+                    .and_then(|n| self.settings.touch_presets.get(n))
-+                {
++                let name = names.get(next).cloned().unwrap_or_default();
++                let mut notice = None;
++                if let Some(layout) = self.settings.touch_presets.get(&name) {
 +                    self.settings.touch_layout = layout;
++                }
++                // The Bedrock layout has no Use button because a tap places: it only works with
++                // Bedrock world controls, so choosing it turns them on.
++                if tools::wants_bedrock_controls(&name) && !self.settings.imc.bedrock_controls {
++                    self.settings.imc.bedrock_controls = true;
++                    notice = Some("World controls set to Bedrock".to_owned());
++                }
++                if let Some(e) = &mut self.touch_editor {
++                    e.notice = notice;
 +                }
 +            }
 +            Control::SavePreset => {
@@ -10781,7 +11639,8 @@ index 0000000..9d95783
 +                    current
 +                };
 +                let layout = self.settings.touch_layout.clone();
-+                if self.settings.touch_presets.save(&name, &layout) {
++                let saved = self.settings.touch_presets.save(&name, &layout);
++                let notice = if saved {
 +                    let at = self
 +                        .settings
 +                        .touch_presets
@@ -10793,6 +11652,12 @@ index 0000000..9d95783
 +                        e.preset = at;
 +                    }
 +                    self.settings.save(&Self::options_path());
++                    format!("Saved as {name}")
++                } else {
++                    format!("Not saved: {} layouts kept, delete one first", tools::MAX_SAVED)
++                };
++                if let Some(e) = &mut self.touch_editor {
++                    e.notice = Some(notice);
 +                }
 +            }
 +            Control::DeletePreset => {
@@ -10800,16 +11665,28 @@ index 0000000..9d95783
 +                    .get(self.touch_editor.as_ref().map_or(0, |e| e.preset))
 +                    .cloned()
 +                    .unwrap_or_default();
-+                if self.settings.touch_presets.delete(&current) {
++                let notice = if self.settings.touch_presets.delete(&current) {
 +                    if let Some(e) = &mut self.touch_editor {
 +                        e.preset = 0;
 +                    }
 +                    self.settings.save(&Self::options_path());
++                    format!("Deleted {current}")
++                } else {
++                    "The built-in layouts stay".to_owned()
++                };
++                if let Some(e) = &mut self.touch_editor {
++                    e.notice = Some(notice);
 +                }
 +            }
 +            Control::Done => self.close_touch_editor(true),
 +            Control::Cancel => self.close_touch_editor(false),
-+            Control::ResetAll => self.settings.touch_layout.reset(),
++            Control::ResetAll => {
++                self.settings.touch_layout.reset();
++                if let Some(e) = &mut self.touch_editor {
++                    e.preset = 0;
++                    e.notice = None;
++                }
++            }
 +            Control::ResetButton => self.settings.touch_layout.reset_slot(index),
 +        }
 +    }
