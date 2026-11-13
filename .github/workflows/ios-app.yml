@@ -5,7 +5,7 @@ name: iOS app
 on:
   push:
     branches: [main]
-    paths: ["horizon/crates/**", "horizon/platform/**", "horizon/Cargo.*", "platform/**", ".github/workflows/ios-app.yml"]
+    paths: ["horizon/crates/**", "horizon/platform/**", "horizon/Cargo.*", "platform/**", "tools/check_stack_budget.py", ".github/workflows/ios-app.yml"]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
