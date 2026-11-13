@@ -153,7 +153,7 @@ pub enum ImcDo {
 impl ImcDo {
     pub fn caption(self) -> &'static str {
         match self {
-            ImcDo::MobilePreset => "Mobile preset",
+            ImcDo::MobilePreset => "Phone preset",
             ImcDo::EditControls => "Edit touch controls",
             ImcDo::Calibrate => "Calibrate touch",
             ImcDo::Reset => "Reset iMC settings",
@@ -251,6 +251,9 @@ fn imc_description_key(item: horizon_client_input::imc_settings::Item) -> &'stat
         I::AutoResolution => "horizon.imc.autoResolution.tooltip",
         I::CursorInventory => "horizon.imc.cursorInventory.tooltip",
         I::CursorSpeed => "horizon.imc.cursorSpeed.tooltip",
+        I::CursorHold => "horizon.imc.cursorHold.tooltip",
+        I::CursorDragGrab => "horizon.imc.cursorDragGrab.tooltip",
+        I::WorldControls => "horizon.imc.worldControls.tooltip",
     }
 }
 
@@ -726,6 +729,7 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                         "Touch controls",
                         vec![
                             m(I::Controls, None),
+                            m(I::WorldControls, None),
                             m(I::DoubleTapJump, None),
                             m(I::LookSpeed, None),
                             m(I::HoldTime, None),
@@ -750,7 +754,12 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                     ),
                     (
                         "Cursor",
-                        vec![m(I::CursorInventory, None), m(I::CursorSpeed, None)],
+                        vec![
+                            m(I::CursorInventory, None),
+                            m(I::CursorSpeed, None),
+                            m(I::CursorHold, None),
+                            m(I::CursorDragGrab, None),
+                        ],
                     ),
                     (
                         "Auto Performance",
@@ -1394,6 +1403,16 @@ impl Item {
                 Text::literal(lang::get_or(&i.caption_key(), i.caption())),
                 Text::literal(imc_value(i, s)),
             ),
+            // The preset row names what is on now and what a press does next, so a press that
+            // worked is visible and a preset changed by hand stops claiming to be on.
+            Item::ImcDo(ImcDo::MobilePreset) => {
+                let caption = lang::get_or(ImcDo::MobilePreset.caption_key(), "Phone preset");
+                let (now, next) = match crate::mobile_preset::current(s) {
+                    Some(k) => (k.name(), k.next().name()),
+                    None => ("Custom", crate::mobile_preset::Kind::Mobile.name()),
+                };
+                Text::literal(format!("{caption}: {now} (tap for {next})"))
+            }
             Item::ImcDo(d) => Text::literal(lang::get_or(d.caption_key(), d.caption())),
         }
     }

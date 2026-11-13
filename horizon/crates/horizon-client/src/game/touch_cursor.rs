@@ -11,6 +11,7 @@
 //! world it plays no part: the world has its own controls, and the button there only chooses
 //! what the next menu will use.
 use super::event_loop::EventLoopCtl;
+use super::touch::MenuButton;
 use super::{Game, Screen};
 use horizon_client::hud::HudBatch;
 use horizon_client_input::touch::FingerId;
@@ -24,6 +25,8 @@ pub(super) struct CursorState {
     pub(super) switched: bool,
     /// The finger that went down on the switch button, and is not a pointer.
     switch_finger: Option<FingerId>,
+    /// The finger holding the Shift button down, and not a pointer.
+    shift_finger: Option<FingerId>,
     /// Whether the cursor was in use at the last look, to put the pointer in the middle when it
     /// starts and to let go of what it held when it stops.
     was_active: bool,
@@ -35,6 +38,7 @@ impl Default for CursorState {
             logic: Cursor::new((1.0, 1.0)),
             switched: false,
             switch_finger: None,
+            shift_finger: None,
             was_active: false,
         }
     }
@@ -75,12 +79,68 @@ impl Game<'_> {
             && !self.prompt_open()
     }
 
+    /// Where the Shift button is wanted: on the screens with slots (the inventory, chests,
+    /// crafting, creative), whether the cursor or plain touch is in use.
+    fn shift_wanted(&self) -> bool {
+        self.touch.seen
+            && self.settings.imc.controls
+            && self.touch.calibrating.is_none()
+            && self.touch_in_inventory()
+            && !self.prompt_open()
+    }
+
+    /// Holds or lets go of the keyboard's Shift, as a finger on the button does. Every click,
+    /// whichever way it is sent, then reads Shift as down (`has_shift_down`), so one tap on a
+    /// stack is a quick move.
+    fn shift_hold(&mut self, down: bool) {
+        self.press_modifier_key(winit::keyboard::KeyCode::ShiftLeft, down);
+    }
+
+    /// The Shift button's finger: a press on it is kept from the pointer and holds Shift until
+    /// the finger lifts, wherever it lifts. Returns whether the event was the button's.
+    pub(super) fn shift_button_event(
+        &mut self,
+        id: FingerId,
+        phase: TouchPhase,
+        at: (f32, f32),
+        size: (f32, f32),
+    ) -> bool {
+        match phase {
+            TouchPhase::Started => {
+                let on = self
+                    .menu_button_rect(MenuButton::Shift, size)
+                    .is_some_and(|r| horizon_client_input::touch_cursor::shift::contains(r, at));
+                if self.shift_wanted() && on && self.cursor_mode.shift_finger.is_none() {
+                    self.cursor_mode.shift_finger = Some(id);
+                    self.shift_hold(true);
+                    return true;
+                }
+                false
+            }
+            TouchPhase::Moved => self.cursor_mode.shift_finger == Some(id),
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                if self.cursor_mode.shift_finger != Some(id) {
+                    return false;
+                }
+                self.cursor_mode.shift_finger = None;
+                self.shift_hold(false);
+                true
+            }
+        }
+    }
+
     /// Keeps the cursor's start and end in step with the screen: a new use starts in the middle
     /// (or where the plain pointer last was), and ending one lets go of what it held.
     /// Returns the actions to apply.
     pub(super) fn cursor_follow(&mut self, size: (f32, f32)) -> Vec<horizon_client_input::touch::Action> {
         self.cursor_mode.logic.resize(size);
         self.cursor_mode.logic.speed = self.settings.imc.cursor_speed_scale();
+        self.cursor_mode.logic.long_press_secs = self.settings.imc.cursor_hold_secs();
+        self.cursor_mode.logic.allow_tap_drag = self.settings.imc.cursor_drag_grab;
+        // The slop follows the screen, as plain touch does, so a thumb is the same size on any
+        // phone; never under the cursor's own floor.
+        self.cursor_mode.logic.slop = horizon_client_input::touch::slop_for(size)
+            .max(horizon_client_input::touch_cursor::DEFAULT_SLOP);
         let active = self.cursor_active();
         let mut actions = Vec::new();
         if active && !self.cursor_mode.was_active {
@@ -143,6 +203,9 @@ impl Game<'_> {
         let actions = self.cursor_mode.logic.cancel_all();
         self.touch_apply(event_loop, actions);
         self.cursor_mode.switch_finger = None;
+        if self.cursor_mode.shift_finger.take().is_some() {
+            self.shift_hold(false);
+        }
         self.cursor_mode.was_active = false;
     }
 
@@ -155,7 +218,10 @@ impl Game<'_> {
         at: (f32, f32),
         size: (f32, f32),
     ) -> bool {
-        let rect = switch::rect(size);
+        // Where the player's arrangement puts it; hidden, it is not there to press.
+        let Some(rect) = self.menu_button_rect(MenuButton::Cursor, size) else {
+            return false;
+        };
         let on_button = at.0 >= rect[0]
             && at.0 < rect[0] + rect[2]
             && at.1 >= rect[1]
@@ -189,9 +255,13 @@ impl Game<'_> {
         if self.touch.calibrating.is_some() {
             return;
         }
-        if self.cursor_switch_wanted() {
-            let [x, y, w, h] = switch::rect((batch.width, batch.height));
-            let atlas = &self.gui.atlas;
+        let size = (batch.width, batch.height);
+        let atlas = &self.gui.atlas;
+        let layout = &self.settings.touch_layout;
+        if self.cursor_switch_wanted()
+            && let Some([x, y, w, h]) = self.menu_button_rect(MenuButton::Cursor, size)
+        {
+            let opacity = layout.slot(horizon_client_input::touch_layout::CURSOR_SLOT).opacity;
             let down = self.cursor_mode.switch_finger.is_some();
             let on = self.cursor_mode.switched;
             // A lit button says the cursor is the choice; the caption says what a tap does.
@@ -202,10 +272,39 @@ impl Game<'_> {
             } else {
                 0x7000_0000
             };
-            batch.fill(atlas, x, y, w, h, fill);
+            batch.fill(atlas, x, y, w, h, super::touch::faded(fill, opacity));
             let label = switch::caption(on);
             let tw = HudBatch::text_width(atlas, label);
-            batch.text(atlas, label, x + (w - tw) / 2.0, y + (h - 8.0) / 2.0, 0xFFFF_FFFF, true);
+            batch.text(
+                atlas,
+                label,
+                x + (w - tw) / 2.0,
+                y + (h - 8.0) / 2.0,
+                super::touch::faded(0xFFFF_FFFF, opacity),
+                true,
+            );
+        }
+        if self.shift_wanted()
+            && let Some([x, y, w, h]) = self.menu_button_rect(MenuButton::Shift, size)
+        {
+            let opacity = layout.slot(horizon_client_input::touch_layout::SHIFT_SLOT).opacity;
+            // Lit while held, so the player can see Shift is on.
+            let fill = if self.cursor_mode.shift_finger.is_some() {
+                0xA030_90FF
+            } else {
+                0x7000_0000
+            };
+            batch.fill(atlas, x, y, w, h, super::touch::faded(fill, opacity));
+            let label = horizon_client_input::touch_cursor::shift::CAPTION;
+            let tw = HudBatch::text_width(atlas, label);
+            batch.text(
+                atlas,
+                label,
+                x + (w - tw) / 2.0,
+                y + (h - 8.0) / 2.0,
+                super::touch::faded(0xFFFF_FFFF, opacity),
+                true,
+            );
         }
         if !self.cursor_active() {
             return;

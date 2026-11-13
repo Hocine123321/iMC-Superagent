@@ -68,6 +68,16 @@ pub(super) enum PadKind {
     Fixed(usize),
     /// An extra button, and its number among the extras that are showing (for its default place).
     Extra(Extra, usize),
+    /// A button of the menu screens (Cursor or Shift). The editor arranges it; play never hits it
+    /// as a world button (`pad_kinds` leaves it out, `editor_kinds` adds it).
+    Menu(MenuButton),
+}
+
+/// The buttons that only exist on screens with a pointer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MenuButton {
+    Cursor,
+    Shift,
 }
 
 impl PadKind {
@@ -78,6 +88,8 @@ impl PadKind {
             PadKind::Extra(e, _) => {
                 EXTRA_FIRST + Extra::ALL.iter().position(|x| *x == e).unwrap_or(0)
             }
+            PadKind::Menu(MenuButton::Cursor) => horizon_client_input::touch_layout::CURSOR_SLOT,
+            PadKind::Menu(MenuButton::Shift) => horizon_client_input::touch_layout::SHIFT_SLOT,
         }
     }
 
@@ -85,6 +97,8 @@ impl PadKind {
         match self {
             PadKind::Fixed(i) => PADS[i].label,
             PadKind::Extra(e, _) => e.label(),
+            PadKind::Menu(MenuButton::Cursor) => "Cursor",
+            PadKind::Menu(MenuButton::Shift) => "Shift",
         }
     }
 
@@ -93,6 +107,12 @@ impl PadKind {
     pub(super) fn base(self, size: (f32, f32), margin: f32) -> [f32; 4] {
         match self {
             PadKind::Fixed(i) => PADS[i].base(size, margin),
+            PadKind::Menu(MenuButton::Cursor) => {
+                horizon_client_input::touch_cursor::switch::rect(size)
+            }
+            PadKind::Menu(MenuButton::Shift) => {
+                horizon_client_input::touch_cursor::shift::rect(size)
+            }
             PadKind::Extra(_, n) => Pad {
                 at: Anchor::TopLeft(0.0, 0.15 + 0.115 * n as f32, 0.07, 0.10),
                 label: "",
@@ -122,6 +142,27 @@ impl Game<'_> {
                 .map(|(n, e)| PadKind::Extra(e, n)),
         );
         kinds
+    }
+}
+
+impl Game<'_> {
+    /// Every button the touch editor arranges: the play buttons, then the two menu buttons.
+    pub(super) fn editor_kinds(&self) -> Vec<PadKind> {
+        let mut kinds = self.pad_kinds();
+        kinds.push(PadKind::Menu(MenuButton::Cursor));
+        kinds.push(PadKind::Menu(MenuButton::Shift));
+        kinds
+    }
+
+    /// Where a menu button stands: its base place moved by the player's arrangement, or `None`
+    /// when they hid it. In pixels on a screen of `size`.
+    pub(super) fn menu_button_rect(&self, button: MenuButton, size: (f32, f32)) -> Option<[f32; 4]> {
+        let kind = PadKind::Menu(button);
+        let slot = self.settings.touch_layout.slot(kind.slot());
+        if !slot.shown {
+            return None;
+        }
+        Some(slot.place(kind.base(size, 1.0), size))
     }
 }
 
@@ -227,6 +268,11 @@ pub(super) struct TouchState {
     pub(super) pointer: (f32, f32),
     /// Auto-sprint is holding the Run button down now (`touch_sprint`).
     sprint_held: bool,
+    /// Bedrock style: what a finger resting on the world is holding, chosen once when the hold
+    /// began so it never flips mid-hold.
+    world_hold: Option<Button>,
+    /// A one-tick pulse waiting to be let go (a Bedrock tap), and the tick it was pressed on.
+    pulse: Option<(Button, u8)>,
     /// Touch was used since the app started: the controls draw only then, so a desktop run with
     /// a mouse never shows them.
     pub(super) seen: bool,
@@ -255,6 +301,8 @@ impl Default for TouchState {
             holding: Vec::new(),
             pointer: (0.0, 0.0),
             sprint_held: false,
+            world_hold: None,
+            pulse: None,
             seen: false,
             back_finger: None,
             calibrating: None,
@@ -323,6 +371,10 @@ impl Game<'_> {
         }
         // The Cursor/Touch button, kept from the pointer like Back.
         if self.cursor_switch_event(id, touch.phase, at, size) {
+            return;
+        }
+        // The Shift button of the inventory screens, held while a finger is on it.
+        if self.shift_button_event(id, touch.phase, at, size) {
             return;
         }
         // Cursor mode: in a menu the finger moves a drawn pointer instead of being one.
@@ -419,6 +471,7 @@ impl Game<'_> {
         self.cursor_frame(event_loop, now);
         let actions = self.touch.logic.tick(now);
         self.touch_apply(event_loop, actions);
+        self.touch_pulse_frame(event_loop);
         let stick = if self.touch.logic.mode() == Mode::Playing {
             self.touch.logic.stick()
         } else {
@@ -467,6 +520,12 @@ impl Game<'_> {
         }
         let actions = self.touch.logic.cancel_all();
         self.touch_apply(event_loop, actions);
+        if let Some((button, _)) = self.touch.pulse.take() {
+            self.touch_button(event_loop, button, false);
+        }
+        if let Some(button) = self.touch.world_hold.take() {
+            self.touch_button(event_loop, button, false);
+        }
         self.cursor_release_all(event_loop);
         self.pad.set_injected_left([0.0; 2]);
         if std::mem::take(&mut self.touch.sprint_held) {
@@ -648,6 +707,29 @@ impl Game<'_> {
             && self.screen == Screen::Playing
     }
 
+    /// The crosshair is on an entity before any block (`pick_entity.rs`).
+    fn touch_aims_at_entity(&self) -> bool {
+        self.pick_entity_hit().is_some()
+    }
+
+    /// The crosshair is on a block within reach.
+    fn touch_aims_at_block(&self) -> bool {
+        self.pick_unfiltered().is_some()
+    }
+
+    /// Lets go of a Bedrock tap's press once the game has had a tick to see it. The pad keeps a
+    /// press for a frame at least (`late_releases`), so releasing on the second frame is safe.
+    fn touch_pulse_frame(&mut self, event_loop: &dyn EventLoopCtl) {
+        if let Some((button, frames)) = self.touch.pulse {
+            if frames >= 1 {
+                self.touch.pulse = None;
+                self.touch_button(event_loop, button, false);
+            } else {
+                self.touch.pulse = Some((button, frames + 1));
+            }
+        }
+    }
+
     /// A controller button down or up on the virtual controller.
     fn touch_button(&mut self, event_loop: &dyn EventLoopCtl, button: Button, down: bool) {
         let _ = event_loop;
@@ -667,6 +749,34 @@ impl Game<'_> {
                 }
                 TouchAction::Use(down) => self.touch_button(event_loop, Button::LeftTrigger, down),
                 TouchAction::Jump(down) => self.touch_button(event_loop, Button::South, down),
+                // Bedrock style. A tap hits an entity under the crosshair and uses anything
+                // else (places a block, opens a door, uses the item). The press is let go a
+                // frame later (`touch_pulse_frame`), as a tap's release is for a click.
+                TouchAction::Tap => {
+                    let button = if self.touch_aims_at_entity() {
+                        Button::RightTrigger
+                    } else {
+                        Button::LeftTrigger
+                    };
+                    self.touch_button(event_loop, button, true);
+                    self.touch.pulse = Some((button, 0));
+                }
+                // A rest on the world breaks what the crosshair is on, or keeps placing when it
+                // is on nothing to break. Chosen when the hold begins and kept until it ends.
+                TouchAction::Hold(true) => {
+                    let button = if self.touch_aims_at_entity() || self.touch_aims_at_block() {
+                        Button::RightTrigger
+                    } else {
+                        Button::LeftTrigger
+                    };
+                    self.touch.world_hold = Some(button);
+                    self.touch_button(event_loop, button, true);
+                }
+                TouchAction::Hold(false) => {
+                    if let Some(button) = self.touch.world_hold.take() {
+                        self.touch_button(event_loop, button, false);
+                    }
+                }
                 TouchAction::PointerTo { x, y } => self.touch_pointer_to(event_loop, (x, y)),
                 TouchAction::PointerLeft(down) => {
                     self.touch_pointer_button(event_loop, MouseButton::Left, down);
@@ -799,7 +909,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use horizon_client_input::touch_layout::{COUNT, ControlLayout, NAMES, Slot};
+    use horizon_client_input::touch_layout::{COUNT, CURSOR_SLOT, ControlLayout, NAMES, Slot};
 
     const PHONE: (f32, f32) = (2532.0, 1170.0);
 
@@ -813,14 +923,14 @@ mod tests {
         // Back is the one slot of the first ten that is not a pad; the extras follow it.
         assert_eq!(EXTRA_FIRST, PADS.len() + 1);
         assert_eq!(NAMES[EXTRA_FIRST - 1], "back");
-        assert_eq!(COUNT, EXTRA_FIRST + Extra::ALL.len());
+        assert_eq!(COUNT, EXTRA_FIRST + Extra::ALL.len() + 2);
     }
 
     #[test]
     fn the_extras_have_their_own_slots_and_stay_on_the_screen() {
         for (n, e) in Extra::ALL.iter().enumerate() {
             let kind = PadKind::Extra(*e, n);
-            assert!(kind.slot() >= EXTRA_FIRST && kind.slot() < COUNT);
+            assert!(kind.slot() >= EXTRA_FIRST && kind.slot() < CURSOR_SLOT);
             assert_eq!(NAMES[kind.slot()], e.name());
             let [x, y, w, h] = kind.base(PHONE, 1.0);
             assert!(x >= 0.0 && y >= 0.0 && x + w <= PHONE.0 && y + h <= PHONE.1, "{e:?}");

@@ -100,6 +100,14 @@ pub enum Action {
     Use(bool),
     /// Jump went down or up (a double tap on the world; see [`Touch::double_tap_jump`]).
     Jump(bool),
+    /// Bedrock style: a quick tap on the world. The game decides what it is from what the
+    /// crosshair is on: an entity is hit, anything else is used (a block is placed, a door
+    /// opens, an item is used).
+    Tap,
+    /// Bedrock style: a finger has rested on the world long enough to hold (`true`), or lifted
+    /// after holding (`false`). The game breaks while the crosshair is on a block or entity, and
+    /// keeps placing while it is on nothing it can break.
+    Hold(bool),
     /// Menu mode: move the pointer here (physical pixels).
     PointerTo { x: f32, y: f32 },
     /// Menu mode: the left button goes down or up.
@@ -186,7 +194,20 @@ pub struct Touch {
     sprint: bool,
     /// Treat a double tap on the world as a jump.
     pub double_tap_jump: bool,
+    /// How a tap on the world is read (`WorldStyle`).
+    pub world_style: WorldStyle,
     out: Vec<Action>,
+}
+
+/// What a quick tap on the world means.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum WorldStyle {
+    /// A tap is one swing; placing is the Use button (how touch worked first).
+    #[default]
+    Classic,
+    /// As on Bedrock Edition: a tap hits what the crosshair is on if it is an entity and uses
+    /// (places, opens) otherwise; holding still breaks.
+    Bedrock,
 }
 
 impl Touch {
@@ -206,6 +227,7 @@ impl Touch {
             last_tap: None,
             sprint: false,
             double_tap_jump: false,
+            world_style: WorldStyle::Classic,
             out: Vec::new(),
         }
     }
@@ -271,7 +293,10 @@ impl Touch {
     pub fn cancel_all(&mut self) -> Vec<Action> {
         let mut out = Vec::new();
         if self.attacking.take().is_some() {
-            out.push(Action::Attack(false));
+            out.push(match self.world_style {
+                WorldStyle::Classic => Action::Attack(false),
+                WorldStyle::Bedrock => Action::Hold(false),
+            });
         }
         if self.using.take().is_some() {
             out.push(Action::Use(false));
@@ -468,7 +493,10 @@ impl Touch {
     fn world_hold(&mut self, id: FingerId, f: &Finger, now: f64) {
         if !f.dragged && self.attacking.is_none() && now - f.since >= self.feel.tap_secs {
             self.attacking = Some(id);
-            self.out.push(Action::Attack(true));
+            self.out.push(match self.world_style {
+                WorldStyle::Classic => Action::Attack(true),
+                WorldStyle::Bedrock => Action::Hold(true),
+            });
         }
     }
 
@@ -487,12 +515,21 @@ impl Touch {
             Role::World => {
                 if self.attacking == Some(id) {
                     self.attacking = None;
-                    self.out.push(Action::Attack(false));
+                    self.out.push(match self.world_style {
+                        WorldStyle::Classic => Action::Attack(false),
+                        WorldStyle::Bedrock => Action::Hold(false),
+                    });
                 } else if !f.dragged && now - f.since < self.feel.tap_secs {
-                    // A quick tap: one swing. The game samples keys once a tick, so the caller
+                    // A quick tap. Classic: one swing. Bedrock: the game picks hit or use from
+                    // what the crosshair is on. The game samples keys once a tick, so the caller
                     // holds the release back a tick (`pad.rs` `late_releases` does this already).
-                    self.out.push(Action::Attack(true));
-                    self.out.push(Action::Attack(false));
+                    match self.world_style {
+                        WorldStyle::Classic => {
+                            self.out.push(Action::Attack(true));
+                            self.out.push(Action::Attack(false));
+                        }
+                        WorldStyle::Bedrock => self.out.push(Action::Tap),
+                    }
                     if self.double_tap_jump
                         && let Some((t, p)) = self.last_tap
                         && now - t <= self.feel.double_tap_secs
@@ -709,6 +746,55 @@ mod tests {
         // Finger 2 is a world finger (it looks), it must not move the stick.
         assert_eq!(t.stick(), [0.0, 0.0]);
         assert_eq!(t.stick_origin(), Some((200.0, 800.0)));
+    }
+
+    fn bedrock() -> Touch {
+        let mut t = touch();
+        t.world_style = WorldStyle::Bedrock;
+        t
+    }
+
+    #[test]
+    fn bedrock_a_quick_tap_is_a_tap_for_the_game_to_resolve() {
+        let mut t = bedrock();
+        t.down(1, (2000.0, 600.0), 0.0, &[]);
+        assert_eq!(t.up(1, 0.10), vec![Action::Tap]);
+    }
+
+    #[test]
+    fn bedrock_holding_still_holds_and_lifting_lets_go() {
+        let mut t = bedrock();
+        t.down(1, (2000.0, 600.0), 0.0, &[]);
+        assert!(t.tick(0.10).is_empty());
+        assert_eq!(t.tick(0.30), vec![Action::Hold(true)]);
+        assert!(t.tick(0.50).is_empty(), "only once");
+        assert_eq!(t.up(1, 0.9), vec![Action::Hold(false)]);
+    }
+
+    #[test]
+    fn bedrock_a_drag_still_only_looks() {
+        let mut t = bedrock();
+        t.down(1, (2000.0, 600.0), 0.0, &[]);
+        let a = t.moved(1, (2100.0, 600.0), 0.05);
+        assert!(a.iter().all(|x| matches!(x, Action::Look { .. })), "{a:?}");
+        assert!(t.tick(1.0).is_empty(), "a dragged finger never holds");
+        assert!(t.up(1, 1.1).is_empty(), "and never taps");
+    }
+
+    #[test]
+    fn bedrock_cancelling_lets_go_of_a_hold() {
+        let mut t = bedrock();
+        t.down(1, (2000.0, 600.0), 0.0, &[]);
+        t.tick(0.5);
+        assert_eq!(t.cancel_all(), vec![Action::Hold(false)]);
+    }
+
+    #[test]
+    fn classic_is_unchanged_by_the_new_style() {
+        let mut t = touch();
+        assert_eq!(t.world_style, WorldStyle::Classic);
+        t.down(1, (2000.0, 600.0), 0.0, &[]);
+        assert_eq!(t.up(1, 0.10), vec![Action::Attack(true), Action::Attack(false)]);
     }
 
     #[test]

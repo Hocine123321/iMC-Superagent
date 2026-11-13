@@ -11,8 +11,14 @@
 //! The file is `horizon-touch-layout.txt` beside `horizon-imc.txt`: one line per button,
 //! `name:dx,dy,scale,opacity,shown`, written only when something differs from the default.
 
-/// How many buttons can be arranged (the nine pads, Back, and the six extras).
-pub const COUNT: usize = 16;
+/// How many buttons can be arranged (the nine pads, Back, the six extras, and the menu buttons
+/// Cursor and Shift).
+pub const COUNT: usize = 18;
+
+/// The menu buttons' places in [`NAMES`]: after the extras, so a file saved before they existed
+/// still reads the same.
+pub const CURSOR_SLOT: usize = 16;
+pub const SHIFT_SLOT: usize = 17;
 
 /// Where the extras start in [`NAMES`]; they follow `touch_extras::Extra::ALL` in order.
 pub const EXTRA_FIRST: usize = 10;
@@ -21,7 +27,7 @@ pub const EXTRA_FIRST: usize = 10;
 /// end, so a file saved by an older version still reads the same.
 pub const NAMES: [&str; COUNT] = [
     "jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back", "chat",
-    "debug", "shot", "view", "key1", "key2",
+    "debug", "shot", "view", "key1", "key2", "cursor", "shift",
 ];
 
 /// Largest move from the default, as a fraction of the screen's width or height. Enough to put a
@@ -553,7 +559,9 @@ mod tests {
         for (i, e) in Extra::ALL.iter().enumerate() {
             assert_eq!(NAMES[EXTRA_FIRST + i], e.name(), "{e:?}");
         }
-        assert_eq!(EXTRA_FIRST + Extra::ALL.len(), COUNT);
+        assert_eq!(EXTRA_FIRST + Extra::ALL.len() + 2, COUNT);
+        assert_eq!(NAMES[CURSOR_SLOT], "cursor");
+        assert_eq!(NAMES[SHIFT_SLOT], "shift");
     }
 
     #[test]
@@ -561,6 +569,7 @@ mod tests {
         let layout = ControlLayout::parse("jump:0.0100,0.0200,1.500,0.800,true\n");
         assert_eq!(layout.slots[0].scale, 1.5);
         assert!(layout.slots[EXTRA_FIRST..].iter().all(Slot::is_default));
+        assert!(layout.slots[CURSOR_SLOT].is_default() && layout.slots[SHIFT_SLOT].is_default());
     }
 
     #[test]

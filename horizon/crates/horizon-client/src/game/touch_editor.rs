@@ -38,6 +38,11 @@ pub(super) struct TouchEditor {
     preset: usize,
     /// The lines the last snap landed on, drawn while the button is held.
     guides: Vec<Guide>,
+    /// What the last Save, Delete or layout change did, shown under the button's name so a press
+    /// that worked says so and one that could not says why.
+    notice: Option<String>,
+    /// World controls as they were on opening, for Cancel (the Bedrock layout switches them on).
+    bedrock_before: bool,
 }
 
 /// A frame's colour for the picked button and for the others.
@@ -72,6 +77,8 @@ impl Game<'_> {
             slider: None,
             preset: 0,
             guides: Vec::new(),
+            notice: None,
+            bedrock_before: self.settings.imc.bedrock_controls,
         });
         self.screen = Screen::TouchEditor;
         self.capture(false);
@@ -85,6 +92,7 @@ impl Game<'_> {
         };
         if !keep {
             self.settings.touch_layout = editor.before;
+            self.settings.imc.bedrock_controls = editor.bedrock_before;
         }
         self.settings.save(&Self::options_path());
         if editor.from_options {
@@ -99,7 +107,7 @@ impl Game<'_> {
     /// shown faintly on the stage so it can be picked and shown again.
     fn editor_pad_at(&self) -> Option<usize> {
         let size = self.gui_size();
-        let kinds = self.pad_kinds();
+        let kinds = self.editor_kinds();
         (0..kinds.len()).rev().find(|&i| {
             let r = self.editor_pad_rect(kinds[i], size);
             let (cx, cy) = self.cursor;
@@ -118,7 +126,7 @@ impl Game<'_> {
 
     /// The button the editor has picked, or the first if the list got shorter under it.
     fn editor_kind(&self, picked: usize) -> PadKind {
-        let kinds = self.pad_kinds();
+        let kinds = self.editor_kinds();
         kinds.get(picked).or(kinds.first()).copied().unwrap_or(PadKind::Fixed(0))
     }
 
@@ -130,7 +138,7 @@ impl Game<'_> {
 
     /// Where every button stands now, `None` for a hidden one.
     fn editor_rects(&self, size: (f32, f32)) -> Vec<Option<[f32; 4]>> {
-        self.pad_kinds()
+        self.editor_kinds()
             .into_iter()
             .map(|k| {
                 self.settings
@@ -164,11 +172,20 @@ impl Game<'_> {
         batch.fill(atlas, safe[0], safe[1], 1.0, safe[3], edge);
         batch.fill(atlas, safe[0] + safe[2], safe[1], 1.0, safe[3], edge);
 
-        let flagged: Vec<usize> = tools::problems(&self.editor_rects(size), safe)
+        // The play buttons are checked against each other and the menu buttons against each other:
+        // they are never on screen together, so one over the other is no problem.
+        let rects = self.editor_rects(size);
+        let play = self.pad_kinds().len();
+        let mut flagged: Vec<usize> = tools::problems(&rects[..play], safe)
             .into_iter()
             .map(|(i, _)| i)
             .collect();
-        for (i, kind) in self.pad_kinds().into_iter().enumerate() {
+        flagged.extend(
+            tools::problems(&rects[play..], safe)
+                .into_iter()
+                .map(|(i, _)| i + play),
+        );
+        for (i, kind) in self.editor_kinds().into_iter().enumerate() {
             let slot = self.settings.touch_layout.slot(kind.slot());
             let [x, y, w, h] = self.editor_pad_rect(kind, size);
             // A hidden button is drawn faintly, outlined, so it can still be found.
@@ -269,6 +286,9 @@ impl Game<'_> {
             batch.text_styled(atlas, &Text::literal("Touch controls"), hx, 4.0, u32::MAX, true);
             let info = format!("{}{}", picked_kind.label(), if slot.shown { "" } else { "  hidden" });
             batch.text_styled(atlas, &Text::literal(&info), hx, 4.0 + 12.0, 0xFFFF_FF55, true);
+            if let Some(n) = self.touch_editor.as_ref().and_then(|e| e.notice.clone()) {
+                batch.text_styled(atlas, &Text::literal(&n), hx, 4.0 + 24.0, 0xFF55_FF55, true);
+            }
         }
     }
 
@@ -357,11 +377,19 @@ impl Game<'_> {
                 if let Some(e) = &mut self.touch_editor {
                     e.preset = next;
                 }
-                if let Some(layout) = names
-                    .get(next)
-                    .and_then(|n| self.settings.touch_presets.get(n))
-                {
+                let name = names.get(next).cloned().unwrap_or_default();
+                let mut notice = None;
+                if let Some(layout) = self.settings.touch_presets.get(&name) {
                     self.settings.touch_layout = layout;
+                }
+                // The Bedrock layout has no Use button because a tap places: it only works with
+                // Bedrock world controls, so choosing it turns them on.
+                if tools::wants_bedrock_controls(&name) && !self.settings.imc.bedrock_controls {
+                    self.settings.imc.bedrock_controls = true;
+                    notice = Some("World controls set to Bedrock".to_owned());
+                }
+                if let Some(e) = &mut self.touch_editor {
+                    e.notice = notice;
                 }
             }
             Control::SavePreset => {
@@ -379,7 +407,8 @@ impl Game<'_> {
                     current
                 };
                 let layout = self.settings.touch_layout.clone();
-                if self.settings.touch_presets.save(&name, &layout) {
+                let saved = self.settings.touch_presets.save(&name, &layout);
+                let notice = if saved {
                     let at = self
                         .settings
                         .touch_presets
@@ -391,6 +420,12 @@ impl Game<'_> {
                         e.preset = at;
                     }
                     self.settings.save(&Self::options_path());
+                    format!("Saved as {name}")
+                } else {
+                    format!("Not saved: {} layouts kept, delete one first", tools::MAX_SAVED)
+                };
+                if let Some(e) = &mut self.touch_editor {
+                    e.notice = Some(notice);
                 }
             }
             Control::DeletePreset => {
@@ -398,16 +433,28 @@ impl Game<'_> {
                     .get(self.touch_editor.as_ref().map_or(0, |e| e.preset))
                     .cloned()
                     .unwrap_or_default();
-                if self.settings.touch_presets.delete(&current) {
+                let notice = if self.settings.touch_presets.delete(&current) {
                     if let Some(e) = &mut self.touch_editor {
                         e.preset = 0;
                     }
                     self.settings.save(&Self::options_path());
+                    format!("Deleted {current}")
+                } else {
+                    "The built-in layouts stay".to_owned()
+                };
+                if let Some(e) = &mut self.touch_editor {
+                    e.notice = Some(notice);
                 }
             }
             Control::Done => self.close_touch_editor(true),
             Control::Cancel => self.close_touch_editor(false),
-            Control::ResetAll => self.settings.touch_layout.reset(),
+            Control::ResetAll => {
+                self.settings.touch_layout.reset();
+                if let Some(e) = &mut self.touch_editor {
+                    e.preset = 0;
+                    e.notice = None;
+                }
+            }
             Control::ResetButton => self.settings.touch_layout.reset_slot(index),
         }
     }

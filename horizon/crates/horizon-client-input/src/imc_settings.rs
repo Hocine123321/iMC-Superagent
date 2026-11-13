@@ -61,10 +61,16 @@ pub enum Item {
     CursorInventory,
     /// How fast the cursor travels for the finger's travel.
     CursorSpeed,
+    /// How long the finger rests before the cursor splits a stack.
+    CursorHold,
+    /// A quick second touch that drags may carry a stack (off: it never does).
+    CursorDragGrab,
+    /// Bedrock style on the world (tap hits or places, hold breaks) or the classic style.
+    WorldControls,
 }
 
 impl Item {
-    pub const ALL: [Item; 22] = [
+    pub const ALL: [Item; 25] = [
         Item::Controls,
         Item::LookSpeed,
         Item::StickSize,
@@ -87,6 +93,9 @@ impl Item {
         Item::AutoResolution,
         Item::CursorInventory,
         Item::CursorSpeed,
+        Item::CursorHold,
+        Item::CursorDragGrab,
+        Item::WorldControls,
     ];
 
     /// The line's key in `horizon-imc.txt`.
@@ -114,6 +123,9 @@ impl Item {
             Item::AutoResolution => "autoResolution",
             Item::CursorInventory => "cursorInventory",
             Item::CursorSpeed => "cursorSpeed",
+            Item::CursorHold => "cursorHold",
+            Item::CursorDragGrab => "cursorDragGrab",
+            Item::WorldControls => "worldControls",
         }
     }
 
@@ -142,6 +154,9 @@ impl Item {
             Item::AutoResolution => "Lower resolution",
             Item::CursorInventory => "Cursor in inventory",
             Item::CursorSpeed => "Cursor speed",
+            Item::CursorHold => "Cursor hold to split",
+            Item::CursorDragGrab => "Cursor drag grab",
+            Item::WorldControls => "World controls",
         }
     }
 
@@ -230,6 +245,15 @@ impl Item {
             Item::CursorInventory => {
                 "Shows the cursor whenever an inventory is open (your bag, chests, crafting, creative), without switching the whole game to cursor mode. It goes away when you close it. The Cursor button on the screen still switches everything."
             }
+            Item::CursorHold => {
+                "How long your finger must rest on a slot before the cursor right-clicks it (splits a stack or places one item). Longer means a resting thumb never splits by accident."
+            }
+            Item::CursorDragGrab => {
+                "On: tap, then quickly touch again and drag to carry a stack. Off: that never happens, which stops a quick second tap from picking things up. Holding a stack is still done by tapping it, moving the cursor, and tapping where it goes."
+            }
+            Item::WorldControls => {
+                "Bedrock: tap the world to hit or place, hold to break. Classic: tap hits, hold mines, and placing is only the Use button."
+            }
             Item::CursorSpeed => {
                 "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots."
             }
@@ -243,6 +267,10 @@ const STICK_SIZES: [f32; 4] = [0.10, 0.14, 0.18, 0.22];
 const MOVE_ZONES: [f32; 4] = [0.30, 0.40, 0.50, 0.60];
 const HOLD_TIMES: [f64; 4] = [0.15, 0.25, 0.40, 0.60];
 const SAFE_MARGINS: [f32; 4] = [0.0, 0.5, 1.0, 1.5];
+/// How long a finger rests on a slot before the cursor splits it, in seconds.
+const CURSOR_HOLDS: [f64; 4] = [0.50, 0.70, 0.90, 1.20];
+const CURSOR_HOLD_NAMES: [&str; 4] = ["Short", "Normal", "Long", "Longest"];
+const DEFAULT_CURSOR_HOLD: u8 = 1;
 /// The touch shifts, in physical pixels, by step. The middle one (index 2) is no shift. Five
 /// steps, because every setting comes round in at most six clicks (a test holds them to it) and
 /// a phone has no room for a long click-through. 8 px is a small part of the screen but the size
@@ -303,6 +331,12 @@ pub struct ImcSettings {
     pub cursor_inventory: bool,
     /// Index into [`crate::touch_cursor::SPEEDS`].
     pub cursor_speed: u8,
+    /// Index into [`CURSOR_HOLDS`].
+    pub cursor_hold: u8,
+    /// A tap then a drag may grab a stack.
+    pub cursor_drag_grab: bool,
+    /// Bedrock style world touch (true) or the classic style.
+    pub bedrock_controls: bool,
 }
 
 impl Default for ImcSettings {
@@ -326,6 +360,10 @@ impl Default for ImcSettings {
             auto: AutoConfig::default(),
             cursor_inventory: false,
             cursor_speed: crate::touch_cursor::NORMAL_SPEED,
+            cursor_hold: DEFAULT_CURSOR_HOLD,
+            cursor_drag_grab: false,
+            // Classic until the player asks, so nothing changes under a thumb that is used to it.
+            bedrock_controls: false,
         }
     }
 }
@@ -410,6 +448,17 @@ impl ImcSettings {
                 "cursorSpeed" => {
                     s.cursor_speed = step(crate::touch_cursor::SPEEDS.len()).unwrap_or(s.cursor_speed);
                 }
+                "cursorHold" => s.cursor_hold = step(CURSOR_HOLDS.len()).unwrap_or(s.cursor_hold),
+                "cursorDragGrab" => {
+                    if let Ok(v) = value.parse() {
+                        s.cursor_drag_grab = v;
+                    }
+                }
+                "worldControls" => {
+                    if let Ok(v) = value.parse() {
+                        s.bedrock_controls = v;
+                    }
+                }
                 _ => {}
             }
         }
@@ -420,7 +469,7 @@ impl ImcSettings {
     pub fn serialize(&self) -> String {
         format!(
             "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
-             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\n",
+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\ncursorHold:{}\ncursorDragGrab:{}\nworldControls:{}\n",
             self.controls,
             self.look_speed,
             self.stick_size,
@@ -443,6 +492,9 @@ impl ImcSettings {
             self.auto.use_resolution,
             self.cursor_inventory,
             self.cursor_speed,
+            self.cursor_hold,
+            self.cursor_drag_grab,
+            self.bedrock_controls,
         )
     }
 
@@ -473,6 +525,15 @@ impl ImcSettings {
             Item::AutoResolution => on_off(self.auto.use_resolution),
             Item::CursorInventory => on_off(self.cursor_inventory),
             Item::CursorSpeed => name(&crate::touch_cursor::SPEED_NAMES, self.cursor_speed),
+            Item::CursorHold => name(&CURSOR_HOLD_NAMES, self.cursor_hold),
+            Item::CursorDragGrab => on_off(self.cursor_drag_grab),
+            Item::WorldControls => {
+                if self.bedrock_controls {
+                    "Bedrock"
+                } else {
+                    "Classic"
+                }
+            }
         }
     }
 
@@ -526,6 +587,9 @@ impl ImcSettings {
             Item::AutoResolution => self.auto.use_resolution = !self.auto.use_resolution,
             Item::CursorInventory => self.cursor_inventory = !self.cursor_inventory,
             Item::CursorSpeed => turn(&mut self.cursor_speed, crate::touch_cursor::SPEEDS.len()),
+            Item::CursorHold => turn(&mut self.cursor_hold, CURSOR_HOLDS.len()),
+            Item::CursorDragGrab => self.cursor_drag_grab = !self.cursor_drag_grab,
+            Item::WorldControls => self.bedrock_controls = !self.bedrock_controls,
             Item::AutoSensitivity => {
                 let mut i = self.auto_sensitivity_index();
                 turn(&mut i, Sensitivity::ALL.len());
@@ -577,6 +641,11 @@ impl ImcSettings {
         MENU_SLOPS[usize::from(self.menu_touch).min(MENU_SLOPS.len() - 1)]
     }
 
+    /// How long a resting finger waits before the cursor splits (`CURSOR_HOLDS`).
+    pub fn cursor_hold_secs(&self) -> f64 {
+        CURSOR_HOLDS[usize::from(self.cursor_hold).min(CURSOR_HOLDS.len() - 1)]
+    }
+
     /// How far the cursor moves for a pixel of finger (`touch_cursor::SPEEDS`).
     pub fn cursor_speed_scale(&self) -> f32 {
         crate::touch_cursor::speed_at(self.cursor_speed)
@@ -598,6 +667,11 @@ impl ImcSettings {
         touch.feel.tap_secs = hold;
         touch.feel.long_press_secs = hold + 0.15;
         touch.double_tap_jump = self.double_tap_jump;
+        touch.world_style = if self.bedrock_controls {
+            crate::touch::WorldStyle::Bedrock
+        } else {
+            crate::touch::WorldStyle::Classic
+        };
         touch.feel.menu_slop_px = menu_slop_for(touch.screen()) * self.menu_slop_scale();
     }
 }
@@ -690,6 +764,28 @@ pub const HEAVY: [HeavySetting; 7] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn world_controls_and_the_cursor_tuning_round_trip_and_default_to_the_old_way() {
+        let d = ImcSettings::default();
+        assert!(!d.bedrock_controls, "classic until the player asks");
+        assert!(!d.cursor_drag_grab, "no accidental grabs");
+        assert_eq!(d.cursor_hold_secs(), 0.70);
+        let mut s = d.clone();
+        s.cycle(Item::WorldControls, false);
+        s.cycle(Item::CursorHold, false);
+        s.cycle(Item::CursorDragGrab, false);
+        assert_eq!(s.value(Item::WorldControls), "Bedrock");
+        assert_eq!(s.value(Item::CursorHold), "Long");
+        assert_eq!(s.value(Item::CursorDragGrab), "On");
+        let back = ImcSettings::parse(&s.serialize());
+        assert_eq!(back, s);
+        let mut t = Touch::new((2532.0, 1170.0));
+        s.apply(&mut t);
+        assert_eq!(t.world_style, crate::touch::WorldStyle::Bedrock);
+        d.apply(&mut t);
+        assert_eq!(t.world_style, crate::touch::WorldStyle::Classic);
+    }
 
     #[test]
     fn the_defaults_are_the_values_touch_had_before_it_had_settings() {
