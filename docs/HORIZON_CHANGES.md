@@ -469,6 +469,7 @@ Unarmed (every other build and run) both calls answer "no" and the window is lan
 | `horizon/crates/horizon-client-input/src/ios_hold.rs` | `window_starts_portrait()` and `take_landscape_switch()` (one unit test, 7 in all). |
 | `horizon/crates/horizon-client-input/src/window.rs` | `with_horizon_icon`: iOS window orientation is Portrait while `window_starts_portrait()`, else Landscape as before. |
 | `horizon/crates/horizon-client/src/game/loading_screen.rs` | `Loading::about_to_wait`: iOS only, `take_landscape_switch()` then `set_valid_orientations(Landscape)`. |
+| `horizon/crates/horizon-client/src/game/loading_screen.rs` | `Loading::about_to_wait` and `Loading::draw`: while `ios_hold::state()` is `Waiting` (Play without closing the app, waiting behind the launcher), nothing is drawn and the loop sleeps in 50 ms steps (`ControlFlow::WaitUntil`) instead of rendering the title panorama every frame under `ControlFlow::Poll`. Why: the covered engine window used the GPU and the main thread at full speed and made the launcher lag. A no-op unless the hold was armed. |
 
 **Risk:** low unarmed. Armed, untested on the phone: whether the system now starts in portrait, and the switch to
 landscape on Play. Only `horizon-client-input` was type-checked for aarch64-apple-ios locally; `horizon-client`

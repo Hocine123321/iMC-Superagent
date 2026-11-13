@@ -269,6 +269,16 @@ impl Loading {
             return;
         }
         self.poll_menu_realms(event_loop);
+        // iMC (iOS, Play without closing the app): while the engine waits for Play the launcher covers this window, so
+        // nothing is drawn and the loop wakes only a few times a second. It used to render the title panorama at full
+        // speed behind the launcher, which heated the phone and competed with the launcher's own drawing. Never true
+        // unless the shell armed the hold, so every other build and run behaves as before.
+        if horizon_client_input::ios_hold::state() == horizon_client_input::ios_hold::State::Waiting {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                Instant::now() + std::time::Duration::from_millis(50),
+            ));
+            return;
+        }
         if let Some(w) = &self.window {
             if self.options.as_ref().is_some_and(|o| o.offscreen) {
                 self.draw();
@@ -279,6 +289,10 @@ impl Loading {
         event_loop.set_control_flow(ControlFlow::Poll);
     }
     pub(super) fn draw(&mut self) {
+        // iMC (iOS): nothing is drawn while the hold waits for Play (see about_to_wait).
+        if horizon_client_input::ios_hold::state() == horizon_client_input::ios_hold::State::Waiting {
+            return;
+        }
         let Some(size) = self
             .renderer
             .as_ref()
