@@ -645,10 +645,10 @@ index 29560c8..fcffcdb 100644
 +}
 diff --git a/crates/horizon-client-input/src/imc_settings.rs b/crates/horizon-client-input/src/imc_settings.rs
 new file mode 100644
-index 0000000..cfb94a8
+index 0000000..341ec59
 --- /dev/null
 +++ b/crates/horizon-client-input/src/imc_settings.rs
-@@ -0,0 +1,1145 @@
+@@ -0,0 +1,1222 @@
 +//! iMC Settings: the settings that belong to the iOS app, not to Minecraft.
 +//!
 +//! Pure logic with no winit types and no game state, so it runs under `cargo test`. The values
@@ -718,10 +718,14 @@ index 0000000..cfb94a8
 +    CursorDragGrab,
 +    /// Bedrock style on the world (tap hits or places, hold breaks) or the classic style.
 +    WorldControls,
++    /// Bedrock style: a finger resting on empty air keeps placing/using (off by default).
++    AirHold,
++    /// How long a finger rests on empty air before it keeps using.
++    AirHoldDelay,
 +}
 +
 +impl Item {
-+    pub const ALL: [Item; 25] = [
++    pub const ALL: [Item; 27] = [
 +        Item::Controls,
 +        Item::LookSpeed,
 +        Item::StickSize,
@@ -747,6 +751,8 @@ index 0000000..cfb94a8
 +        Item::CursorHold,
 +        Item::CursorDragGrab,
 +        Item::WorldControls,
++        Item::AirHold,
++        Item::AirHoldDelay,
 +    ];
 +
 +    /// The line's key in `horizon-imc.txt`.
@@ -777,6 +783,8 @@ index 0000000..cfb94a8
 +            Item::CursorHold => "cursorHold",
 +            Item::CursorDragGrab => "cursorDragGrab",
 +            Item::WorldControls => "worldControls",
++            Item::AirHold => "airHold",
++            Item::AirHoldDelay => "airHoldDelay",
 +        }
 +    }
 +
@@ -808,6 +816,8 @@ index 0000000..cfb94a8
 +            Item::CursorHold => "Cursor hold to split",
 +            Item::CursorDragGrab => "Cursor drag grab",
 +            Item::WorldControls => "World controls",
++            Item::AirHold => "Hold on air to use",
++            Item::AirHoldDelay => "Air hold delay",
 +        }
 +    }
 +
@@ -902,6 +912,12 @@ index 0000000..cfb94a8
 +            Item::CursorDragGrab => {
 +                "On: tap, then quickly touch again and drag to carry a stack. Off: that never happens, which stops a quick second tap from picking things up. Holding a stack is still done by tapping it, moving the cursor, and tapping where it goes."
 +            }
++            Item::AirHold => {
++                "Bedrock world controls only. On: resting your finger on empty air (no block or mob under the crosshair) keeps using the item, so you can keep placing. Off: a rest on air does nothing, and a quick tap still places. Breaking a block by holding is not affected."
++            }
++            Item::AirHoldDelay => {
++                "How long your finger must rest on empty air before it keeps using. Longer means a thumb that lingers never starts placing by accident. Only matters when Hold on air to use is on."
++            }
 +            Item::WorldControls => {
 +                "Bedrock: tap the world to hit or place, hold to break. Classic: tap hits, hold mines, and placing is only the Use button."
 +            }
@@ -922,6 +938,11 @@ index 0000000..cfb94a8
 +const CURSOR_HOLDS: [f64; 4] = [0.50, 0.70, 0.90, 1.20];
 +const CURSOR_HOLD_NAMES: [&str; 4] = ["Short", "Normal", "Long", "Longest"];
 +const DEFAULT_CURSOR_HOLD: u8 = 1;
++/// How long a finger rests on empty air before it keeps using, in seconds. Well past the 0.25 s
++/// a hold takes to start breaking, because a resting thumb on air is usually not a request.
++const AIR_HOLDS: [f64; 4] = [0.60, 0.80, 1.00, 1.30];
++const AIR_HOLD_NAMES: [&str; 4] = ["Short", "Normal", "Long", "Longest"];
++const DEFAULT_AIR_HOLD: u8 = 1;
 +/// The touch shifts, in physical pixels, by step. The middle one (index 2) is no shift. Five
 +/// steps, because every setting comes round in at most six clicks (a test holds them to it) and
 +/// a phone has no room for a long click-through. 8 px is a small part of the screen but the size
@@ -988,6 +1009,10 @@ index 0000000..cfb94a8
 +    pub cursor_drag_grab: bool,
 +    /// Bedrock style world touch (true) or the classic style.
 +    pub bedrock_controls: bool,
++    /// A rest on empty air keeps using (Bedrock style). Off by default.
++    pub air_hold: bool,
++    /// Index into [`AIR_HOLDS`].
++    pub air_hold_delay: u8,
 +}
 +
 +impl Default for ImcSettings {
@@ -1015,6 +1040,8 @@ index 0000000..cfb94a8
 +            cursor_drag_grab: false,
 +            // Classic until the player asks, so nothing changes under a thumb that is used to it.
 +            bedrock_controls: false,
++            air_hold: false,
++            air_hold_delay: DEFAULT_AIR_HOLD,
 +        }
 +    }
 +}
@@ -1105,6 +1132,14 @@ index 0000000..cfb94a8
 +                        s.cursor_drag_grab = v;
 +                    }
 +                }
++                "airHold" => {
++                    if let Ok(v) = value.parse() {
++                        s.air_hold = v;
++                    }
++                }
++                "airHoldDelay" => {
++                    s.air_hold_delay = step(AIR_HOLDS.len()).unwrap_or(s.air_hold_delay);
++                }
 +                "worldControls" => {
 +                    if let Ok(v) = value.parse() {
 +                        s.bedrock_controls = v;
@@ -1120,7 +1155,7 @@ index 0000000..cfb94a8
 +    pub fn serialize(&self) -> String {
 +        format!(
 +            "touchControls:{}\nlookSpeed:{}\nstickSize:{}\nmoveZone:{}\nholdTime:{}\ndoubleTapJump:{}\nsafeMargin:{}\nautoSprint:{}\ngreyUnused:{}\nmenuTouch:{}\nbuttonShiftX:{}\nbuttonShiftY:{}\nshiftX:{}\nshiftY:{}\n\
-+             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\ncursorHold:{}\ncursorDragGrab:{}\nworldControls:{}\n",
++             autoPerformance:{}\nautoSensitivity:{}\nautoMinDistance:{}\nautoFarTerrain:{}\nautoRenderDistance:{}\nautoResolution:{}\ncursorInventory:{}\ncursorSpeed:{}\ncursorHold:{}\ncursorDragGrab:{}\nworldControls:{}\nairHold:{}\nairHoldDelay:{}\n",
 +            self.controls,
 +            self.look_speed,
 +            self.stick_size,
@@ -1146,6 +1181,8 @@ index 0000000..cfb94a8
 +            self.cursor_hold,
 +            self.cursor_drag_grab,
 +            self.bedrock_controls,
++            self.air_hold,
++            self.air_hold_delay,
 +        )
 +    }
 +
@@ -1178,6 +1215,8 @@ index 0000000..cfb94a8
 +            Item::CursorSpeed => name(&crate::touch_cursor::SPEED_NAMES, self.cursor_speed),
 +            Item::CursorHold => name(&CURSOR_HOLD_NAMES, self.cursor_hold),
 +            Item::CursorDragGrab => on_off(self.cursor_drag_grab),
++            Item::AirHold => on_off(self.air_hold),
++            Item::AirHoldDelay => name(&AIR_HOLD_NAMES, self.air_hold_delay),
 +            Item::WorldControls => {
 +                if self.bedrock_controls {
 +                    "Bedrock"
@@ -1241,6 +1280,8 @@ index 0000000..cfb94a8
 +            Item::CursorHold => turn(&mut self.cursor_hold, CURSOR_HOLDS.len()),
 +            Item::CursorDragGrab => self.cursor_drag_grab = !self.cursor_drag_grab,
 +            Item::WorldControls => self.bedrock_controls = !self.bedrock_controls,
++            Item::AirHold => self.air_hold = !self.air_hold,
++            Item::AirHoldDelay => turn(&mut self.air_hold_delay, AIR_HOLDS.len()),
 +            Item::AutoSensitivity => {
 +                let mut i = self.auto_sensitivity_index();
 +                turn(&mut i, Sensitivity::ALL.len());
@@ -1263,6 +1304,9 @@ index 0000000..cfb94a8
 +            | Item::AutoRenderDistance
 +            | Item::AutoResolution => self.auto.enabled,
 +            Item::AutoMinDistance => self.auto.enabled && self.auto.use_render_distance,
++            // Only Bedrock world controls have a hold on air; its delay only matters when on.
++            Item::AirHold => self.bedrock_controls,
++            Item::AirHoldDelay => self.bedrock_controls && self.air_hold,
 +            _ => true,
 +        }
 +    }
@@ -1295,6 +1339,11 @@ index 0000000..cfb94a8
 +    /// How long a resting finger waits before the cursor splits (`CURSOR_HOLDS`).
 +    pub fn cursor_hold_secs(&self) -> f64 {
 +        CURSOR_HOLDS[usize::from(self.cursor_hold).min(CURSOR_HOLDS.len() - 1)]
++    }
++
++    /// How long a finger rests on empty air before it keeps using (`AIR_HOLDS`).
++    pub fn air_hold_secs(&self) -> f64 {
++        AIR_HOLDS[usize::from(self.air_hold_delay).min(AIR_HOLDS.len() - 1)]
 +    }
 +
 +    /// How far the cursor moves for a pixel of finger (`touch_cursor::SPEEDS`).
@@ -1436,6 +1485,34 @@ index 0000000..cfb94a8
 +        assert_eq!(t.world_style, crate::touch::WorldStyle::Bedrock);
 +        d.apply(&mut t);
 +        assert_eq!(t.world_style, crate::touch::WorldStyle::Classic);
++    }
++
++    #[test]
++    fn holding_on_air_is_off_by_default_slower_than_breaking_and_kept_in_the_file() {
++        let d = ImcSettings::default();
++        assert!(!d.air_hold, "off until asked for");
++        assert!(d.air_hold_secs() >= 0.6, "well past the 0.25 s that starts breaking");
++        let mut s = d.clone();
++        s.cycle(Item::AirHold, false);
++        s.cycle(Item::AirHoldDelay, false);
++        assert_eq!(s.value(Item::AirHold), "On");
++        assert_eq!(s.value(Item::AirHoldDelay), "Long");
++        assert!(s.air_hold_secs() > d.air_hold_secs());
++        assert_eq!(ImcSettings::parse(&s.serialize()), s);
++        // An older file without the keys reads as off.
++        assert!(!ImcSettings::parse("touchControls:true\n").air_hold);
++        // A garbled delay falls back instead of panicking.
++        assert_eq!(ImcSettings::parse("airHoldDelay:99\n").air_hold_secs(), d.air_hold_secs());
++    }
++
++    #[test]
++    fn the_air_rows_grey_out_until_they_can_matter() {
++        let mut s = ImcSettings::default();
++        assert!(!s.is_active(Item::AirHold) && !s.is_active(Item::AirHoldDelay));
++        s.bedrock_controls = true;
++        assert!(s.is_active(Item::AirHold) && !s.is_active(Item::AirHoldDelay));
++        s.air_hold = true;
++        assert!(s.is_active(Item::AirHoldDelay));
 +    }
 +
 +    #[test]
@@ -2151,10 +2228,10 @@ index 6d0df2c..5ddf781 100644
  pub mod window;
 diff --git a/crates/horizon-client-input/src/touch.rs b/crates/horizon-client-input/src/touch.rs
 new file mode 100644
-index 0000000..2d58248
+index 0000000..df4359e
 --- /dev/null
 +++ b/crates/horizon-client-input/src/touch.rs
-@@ -0,0 +1,1250 @@
+@@ -0,0 +1,1264 @@
 +//! Touch input for phones, as pure logic: fingers in, game intent out.
 +//!
 +//! No winit types, no clock of its own and no game state, so the whole thing runs under
@@ -2354,6 +2431,12 @@ index 0000000..2d58248
 +    /// How a tap on the world is read (`WorldStyle`).
 +    pub world_style: WorldStyle,
 +    out: Vec<Action>,
++}
++
++/// Whether a finger that has rested on empty air since `began` should now keep using, given the
++/// player's settings and the time `now` (seconds). Off, never; on, once `delay` has passed.
++pub fn air_hold_due(enabled: bool, began: f64, now: f64, delay: f64) -> bool {
++    enabled && now - began >= delay
 +}
 +
 +/// What a quick tap on the world means.
@@ -2903,6 +2986,14 @@ index 0000000..2d58248
 +        // Finger 2 is a world finger (it looks), it must not move the stick.
 +        assert_eq!(t.stick(), [0.0, 0.0]);
 +        assert_eq!(t.stick_origin(), Some((200.0, 800.0)));
++    }
++
++    #[test]
++    fn holding_on_air_only_counts_when_enabled_and_after_its_delay() {
++        assert!(!air_hold_due(false, 0.0, 10.0, 0.8), "off never fires");
++        assert!(!air_hold_due(true, 0.0, 0.79, 0.8), "not before the delay");
++        assert!(air_hold_due(true, 0.0, 0.80, 0.8));
++        assert!(air_hold_due(true, 5.0, 5.9, 0.8), "counted from when the rest began");
 +    }
 +
 +    fn bedrock() -> Touch {
@@ -6765,7 +6856,7 @@ index dc0ff58..b59bbd0 100644
          } else {
              assert_eq!(
 diff --git a/crates/horizon-client-render/src/graphics_ui.rs b/crates/horizon-client-render/src/graphics_ui.rs
-index 8c1c1c5..5b741e6 100644
+index 8c1c1c5..f91193a 100644
 --- a/crates/horizon-client-render/src/graphics_ui.rs
 +++ b/crates/horizon-client-render/src/graphics_ui.rs
 @@ -29,15 +29,19 @@ pub enum Page {
@@ -6852,7 +6943,7 @@ index 8c1c1c5..5b741e6 100644
  }
  
  #[derive(Clone, Copy)]
-@@ -155,6 +201,62 @@ fn e(item: crate::extras::Item, cost: Cost) -> Setting {
+@@ -155,6 +201,64 @@ fn e(item: crate::extras::Item, cost: Cost) -> Setting {
      }
  }
  
@@ -6909,13 +7000,15 @@ index 8c1c1c5..5b741e6 100644
 +        I::CursorHold => "horizon.imc.cursorHold.tooltip",
 +        I::CursorDragGrab => "horizon.imc.cursorDragGrab.tooltip",
 +        I::WorldControls => "horizon.imc.worldControls.tooltip",
++        I::AirHold => "horizon.imc.airHold.tooltip",
++        I::AirHoldDelay => "horizon.imc.airHoldDelay.tooltip",
 +    }
 +}
 +
  /// Every page's settings, in named groups of related rows.
  pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
      use Cost::*;
-@@ -618,10 +720,73 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
+@@ -618,10 +722,75 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                  ),
              ],
          ),
@@ -6929,6 +7022,8 @@ index 8c1c1c5..5b741e6 100644
 +                        vec![
 +                            m(I::Controls, None),
 +                            m(I::WorldControls, None),
++                            m(I::AirHold, None),
++                            m(I::AirHoldDelay, None),
 +                            m(I::DoubleTapJump, None),
 +                            m(I::LookSpeed, None),
 +                            m(I::HoldTime, None),
@@ -6990,7 +7085,7 @@ index 8c1c1c5..5b741e6 100644
          for (_, groups) in &mut pages {
              for (_, rows) in groups {
                  rows.retain(|r| {
-@@ -1095,6 +1260,26 @@ impl Item {
+@@ -1095,6 +1264,26 @@ impl Item {
          if !self.available() {
              return Some("This feature is not yet available in Horizon.");
          }
@@ -7017,7 +7112,7 @@ index 8c1c1c5..5b741e6 100644
          match self {
              Item::Horizon(
                  H::Hdr
-@@ -1146,7 +1331,7 @@ impl Item {
+@@ -1146,7 +1335,7 @@ impl Item {
              && self.slider(s).is_none()
              && !matches!(
                  self,
@@ -7026,7 +7121,7 @@ index 8c1c1c5..5b741e6 100644
              )
      }
      /// On/off settings and their value.
-@@ -1182,6 +1367,8 @@ impl Item {
+@@ -1182,6 +1371,8 @@ impl Item {
              }
              Item::Vanilla(Opt::Vsync) => s.vsync,
              Item::Extra(e) => return e.switch(&s.extras),
@@ -7035,7 +7130,7 @@ index 8c1c1c5..5b741e6 100644
              Item::Vanilla(Opt::Fullscreen) => s.fullscreen,
              Item::Vanilla(Opt::ExclusiveFullscreen) => s.file.bool("exclusiveFullscreen"),
              Item::Vanilla(Opt::SmoothLighting) => s.smooth_lighting,
-@@ -1197,7 +1384,7 @@ impl Item {
+@@ -1197,7 +1388,7 @@ impl Item {
          match self {
              Item::Vanilla(o) => o.slider_position(s),
              Item::Horizon(h) => h.slider(s),
@@ -7044,7 +7139,7 @@ index 8c1c1c5..5b741e6 100644
          }
      }
      pub fn label(self, s: &Settings) -> Text {
-@@ -1212,6 +1399,21 @@ impl Item {
+@@ -1212,6 +1403,21 @@ impl Item {
                  Text::literal(e.caption_text()),
                  Text::literal(e.value(&s.extras)),
              ),
@@ -7066,7 +7161,7 @@ index 8c1c1c5..5b741e6 100644
          }
      }
      pub fn set_slider(self, s: &mut Settings, v: f32) {
-@@ -1222,7 +1424,7 @@ impl Item {
+@@ -1222,7 +1428,7 @@ impl Item {
              // Options.applyGraphicsPreset, as Video Settings' slider does it.
              Item::Vanilla(o) => crate::options_ui::set_slider(o, s, v),
              Item::Horizon(h) => h.set_slider(s, v),
@@ -7075,7 +7170,7 @@ index 8c1c1c5..5b741e6 100644
          }
          self.touched(s);
      }
-@@ -1234,6 +1436,8 @@ impl Item {
+@@ -1234,6 +1440,8 @@ impl Item {
              Item::Vanilla(o) => o.cycle(s, back, framebuffer),
              Item::Horizon(h) => h.cycle(s, back),
              Item::Extra(e) => e.cycle(&mut s.extras, back),
@@ -7084,7 +7179,7 @@ index 8c1c1c5..5b741e6 100644
          }
          self.touched(s);
      }
-@@ -1242,6 +1446,8 @@ impl Item {
+@@ -1242,6 +1450,8 @@ impl Item {
          let presetless = matches!(
              self,
              Item::Extra(_)
@@ -7093,7 +7188,7 @@ index 8c1c1c5..5b741e6 100644
                  | Item::Horizon(
                      H::Preset
                          | H::BlueMapAutoDetect
-@@ -1283,7 +1489,7 @@ impl Item {
+@@ -1283,7 +1493,7 @@ impl Item {
          match self {
              Item::Vanilla(o) => o.slider_steps(),
              Item::Horizon(h) => h.slider_steps(),
@@ -7102,7 +7197,7 @@ index 8c1c1c5..5b741e6 100644
          }
      }
      pub fn step_slider(self, s: &mut Settings, forward: bool, width: f32) {
-@@ -1311,6 +1517,8 @@ pub enum Action {
+@@ -1311,6 +1521,8 @@ pub enum Action {
      Calibrate,
      /// Open the shader pack list.
      ShaderPacks,
@@ -7111,7 +7206,7 @@ index 8c1c1c5..5b741e6 100644
      Done,
  }
  
-@@ -1342,6 +1550,19 @@ fn parts(item: Item, s: &Settings, binding: bool) -> (String, Option<String>) {
+@@ -1342,6 +1554,19 @@ fn parts(item: Item, s: &Settings, binding: bool) -> (String, Option<String>) {
      shell::name_and_value(&item.label(s).plain())
  }
  
@@ -7131,7 +7226,7 @@ index 8c1c1c5..5b741e6 100644
  pub struct GraphicsUi {
      /// The list's scroll amount and its held scrollbar (`AbstractScrollArea`).
      scroll: ui::Scroll,
-@@ -1819,6 +2040,7 @@ impl GraphicsUi {
+@@ -1819,6 +2044,7 @@ impl GraphicsUi {
              }
              Item::Horizon(H::HdrCalibrate) => vec![Action::ButtonClick, Action::Calibrate],
              Item::Horizon(H::ShaderPacks) => vec![Action::ButtonClick, Action::ShaderPacks],
@@ -7139,7 +7234,7 @@ index 8c1c1c5..5b741e6 100644
              Item::Horizon(H::HdrKey) => {
                  vec![
                      Action::ButtonClick,
-@@ -2233,7 +2455,7 @@ mod tests {
+@@ -2233,7 +2459,7 @@ mod tests {
              false,
          );
          let (_, lines, _) = ui.layout(&s, size.0, size.1);
@@ -7148,7 +7243,7 @@ index 8c1c1c5..5b741e6 100644
      }
  
      #[test]
-@@ -2277,7 +2499,8 @@ mod tests {
+@@ -2277,7 +2503,8 @@ mod tests {
                  .is_some_and(|r| r.item == Item::Vanilla(Opt::Vsync))
          }));
          ui.search.set_value("hdr");
@@ -7158,7 +7253,7 @@ index 8c1c1c5..5b741e6 100644
          press(&mut ui, &mut s, (x + w / 2.0, y + h / 2.0));
          assert_eq!(ui.current(&ui.lines(&s).0), Some(Page::Hdr));
          let [x, y, ..] = cols.clear();
-@@ -2582,7 +2805,7 @@ mod tests {
+@@ -2582,7 +2809,7 @@ mod tests {
          // Up from Done: the page list's last page.
          ui.focus = Some(Target::Done);
          ui.key_modifiers(&mut s, K::ArrowUp, None, false, SIZE, FB);
@@ -8238,10 +8333,10 @@ index 2ead838..6750b68 100644
          }
      }
 diff --git a/crates/horizon-client/assets/horizon/lang/en_us.json b/crates/horizon-client/assets/horizon/lang/en_us.json
-index 7466983..a716d49 100644
+index 7466983..fa96a25 100644
 --- a/crates/horizon-client/assets/horizon/lang/en_us.json
 +++ b/crates/horizon-client/assets/horizon/lang/en_us.json
-@@ -720,6 +720,94 @@
+@@ -720,6 +720,98 @@
    "horizon.pages.pvp": "PvP & HUD",
    "horizon.pages.pvp.tooltip": "Crosshair, HUD and PvP settings, all off by default. Nothing here shows what vanilla doesn't.",
    "horizon.pages.open.pvp": "PvP & HUD...",
@@ -8298,6 +8393,10 @@ index 7466983..a716d49 100644
 +  "horizon.imc.cursorDragGrab.tooltip": "On: tap, then quickly touch again and drag to carry a stack. Off: that never happens, which stops a quick second tap from picking things up.",
 +  "horizon.imc.worldControls": "World controls",
 +  "horizon.imc.worldControls.tooltip": "Bedrock: tap the world to hit or place, hold to break. Classic: tap hits, hold mines, and placing is only the Use button.",
++  "horizon.imc.airHold": "Hold on air to use",
++  "horizon.imc.airHold.tooltip": "Bedrock world controls only. On: resting your finger on empty air (no block or mob under the crosshair) keeps using the item, so you can keep placing. Off (the default): a rest on air does nothing, and a quick tap still places. Holding on a block or mob to break or attack is not affected.",
++  "horizon.imc.airHoldDelay": "Air hold delay",
++  "horizon.imc.airHoldDelay.tooltip": "How much longer your finger must rest on empty air, after the normal hold time, before it keeps using. Longer means a thumb that lingers never starts placing by accident. Only matters when Hold on air to use is on.",
 +  "horizon.imc.cursorSpeed": "Cursor speed",
 +  "horizon.imc.cursorSpeed.tooltip": "How far the cursor moves for each bit your finger travels. Higher reaches the far corner of the inventory with a short swipe; lower is steadier for small slots.",
 +  "horizon.imc.autoSprint": "Auto sprint",
@@ -8336,7 +8435,7 @@ index 7466983..a716d49 100644
    "horizon.pvp.header.crosshair": "Crosshair",
    "horizon.pvp.crosshair": "Custom crosshair",
    "horizon.pvp.crosshair_shape": "Shape",
-@@ -982,5 +1070,15 @@
+@@ -982,5 +1074,15 @@
    "horizon.recipe_transfer.missing": "Missing Items",
    "horizon.recipe_transfer.no_room": "Inventory full",
    "horizon.recipe_transfer.unavailable": "Recipe does not fit this menu",
@@ -9719,10 +9818,10 @@ index 3fd7216..b580545 100644
              Action::Accessibility => self.open_menu_options(Page::Accessibility),
 diff --git a/crates/horizon-client/src/game/touch.rs b/crates/horizon-client/src/game/touch.rs
 new file mode 100644
-index 0000000..c305adf
+index 0000000..c41b018
 --- /dev/null
 +++ b/crates/horizon-client/src/game/touch.rs
-@@ -0,0 +1,1006 @@
+@@ -0,0 +1,1032 @@
 +//! Touch on a phone: fingers become the inputs the game already has.
 +//!
 +//! The finger logic is `horizon_client_input::touch` (pure, unit tested). This file only
@@ -9996,6 +10095,9 @@ index 0000000..c305adf
 +    /// Bedrock style: what a finger resting on the world is holding, chosen once when the hold
 +    /// began so it never flips mid-hold.
 +    world_hold: Option<Button>,
++    /// Bedrock style: since when a finger has rested on empty air, waiting out the air hold delay
++    /// (`Hold on air to use`) before it keeps using. `None` when nothing waits.
++    air_wait: Option<f64>,
 +    /// A one-tick pulse waiting to be let go (a Bedrock tap), and the tick it was pressed on.
 +    pulse: Option<(Button, u8)>,
 +    /// Touch was used since the app started: the controls draw only then, so a desktop run with
@@ -10027,6 +10129,7 @@ index 0000000..c305adf
 +            pointer: (0.0, 0.0),
 +            sprint_held: false,
 +            world_hold: None,
++            air_wait: None,
 +            pulse: None,
 +            seen: false,
 +            back_finger: None,
@@ -10197,6 +10300,7 @@ index 0000000..c305adf
 +        let actions = self.touch.logic.tick(now);
 +        self.touch_apply(event_loop, actions);
 +        self.touch_pulse_frame(event_loop);
++        self.touch_air_frame(event_loop);
 +        let stick = if self.touch.logic.mode() == Mode::Playing {
 +            self.touch.logic.stick()
 +        } else {
@@ -10248,6 +10352,7 @@ index 0000000..c305adf
 +        if let Some((button, _)) = self.touch.pulse.take() {
 +            self.touch_button(event_loop, button, false);
 +        }
++        self.touch.air_wait = None;
 +        if let Some(button) = self.touch.world_hold.take() {
 +            self.touch_button(event_loop, button, false);
 +        }
@@ -10442,6 +10547,23 @@ index 0000000..c305adf
 +        self.pick_unfiltered().is_some()
 +    }
 +
++    /// A finger that rested on empty air keeps using once the air hold delay has passed.
++    fn touch_air_frame(&mut self, event_loop: &dyn EventLoopCtl) {
++        let Some(began) = self.touch.air_wait else {
++            return;
++        };
++        let now = self.touch.started.elapsed().as_secs_f64();
++        let imc = &self.settings.imc;
++        if horizon_client_input::touch::air_hold_due(imc.air_hold, began, now, imc.air_hold_secs()) {
++            self.touch.air_wait = None;
++            self.touch.world_hold = Some(Button::LeftTrigger);
++            self.touch_button(event_loop, Button::LeftTrigger, true);
++        } else if !imc.air_hold {
++            // Switched off while waiting.
++            self.touch.air_wait = None;
++        }
++    }
++
 +    /// Lets go of a Bedrock tap's press once the game has had a tick to see it. The pad keeps a
 +    /// press for a frame at least (`late_releases`), so releasing on the second frame is safe.
 +    fn touch_pulse_frame(&mut self, event_loop: &dyn EventLoopCtl) {
@@ -10489,15 +10611,18 @@ index 0000000..c305adf
 +                // A rest on the world breaks what the crosshair is on, or keeps placing when it
 +                // is on nothing to break. Chosen when the hold begins and kept until it ends.
 +                TouchAction::Hold(true) => {
-+                    let button = if self.touch_aims_at_entity() || self.touch_aims_at_block() {
-+                        Button::RightTrigger
-+                    } else {
-+                        Button::LeftTrigger
-+                    };
-+                    self.touch.world_hold = Some(button);
-+                    self.touch_button(event_loop, button, true);
++                    if self.touch_aims_at_entity() || self.touch_aims_at_block() {
++                        self.touch.world_hold = Some(Button::RightTrigger);
++                        self.touch_button(event_loop, Button::RightTrigger, true);
++                    } else if self.settings.imc.air_hold {
++                        // Empty air: a rest there may be a thumb that lingered, so it only keeps
++                        // using after its own, longer delay (`touch_air_frame`). With the setting
++                        // off (the default) it does nothing; a quick tap still places.
++                        self.touch.air_wait = Some(self.touch.started.elapsed().as_secs_f64());
++                    }
 +                }
 +                TouchAction::Hold(false) => {
++                    self.touch.air_wait = None;
 +                    if let Some(button) = self.touch.world_hold.take() {
 +                        self.touch_button(event_loop, button, false);
 +                    }
