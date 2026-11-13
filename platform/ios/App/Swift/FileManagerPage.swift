@@ -200,7 +200,7 @@ struct FileManagerPage: View {
         .padding(.horizontal, 14).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .glassCard(cornerRadius: 20)
+        .tintedCard(cornerRadius: 20)
 
         Group {
             if e.isFolder {
@@ -272,7 +272,7 @@ struct TextFilePage: View {
                 if let text { LongText(text: text) } else { Text("This file is not UTF-8 text.").foregroundStyle(.secondary) }
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .glassCard(cornerRadius: 22)
+            .tintedCard(cornerRadius: 22)
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .screenBackground()

@@ -43,6 +43,9 @@ struct RootView: View {
         .tint(look.brand)
         .environment(\.brand, look.brand)
         .environment(\.brand2, look.brand2)
+        .environment(\.brandDeep, look.brandDeep)
+        .environment(\.brand2Deep, look.brand2Deep)
+        .environment(\.lightweight, look.lightweight)
         .onAppear { state.refresh() }
         .onChange(of: tab) { _ in state.refresh() }
         .onChange(of: path) { _ in state.refresh() }

@@ -36,21 +36,28 @@
         if (problem) *problem = @"horizon-resources.json is not in the resources folder.";
         return HZFilesMissing;
     }
-    NSData *data = [NSData dataWithContentsOfFile:manifest];
-    // Empty means nothing but ASCII whitespace, as the engine tests it (`all(is_ascii_whitespace)`).
-    BOOL blank = YES;
-    const unsigned char *bytes = data.bytes;
-    for (NSUInteger i = 0; i < data.length && blank; i++) {
-        unsigned char c = bytes[i];
-        blank = (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f');
-    }
-    if (blank) {
-        if (problem) *problem = @"horizon-resources.json is empty.";
-        return HZFilesDamaged;
-    }
-    if (![NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingAllowFragments error:nil]) {
-        if (problem) *problem = @"horizon-resources.json is not valid JSON.";
-        return HZFilesDamaged;
+    // The manifest is large, and reading and parsing it all was the whole wait behind "Checking the game files". A
+    // manifest that passed once is not read again while its size and date are the same (launcher.txt, `filesOK:`).
+    NSDictionary *mattr = [fm attributesOfItemAtPath:manifest error:nil];
+    NSString *signature = mattr ? [NSString stringWithFormat:@"%llu-%lld", [mattr fileSize], (long long)[[mattr fileModificationDate] timeIntervalSince1970]] : nil;
+    if (!(signature && [[HZTheme settingFor:@"filesOK"] isEqualToString:signature])) {
+        NSData *data = [NSData dataWithContentsOfFile:manifest];
+        // Empty means nothing but ASCII whitespace, as the engine tests it (`all(is_ascii_whitespace)`).
+        BOOL blank = YES;
+        const unsigned char *bytes = data.bytes;
+        for (NSUInteger i = 0; i < data.length && blank; i++) {
+            unsigned char c = bytes[i];
+            blank = (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f');
+        }
+        if (blank) {
+            if (problem) *problem = @"horizon-resources.json is empty.";
+            return HZFilesDamaged;
+        }
+        if (![NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingAllowFragments error:nil]) {
+            if (problem) *problem = @"horizon-resources.json is not valid JSON.";
+            return HZFilesDamaged;
+        }
+        if (signature) [HZTheme setSetting:signature for:@"filesOK"];
     }
     for (NSString *name in [fm contentsOfDirectoryAtPath:_resources error:nil]) {
         if (![name.pathExtension isEqualToString:@"json"]) continue;

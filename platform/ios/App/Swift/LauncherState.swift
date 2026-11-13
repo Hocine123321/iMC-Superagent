@@ -34,15 +34,15 @@ final class LauncherState: ObservableObject {
         refreshing = true
         let model = self.model
         let root = model.root as String
+        let resources = model.resources as String
         DispatchQueue.global(qos: .userInitiated).async {
+            // Stage 1: what the Play tab needs to show Play. The files check no longer parses the whole manifest when it
+            // passed before with the same size and date (LauncherModel.m), so this returns in milliseconds.
             var problem: NSString?
             let state = model.checkFiles(&problem)
             let account = HZAccountStore.shared().account()
             let name = account?.name, uuid = account?.uuid, owns = account?.owns ?? false
-            var crash = false
-            if let c = CrashFiles.newest() { crash = c.date.timeIntervalSince1970 > LauncherFile.number("crashSeen", default: 0) }
             let free = Self.freeSpace(at: root)
-            let size: Int64 = state == .ready ? Int64(clamping: model.resourcesSize()) : 0
             let why = (problem as String?) ?? ""
             DispatchQueue.main.async {
                 switch state {
@@ -54,12 +54,48 @@ final class LauncherState: ObservableObject {
                 self.accountName = name
                 self.accountUUID = uuid
                 self.accountOwns = owns
-                self.hasCrash = crash
                 self.freeBytes = free
+                if state != .ready { self.resourceBytes = 0 }
+            }
+            // Stage 2: the slower things, shown when they arrive. The size of the files is walked once per manifest and
+            // remembered (walking thousands of files at every tab change was most of the old "Checking the game files").
+            var crash = false
+            if let c = CrashFiles.newest() { crash = c.date.timeIntervalSince1970 > LauncherFile.number("crashSeen", default: 0) }
+            var size: Int64 = 0
+            if state == .ready {
+                let sig = Self.manifestSignature(resources)
+                if let sig, LauncherFile.get("resourcesKey") == sig {
+                    size = Int64(LauncherFile.number("resourcesBytes", default: 0))
+                } else {
+                    size = Int64(clamping: model.resourcesSize())
+                    if let sig { LauncherFile.set("resourcesKey", sig); LauncherFile.set("resourcesBytes", String(size)) }
+                }
+            }
+            DispatchQueue.main.async {
+                self.hasCrash = crash
                 self.resourceBytes = size
                 self.refreshing = false
                 if self.refreshAgain { self.refreshAgain = false; self.refresh() }
             }
+        }
+    }
+
+    /// "size-date" of the manifest, the same text LauncherModel.m keeps as `filesOK:`. Changes whenever the files are
+    /// replaced, imported again or deleted.
+    nonisolated static func manifestSignature(_ resources: String) -> String? {
+        let path = (resources as NSString).appendingPathComponent("horizon-resources.json")
+        guard let a = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = (a[.size] as? NSNumber)?.uint64Value, let date = a[.modificationDate] as? Date else { return nil }
+        return "\(size)-\(Int64(date.timeIntervalSince1970))"
+    }
+
+    init() {
+        // Paint the last known answer at once: the same manifest, unchanged since it last passed, is still ready. The
+        // refresh that follows confirms it (or downgrades it) a moment later.
+        let resources = model.resources as String
+        if let sig = Self.manifestSignature(resources), LauncherFile.get("filesOK") == sig {
+            files = .ready
+            resourceBytes = Int64(LauncherFile.number("resourcesBytes", default: 0))
         }
     }
 

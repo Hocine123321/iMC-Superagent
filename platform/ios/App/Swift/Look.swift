@@ -139,43 +139,97 @@ private func makeGlass(tint: Color?, interactive: Bool) -> Glass {
     return glass
 }
 
-extension View {
-    /// A card of system Liquid Glass on iOS 26 and later; the system's material before that.
-    @ViewBuilder func glassCard(cornerRadius: CGFloat = 26, tint: Color? = nil, interactive: Bool = false) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(makeGlass(tint: tint, interactive: interactive), in: .rect(cornerRadius: cornerRadius))
+/// One surface, three ways to draw it: system Liquid Glass (iOS 26 and later), the system's material (before that), or a
+/// plain tinted fill. The tinted fill is used when it is asked for outright (the file manager), or when Lightweight
+/// visuals is on and the surface is one of many or large (`repeated`): glass samples what is behind it on every frame it
+/// moves, so a list of twenty cards costs far more than one.
+private struct SurfaceModifier: ViewModifier {
+    enum Kind { case rect(CGFloat), capsule, circle }
+    let kind: Kind
+    let tint: Color?
+    let interactive: Bool
+    let repeated: Bool
+    let forceTinted: Bool
+    @Environment(\.lightweight) private var lightweight
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.brand) private var brand
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if forceTinted || (lightweight && repeated) {
+            content.background { tinted }
+        } else if #available(iOS 26.0, *) {
+            switch kind {
+            case .rect(let r): content.glassEffect(makeGlass(tint: tint, interactive: interactive), in: .rect(cornerRadius: r))
+            case .capsule: content.glassEffect(makeGlass(tint: tint, interactive: interactive), in: Capsule())
+            case .circle: content.glassEffect(makeGlass(tint: tint, interactive: interactive), in: Circle())
+            }
         } else {
-            self.background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(Color.white.opacity(0.10)))
+            switch kind {
+            case .rect(let r):
+                content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: r, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: r, style: .continuous).strokeBorder(Color.white.opacity(0.10)))
+            case .capsule:
+                content.background(.regularMaterial, in: Capsule()).overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
+            case .circle:
+                content.background(.regularMaterial, in: Circle()).overlay(Circle().strokeBorder(Color.white.opacity(0.10)))
+            }
         }
+    }
+
+    /// A flat fill: a faint neutral, a wash of the tint (or the accent), and a hairline. Nothing samples what is behind it.
+    @ViewBuilder private var tinted: some View {
+        let wash = (tint ?? brand).opacity(scheme == .dark ? 0.13 : 0.10)
+        let base = Color.primary.opacity(scheme == .dark ? 0.07 : 0.05)
+        let line = Color.primary.opacity(0.09)
+        switch kind {
+        case .rect(let r):
+            RoundedRectangle(cornerRadius: r, style: .continuous).fill(base)
+                .overlay(RoundedRectangle(cornerRadius: r, style: .continuous).fill(wash))
+                .overlay(RoundedRectangle(cornerRadius: r, style: .continuous).strokeBorder(line))
+        case .capsule:
+            Capsule().fill(base).overlay(Capsule().fill(wash)).overlay(Capsule().strokeBorder(line))
+        case .circle:
+            Circle().fill(base).overlay(Circle().fill(wash)).overlay(Circle().strokeBorder(line))
+        }
+    }
+}
+
+/// Secondary buttons: the system glass button, or the plain bordered one in lightweight mode.
+private struct SecondaryActionModifier: ViewModifier {
+    @Environment(\.lightweight) private var lightweight
+    @ViewBuilder func body(content: Content) -> some View {
+        if lightweight { content.buttonStyle(.bordered) }
+        else if #available(iOS 26.0, *) { content.buttonStyle(.glass) }
+        else { content.buttonStyle(.bordered) }
+    }
+}
+
+extension View {
+    /// A card of system Liquid Glass on iOS 26 and later; the system's material before that. `repeated` marks the cards
+    /// that come in numbers or cover a lot of the screen (list rows, groups), which Lightweight visuals draws flat.
+    func glassCard(cornerRadius: CGFloat = 26, tint: Color? = nil, interactive: Bool = false, repeated: Bool = false) -> some View {
+        modifier(SurfaceModifier(kind: .rect(cornerRadius), tint: tint, interactive: interactive, repeated: repeated, forceTinted: false))
     }
 
     /// The same in a capsule: chips, small status pills.
-    @ViewBuilder func glassCapsule(tint: Color? = nil, interactive: Bool = false) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(makeGlass(tint: tint, interactive: interactive), in: Capsule())
-        } else {
-            self.background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
-        }
+    func glassCapsule(tint: Color? = nil, interactive: Bool = false, repeated: Bool = true) -> some View {
+        modifier(SurfaceModifier(kind: .capsule, tint: tint, interactive: interactive, repeated: repeated, forceTinted: false))
     }
 
-    @ViewBuilder func glassCircle(tint: Color? = nil, interactive: Bool = false) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(makeGlass(tint: tint, interactive: interactive), in: Circle())
-        } else {
-            self.background(.regularMaterial, in: Circle())
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.10)))
-        }
+    func glassCircle(tint: Color? = nil, interactive: Bool = false, repeated: Bool = false) -> some View {
+        modifier(SurfaceModifier(kind: .circle, tint: tint, interactive: interactive, repeated: repeated, forceTinted: false))
+    }
+
+    /// A flat tinted card, always: for screens that are long lists (the file manager), where glass would be too much.
+    func tintedCard(cornerRadius: CGFloat = 20, tint: Color? = nil) -> some View {
+        modifier(SurfaceModifier(kind: .rect(cornerRadius), tint: tint, interactive: false, repeated: true, forceTinted: true))
     }
 
     @ViewBuilder func primaryAction() -> some View {
         if #available(iOS 26.0, *) { self.buttonStyle(.glassProminent) } else { self.buttonStyle(.borderedProminent) }
     }
 
-    @ViewBuilder func secondaryAction() -> some View {
-        if #available(iOS 26.0, *) { self.buttonStyle(.glass) } else { self.buttonStyle(.bordered) }
-    }
+    func secondaryAction() -> some View { modifier(SecondaryActionModifier()) }
 
     /// A round button. `buttonBorderShape(.circle)` needs iOS 17; the deployment target is 16.
     @ViewBuilder func circleShape() -> some View {
@@ -226,7 +280,7 @@ struct GlassGroup<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) { content }
             .frame(maxWidth: .infinity)
-            .glassCard(cornerRadius: 24)
+            .glassCard(cornerRadius: 24, repeated: true)
     }
 }
 
@@ -246,11 +300,13 @@ struct IconTile: View {
     var size: CGFloat = 34
     @Environment(\.brand) private var brand
     @Environment(\.brand2) private var brand2
+    @Environment(\.brandDeep) private var brandDeep
+    @Environment(\.brand2Deep) private var brand2Deep
 
     private var colours: [Color] {
         switch tone {
-        case .brand: return [brand, Palette.blueDeep.opacity(0.9)]
-        case .brand2: return [brand2, Palette.redDeep.opacity(0.9)]
+        case .brand: return [brand, brandDeep]
+        case .brand2: return [brand2, brand2Deep]
         case .neutral: return [Color.gray, Color.gray.opacity(0.7)]
         case .ok: return [Palette.ok, Palette.ok.opacity(0.7)]
         case .warn: return [Palette.warn, Palette.warn.opacity(0.7)]
@@ -325,12 +381,13 @@ struct StatusPill: View {
     enum Kind { case ok, warn, bad, info }
     let kind: Kind
     let text: String
+    @Environment(\.brand) private var brand
     private var colour: Color {
         switch kind {
         case .ok: return Palette.ok
         case .warn: return Palette.warn
         case .bad: return Palette.red
-        case .info: return Palette.blue
+        case .info: return brand
         }
     }
     var body: some View {
@@ -397,32 +454,73 @@ struct LongText: View {
 
 // MARK: - The mark
 
-/// The app's mark: an isometric block, blue on one side and red on the other, with a bright top. Drawn in code so it
-/// is the same picture as the app icon (tools/make_app_icon.py) at any size.
+/// The app's mark: a Minecraft dirt block with an iPhone Dynamic Island over it, a thin blue-to-red glow around the island.
+/// Drawn in code, so it is the same picture as the app icon (tools/make_app_icon.py) at any size.
 struct BrandMark: View {
+    var showsIsland = true
+
+    // The dirt texture's browns (the game's own dirt, three of them common, a few darker and lighter).
+    private static let dirt: [(Double, Double, Double)] = [
+        (134, 96, 67), (134, 96, 67), (134, 96, 67), (121, 85, 58), (121, 85, 58), (150, 108, 74), (110, 76, 52), (160, 118, 84), (96, 66, 44),
+    ]
+
+    private static func cell(_ face: Int, _ i: Int, _ j: Int) -> (Double, Double, Double) {
+        let h = abs((face &* 7919) ^ (i &* 73856093) ^ (j &* 19349663))
+        return dirt[h % dirt.count]
+    }
+
     var body: some View {
-        GeometryReader { g in
-            let s = min(g.size.width, g.size.height)
-            let r = s * 0.5, h = r * 0.8660254
-            let cx = g.size.width / 2, cy = g.size.height / 2
-            let t = CGPoint(x: cx, y: cy - r), tr = CGPoint(x: cx + h, y: cy - r / 2), br = CGPoint(x: cx + h, y: cy + r / 2)
-            let b = CGPoint(x: cx, y: cy + r), bl = CGPoint(x: cx - h, y: cy + r / 2), tl = CGPoint(x: cx - h, y: cy - r / 2)
-            let c = CGPoint(x: cx, y: cy)
-            ZStack {
-                Path { p in p.move(to: tl); p.addLine(to: c); p.addLine(to: b); p.addLine(to: bl); p.closeSubpath() }
-                    .fill(LinearGradient(colors: [Color(red: 0.25, green: 0.47, blue: 1.0), Color(red: 0.10, green: 0.22, blue: 0.70)],
-                                         startPoint: .top, endPoint: .bottom))
-                Path { p in p.move(to: c); p.addLine(to: tr); p.addLine(to: br); p.addLine(to: b); p.closeSubpath() }
-                    .fill(LinearGradient(colors: [Color(red: 1.0, green: 0.32, blue: 0.38), Color(red: 0.66, green: 0.08, blue: 0.20)],
-                                         startPoint: .top, endPoint: .bottom))
-                Path { p in p.move(to: t); p.addLine(to: tr); p.addLine(to: c); p.addLine(to: tl); p.closeSubpath() }
-                    .fill(LinearGradient(colors: [Color.white, Color(red: 0.78, green: 0.86, blue: 1.0)], startPoint: .top, endPoint: .bottom))
-                Path { p in
-                    p.move(to: tl); p.addLine(to: c); p.addLine(to: tr)
-                    p.move(to: c); p.addLine(to: b)
+        Canvas { ctx, size in
+            let s = min(size.width, size.height)
+            let cx = size.width / 2, cy = size.height / 2 + s * 0.06
+            let r = s * 0.40, h = r * 0.8660254
+            let T = CGPoint(x: cx, y: cy - r), TR = CGPoint(x: cx + h, y: cy - r / 2), TL = CGPoint(x: cx - h, y: cy - r / 2)
+            let C = CGPoint(x: cx, y: cy), BL = CGPoint(x: cx - h, y: cy + r / 2), B = CGPoint(x: cx, y: cy + r)
+            let n = 6
+            func face(_ id: Int, _ o: CGPoint, _ u: CGPoint, _ v: CGPoint, _ shade: Double) {
+                let ux = u.x - o.x, uy = u.y - o.y, vx = v.x - o.x, vy = v.y - o.y
+                func pt(_ a: Double, _ b: Double) -> CGPoint { CGPoint(x: o.x + ux * a / Double(n) + vx * b / Double(n), y: o.y + uy * a / Double(n) + vy * b / Double(n)) }
+                for j in 0..<n {
+                    for i in 0..<n {
+                        var path = Path()
+                        path.move(to: pt(Double(i), Double(j)))
+                        path.addLine(to: pt(Double(i + 1), Double(j)))
+                        path.addLine(to: pt(Double(i + 1), Double(j + 1)))
+                        path.addLine(to: pt(Double(i), Double(j + 1)))
+                        path.closeSubpath()
+                        let c = Self.cell(id, i, j)
+                        ctx.fill(path, with: .color(Color(red: min(1, c.0 * shade / 255), green: min(1, c.1 * shade / 255), blue: min(1, c.2 * shade / 255))))
+                        ctx.stroke(path, with: .color(Color(red: min(1, c.0 * shade / 255), green: min(1, c.1 * shade / 255), blue: min(1, c.2 * shade / 255))), lineWidth: 0.5)
+                    }
                 }
-                .stroke(Color.white.opacity(0.55), lineWidth: max(1, s * 0.012))
             }
+            face(0, T, TR, TL, 1.12)
+            face(1, TL, C, BL, 0.86)
+            face(2, C, TR, B, 0.64)
+            var edge = Path()
+            edge.move(to: TL); edge.addLine(to: C); edge.addLine(to: TR)
+            ctx.stroke(edge, with: .color(Color(red: 1, green: 0.92, blue: 0.82).opacity(0.5)), lineWidth: max(0.8, s * 0.012))
+
+            guard showsIsland else { return }
+            // The Dynamic Island: a black pill across the top of the block, a blue-to-red glow around it, the camera lens on the right.
+            let pw = s * 0.60, ph = s * 0.17
+            let pill = CGRect(x: cx - pw / 2, y: cy - r * 0.80 - ph / 2, width: pw, height: ph)
+            let shape = Path(roundedRect: pill, cornerRadius: ph / 2)
+            ctx.fill(Path(roundedRect: pill.offsetBy(dx: 0, dy: s * 0.015), cornerRadius: ph / 2), with: .color(.black.opacity(0.35)))
+            ctx.fill(shape, with: .color(Color(red: 0.024, green: 0.024, blue: 0.035)))
+            ctx.stroke(shape, with: .linearGradient(Gradient(colors: [Color(red: 0.2, green: 0.4, blue: 1), Color(red: 1, green: 0.24, blue: 0.33)]),
+                                                    startPoint: CGPoint(x: pill.minX, y: pill.midY), endPoint: CGPoint(x: pill.maxX, y: pill.midY)),
+                       lineWidth: max(1, s * 0.016))
+            let lr = ph * 0.30, lx = pill.maxX - ph * 0.52, ly = pill.midY
+            ctx.fill(Path(ellipseIn: CGRect(x: lx - lr, y: ly - lr, width: lr * 2, height: lr * 2)), with: .color(Color(red: 0.10, green: 0.11, blue: 0.15)))
+            ctx.fill(Path(ellipseIn: CGRect(x: lx - lr * 0.72, y: ly - lr * 0.72, width: lr * 1.44, height: lr * 1.44)), with: .color(Color(red: 0.05, green: 0.06, blue: 0.17)))
+            ctx.fill(Path(ellipseIn: CGRect(x: lx - lr * 0.36, y: ly - lr * 0.46, width: lr * 0.3, height: lr * 0.3)), with: .color(Color(red: 0.47, green: 0.55, blue: 1)))
+            // The app inside its own island: a tiny dirt block.
+            let mr = ph * 0.34, mcx = pill.minX + ph * 0.62, mcy = pill.midY, mh = mr * 0.8660254
+            func tri(_ pts: [CGPoint], _ c: Color) { var p = Path(); p.addLines(pts); p.closeSubpath(); ctx.fill(p, with: .color(c)) }
+            tri([CGPoint(x: mcx, y: mcy - mr), CGPoint(x: mcx + mh, y: mcy - mr / 2), CGPoint(x: mcx, y: mcy), CGPoint(x: mcx - mh, y: mcy - mr / 2)], Color(red: 0.62, green: 0.45, blue: 0.31))
+            tri([CGPoint(x: mcx - mh, y: mcy - mr / 2), CGPoint(x: mcx, y: mcy), CGPoint(x: mcx, y: mcy + mr), CGPoint(x: mcx - mh, y: mcy + mr / 2)], Color(red: 0.46, green: 0.33, blue: 0.22))
+            tri([CGPoint(x: mcx, y: mcy), CGPoint(x: mcx + mh, y: mcy - mr / 2), CGPoint(x: mcx + mh, y: mcy + mr / 2), CGPoint(x: mcx, y: mcy + mr)], Color(red: 0.34, green: 0.24, blue: 0.16))
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityHidden(true)

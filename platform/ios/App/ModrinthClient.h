@@ -53,6 +53,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 // ---- Network (main queue callbacks) ----
 - (void)searchText:(NSString *)text offset:(NSUInteger)offset completion:(void (^)(NSArray<HZModrinthProject *> *_Nullable projects, NSUInteger total, NSString *_Nullable error))done;
+// The project's long description (Markdown, as the author wrote it), for the project page. The search reply only carries
+// the one-line summary. Capped at 60,000 characters.
+- (void)bodyOfProject:(HZModrinthProject *)project completion:(void (^)(NSString *_Nullable body, NSString *_Nullable error))done
+    NS_SWIFT_NAME(body(of:completion:));
 - (void)newestVersionOf:(HZModrinthProject *)project completion:(void (^)(HZModrinthVersion *_Nullable version, NSString *_Nullable error))done NS_SWIFT_NAME(newestVersion(of:completion:));
 @end
 

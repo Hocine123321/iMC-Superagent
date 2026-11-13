@@ -127,3 +127,15 @@ Not yet seen on a phone. The first builds failed on missing bridging-header impo
 compiler's first errors as annotations (`ios-app.yml`, "Report compiler errors as annotations"), which is how they were read.
 Another session worked in the same repository at the same time (lag passes, Developer options, in-process Play); the two
 sets of commits were rebased onto each other without conflict except one duplicate fix.
+
+## Launcher follow-ups (2026-11-13)
+
+| Change | Why |
+|---|---|
+| The engine draws nothing and wakes every 50 ms while it waits for Play behind the launcher (`Loading::about_to_wait`, `Loading::draw`; `HORIZON_CHANGES.md`) | With Play without closing the app, the covered engine window rendered its title panorama every frame under `ControlFlow::Poll`: GPU and main-thread work for nothing, heat, and a launcher that competed with it |
+| New app icon and mark: a dirt block with a Dynamic Island over it | The owner's idea; `tools/make_app_icon.py`, `BrandMark` |
+| Two free colours, nine presets, default blue with a little red; Lightweight visuals | `Palette.swift`, `Prefs.swift`, `Look.swift`, Settings > Look |
+| The Account head loads: Mojang names its skins with an `http://textures.minecraft.net` address, which the first version refused (it required https); it now asks the same server over https, and the page says why when there is no head | `SkinHead.swift` |
+| Marketplace pages; Modrinth Description with Expand | `MarketplaceTab.swift`, `MarketDetailPage.swift`, `MarkdownText.swift`, `ModrinthClient.m` (`bodyOfProject`) |
+| File manager rows are flat tinted cards | Glass on a long list is the expensive case |
+| "Checking the game files" no longer waits for the whole manifest to be parsed and the folder to be walked: the verdict is remembered per manifest size and date (`filesOK:`), the size of the files likewise (`resourcesKey:`), the Play tab paints the remembered answer at once, and the slow reads arrive after the first | `LauncherModel.m` `checkFiles:`, `LauncherState.refresh()` |

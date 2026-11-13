@@ -39,16 +39,13 @@ enum LauncherFile {
 final class Prefs: ObservableObject {
     static let shared = Prefs()
 
-    enum Accent: String, CaseIterable, Identifiable {
-        case blue, red
-        var id: String { rawValue }
-        var title: String { self == .blue ? "Blue" : "Red" }
-    }
-
     // Look
     @Published var appearance: Int { didSet { HZTheme.setAppearance(HZAppearance(rawValue: appearance) ?? .system) } }
-    @Published var accent: Accent { didSet { LauncherFile.set("accent", accent.rawValue) } }
-    /// 0 is all blue, 1 is all red; the middle is an even mix behind the launcher.
+    /// The two colours of the launcher (RRGGBB), chosen from the presets or picked freely. The first is the accent.
+    @Published var colour1: UInt32 { didSet { LauncherFile.set("colour1", Palette.hexString(colour1)) } }
+    @Published var colour2: UInt32 { didSet { LauncherFile.set("colour2", Palette.hexString(colour2)) } }
+    /// 0 is all the first colour, 1 is all the second; the middle is an even mix behind the launcher. The default
+    /// (0.3) is blue with a little red.
     @Published var balance: Double { didSet { LauncherFile.set("balance", String(format: "%.2f", balance)) } }
     /// How strongly the colour shows behind the launcher (kept as "glass:" from the first version).
     @Published var intensity: Double { didSet { HZTheme.setGlassStrength(Float(intensity)) } }
@@ -56,6 +53,10 @@ final class Prefs: ObservableObject {
     @Published var reduceMotion: Bool { didSet { HZPrefs.setReduceMotion(reduceMotion) } }
     @Published var compactLists: Bool { didSet { HZPrefs.setCompactLists(compactLists) } }
     @Published var showHead: Bool { didSet { LauncherFile.set("showHead", String(showHead)) } }
+    /// Lightweight visuals: repeated and large Liquid Glass surfaces become plain tinted ones.
+    @Published var lightweight: Bool { didSet { LauncherFile.set("lightweight", String(lightweight)) } }
+    /// ... and also on their own while Low Power Mode is on.
+    @Published var lightweightAuto: Bool { didSet { LauncherFile.set("lightweightAuto", String(lightweightAuto)) } }
 
     // Game
     @Published var opensGameDirectly: Bool { didSet { HZLauncherModel.shared()!.opensGameDirectly = opensGameDirectly } }
@@ -74,18 +75,38 @@ final class Prefs: ObservableObject {
     @Published var showOtherKinds: Bool { didSet { HZPrefs.setShowOtherKinds(showOtherKinds) } }
     @Published var confirmInstalls: Bool { didSet { HZPrefs.setConfirmInstalls(confirmInstalls) } }
 
-    var brand: Color { accent == .red ? Palette.red : Palette.blue }
-    var brand2: Color { accent == .red ? Palette.blue : Palette.red }
+    var brand: Color { Palette.dynamic(hex: colour1) }
+    var brand2: Color { Palette.dynamic(hex: colour2) }
+
+    /// The preset the two colours match, if any (a custom pair matches none).
+    var activePreset: ThemePreset? { ThemePreset.all.first { $0.first == colour1 && $0.second == colour2 } }
+
+    func apply(_ preset: ThemePreset) {
+        colour1 = preset.first
+        colour2 = preset.second
+        balance = preset.balance
+    }
+
+    func swapColours() {
+        let a = colour1
+        colour1 = colour2
+        colour2 = a
+    }
 
     private init() {
         appearance = HZTheme.appearance().rawValue
-        accent = Accent(rawValue: LauncherFile.get("accent") ?? "") ?? .blue
-        balance = min(1, max(0, LauncherFile.number("balance", default: 0.5)))
+        // The first version only had "accent:red" or blue; that becomes the same pair of colours.
+        let legacyRed = LauncherFile.get("accent") == "red"
+        colour1 = Palette.hex(from: LauncherFile.get("colour1")) ?? (legacyRed ? ThemePreset.all[1].first : ThemePreset.standard.first)
+        colour2 = Palette.hex(from: LauncherFile.get("colour2")) ?? (legacyRed ? ThemePreset.all[1].second : ThemePreset.standard.second)
+        balance = min(1, max(0, LauncherFile.number("balance", default: ThemePreset.standard.balance)))
         intensity = Double(HZTheme.glassStrength())
         haptics = LauncherFile.flag("haptics", default: true)
         reduceMotion = HZPrefs.reduceMotion()
         compactLists = HZPrefs.compactLists()
         showHead = LauncherFile.flag("showHead", default: true)
+        lightweight = LauncherFile.flag("lightweight", default: false)
+        lightweightAuto = LauncherFile.flag("lightweightAuto", default: true)
         opensGameDirectly = HZLauncherModel.shared()!.opensGameDirectly
         inProcessPlay = HZLauncherModel.shared()!.inProcessPlay
         confirmPlay = LauncherFile.flag("confirmPlay", default: true)
@@ -102,11 +123,12 @@ final class Prefs: ObservableObject {
     func resetLauncherSettings() {
         LauncherFile.resetAll()
         appearance = HZAppearance.system.rawValue
-        accent = .blue
-        balance = 0.5
+        apply(ThemePreset.standard)
         intensity = 0.5
         haptics = true
         showHead = true
+        lightweight = false
+        lightweightAuto = true
         confirmPlay = true
         keepAwake = true
         devMode = false
@@ -122,25 +144,41 @@ final class Prefs: ObservableObject {
     }
 }
 
-/// Only the accent colour, for the views at the top of the tree. `Prefs` has twenty settings in one observable object, and
-/// a view that observes it is rebuilt when any of them changes: with the whole tab bar observing it, a slider drag in Look
-/// rebuilt every tab sixty times a second. The tab bar needs to know about the accent and nothing else.
+/// Only the colours and the lightweight switch, for the views at the top of the tree. `Prefs` has many settings in one
+/// observable object, and a view that observes it is rebuilt when any of them changes: with the whole tab bar observing it,
+/// a slider drag in Look rebuilt every tab sixty times a second. The tab bar needs the colours and nothing else.
 final class AccentLook: ObservableObject {
     static let shared = AccentLook()
-    @Published private(set) var accent: Prefs.Accent
+    @Published private(set) var colour1: UInt32
+    @Published private(set) var colour2: UInt32
+    @Published private(set) var lightweight: Bool
     private var watch: AnyCancellable?
+    private var powerWatch: AnyCancellable?
     private init() {
-        accent = Prefs.shared.accent
+        colour1 = Prefs.shared.colour1
+        colour2 = Prefs.shared.colour2
+        lightweight = Self.resolve()
         watch = Prefs.shared.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                let a = Prefs.shared.accent
-                if a != self.accent { self.accent = a }
-            }
+            .sink { [weak self] _ in self?.sync() }
+        powerWatch = NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.sync() }
     }
-    var brand: Color { accent == .red ? Palette.red : Palette.blue }
-    var brand2: Color { accent == .red ? Palette.blue : Palette.red }
+    private static func resolve() -> Bool {
+        Prefs.shared.lightweight || (Prefs.shared.lightweightAuto && ProcessInfo.processInfo.isLowPowerModeEnabled)
+    }
+    private func sync() {
+        let p = Prefs.shared
+        if p.colour1 != colour1 { colour1 = p.colour1 }
+        if p.colour2 != colour2 { colour2 = p.colour2 }
+        let l = Self.resolve()
+        if l != lightweight { lightweight = l }
+    }
+    var brand: Color { Palette.dynamic(hex: colour1) }
+    var brand2: Color { Palette.dynamic(hex: colour2) }
+    var brandDeep: Color { Palette.deep(hex: colour1) }
+    var brand2Deep: Color { Palette.deep(hex: colour2) }
 }
 
 enum Haptics {

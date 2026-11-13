@@ -1,16 +1,20 @@
-"""Draws the iMC Horizon app icon with code: a glass-like isometric block, blue on one side and red on the other,
-over a navy-to-wine ground with a blue-to-red horizon line. It is the same mark the launcher draws in SwiftUI
-(BrandMark in platform/ios/App/Swift/Look.swift). Three 1024x1024 variants for iOS (any / dark / tinted).
-No transparency, no baked rounded corners: iOS applies its own mask.
+"""Draws the iMC Horizon app icon with code: a Minecraft dirt block with an iPhone Dynamic Island over it, the whole
+idea in one picture ("Minecraft, on iOS"). The island carries a thin blue-to-red glow like a Live Activity, the two colours
+of the launcher. The same mark is drawn in SwiftUI by BrandMark (platform/ios/App/Swift/Look.swift).
+Three 1024x1024 variants for iOS (any / dark / tinted). No transparency and no baked rounded corners: iOS masks it.
 
     python3 tools/make_app_icon.py     # writes icon_light.png, icon_dark.png, icon_tinted.png here
     (copy them to platform/ios/Assets.xcassets/AppIcon.appiconset/icon-*.png)"""
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 import math
+import random
 
 S = 1024
-SS = 2                  # supersample for clean edges
+SS = 2
 W = S * SS
+
+DIRT = [(134, 96, 67), (134, 96, 67), (134, 96, 67), (121, 85, 58), (121, 85, 58), (150, 108, 74),
+        (110, 76, 52), (160, 118, 84), (96, 66, 44)]
 
 
 def lerp(a, b, t):
@@ -27,120 +31,132 @@ def vgradient(top, bottom, size=(W, W)):
 
 
 def glow(center, radius, colour, alpha):
-    """A soft round glow, as an RGBA layer."""
     layer = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    d.ellipse([center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius], fill=colour + (alpha,))
+    ImageDraw.Draw(layer).ellipse([center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius], fill=colour + (alpha,))
     return layer.filter(ImageFilter.GaussianBlur(radius * 0.55))
 
 
-def face(base, poly, top_colour, bottom_colour):
-    """Fills a polygon with a vertical gradient."""
-    ys = [p[1] for p in poly]
-    y0, y1 = int(min(ys)), int(max(ys)) + 1
-    grad = vgradient(top_colour, bottom_colour, (W, y1 - y0))
-    full = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    full.paste(grad, (0, y0))
-    mask = Image.new("L", (W, W), 0)
-    ImageDraw.Draw(mask).polygon(poly, fill=255)
-    base.alpha_composite(Image.composite(full, Image.new("RGBA", (W, W), (0, 0, 0, 0)), mask))
-    return mask
+def texture(seed, n=16):
+    rnd = random.Random(seed)
+    tex = [[rnd.choice(DIRT) for _ in range(n)] for _ in range(n)]
+    # A few darker clumps, as in the game's dirt.
+    for _ in range(n):
+        x, y = rnd.randrange(n), rnd.randrange(n)
+        tex[y][x] = (96, 66, 44)
+    return tex
 
 
-def lerp_pt(a, b, t):
-    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+def draw_dirt_block(im, cx, cy, r, n=16, seed=26):
+    """An isometric dirt block centred on (cx, cy), `r` from the centre to the top corner."""
+    h = r * math.sqrt(3) / 2
+    T = (cx, cy - r); TR = (cx + h, cy - r / 2); TL = (cx - h, cy - r / 2)
+    C = (cx, cy); BL = (cx - h, cy + r / 2); BR = (cx + h, cy + r / 2); B = (cx, cy + r)
+    tex = texture(seed, n)
+    d = ImageDraw.Draw(im)
+
+    def face(origin, u_end, v_end, shade):
+        ux, uy = u_end[0] - origin[0], u_end[1] - origin[1]
+        vx, vy = v_end[0] - origin[0], v_end[1] - origin[1]
+        for j in range(n):
+            for i in range(n):
+                p = lambda a, b: (origin[0] + ux * a / n + vx * b / n, origin[1] + uy * a / n + vy * b / n)
+                poly = [p(i, j), p(i + 1, j), p(i + 1, j + 1), p(i, j + 1)]
+                # A hair of overlap so no seams show between cells.
+                gx = sum(q[0] for q in poly) / 4; gy = sum(q[1] for q in poly) / 4
+                poly = [(q[0] + (q[0] - gx) * 0.04, q[1] + (q[1] - gy) * 0.04) for q in poly]
+                c = tex[j][i]
+                d.polygon(poly, fill=tuple(min(255, int(v * shade)) for v in c) + (255,))
+
+    face(T, TR, TL, 1.12)       # top
+    face(TL, C, BL, 0.86)       # left
+    face(C, TR, B, 0.64)        # right
+    d.line([TL, C, TR], fill=(255, 235, 210, 120), width=max(3, int(W * 0.004)), joint="curve")
+    d.line([C, B], fill=(0, 0, 0, 90), width=max(3, int(W * 0.004)))
+    d.line([T, TR, BR, B, BL, TL, T], fill=(30, 18, 10, 150), width=max(3, int(W * 0.0045)), joint="curve")
+    return (T, TR, TL, C, BL, BR, B)
 
 
 def draw(mode):
     light = mode == "light"
     if light:
-        ground_top, ground_bot = (226, 234, 255), (255, 232, 238)
-        blue_glow, red_glow = (70, 120, 255), (255, 80, 100)
-        glow_a = (120, 120)
+        top, bot = (222, 232, 255), (255, 228, 236)
+        blue, red = (70, 120, 255), (255, 80, 100)
+        ga = (120, 120)
     else:
-        ground_top, ground_bot = (6, 10, 30), (30, 9, 22)
-        blue_glow, red_glow = (50, 100, 255), (255, 60, 85)
-        glow_a = (190, 190)
+        top, bot = (6, 10, 30), (30, 9, 22)
+        blue, red = (50, 100, 255), (255, 60, 85)
+        ga = (190, 190)
 
-    im = vgradient(ground_top, ground_bot)
-    im.alpha_composite(glow((int(W * 0.18), int(W * 0.10)), int(W * 0.55), blue_glow, glow_a[0]))
-    im.alpha_composite(glow((int(W * 0.86), int(W * 0.94)), int(W * 0.60), red_glow, glow_a[1]))
+    im = vgradient(top, bot)
+    im.alpha_composite(glow((int(W * 0.15), int(W * 0.08)), int(W * 0.55), blue, ga[0]))
+    im.alpha_composite(glow((int(W * 0.88), int(W * 0.96)), int(W * 0.60), red, ga[1]))
 
-    # A faint block grid, fading out downwards.
-    grid = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(grid)
-    cell = W // 14
-    for r in range(15):
-        for c in range(15):
-            h = (r * 73856093) ^ (c * 19349663)
-            v = (abs(h) % 1000) / 1000
-            if v < 0.62:
-                continue
-            col = blue_glow if (h & 4) == 0 else red_glow
-            gd.rounded_rectangle([c * cell + 6, r * cell + 6, (c + 1) * cell - 6, (r + 1) * cell - 6], radius=18,
-                                 fill=col + (int(34 + (v - 0.62) * 150),))
-    fade = vgradient((255, 255, 255), (0, 0, 0)).convert("L")
-    grid.putalpha(ImageChops.multiply(grid.getchannel("A"), fade))
-    im.alpha_composite(grid)
-
-    # The horizon: a thin line, blue on the left to red on the right, with a glow.
-    hy = int(W * 0.70)
-    line = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(line)
-    for x in range(W):
-        c = lerp(blue_glow, red_glow, x / (W - 1))
-        ld.line([(x, hy), (x, hy + int(W * 0.006))], fill=tuple(int(v) for v in c) + (230,))
-    im.alpha_composite(line.filter(ImageFilter.GaussianBlur(W * 0.012)))
-    im.alpha_composite(line)
+    cx, cy, r = W // 2, int(W * 0.545), int(W * 0.325)
 
     # Shadow under the block.
     sh = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    ImageDraw.Draw(sh).ellipse([W * 0.27, W * 0.745, W * 0.73, W * 0.84], fill=(0, 0, 0, 120 if not light else 70))
-    im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(W * 0.022)))
+    ImageDraw.Draw(sh).ellipse([W * 0.24, W * 0.80, W * 0.76, W * 0.90], fill=(0, 0, 0, 130 if not light else 80))
+    im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(W * 0.025)))
 
-    # The block.
-    cx, cy, r = W // 2, int(W * 0.485), int(W * 0.30)
-    h = r * math.sqrt(3) / 2
-    T = (cx, cy - r); TR = (cx + h, cy - r / 2); BR = (cx + h, cy + r / 2)
-    B = (cx, cy + r); BL = (cx - h, cy + r / 2); TL = (cx - h, cy - r / 2); C = (cx, cy)
+    draw_dirt_block(im, cx, cy, r)
 
-    left_mask = face(im, [TL, C, B, BL], (78, 132, 255), (22, 48, 168))
-    right_mask = face(im, [C, TR, BR, B], (255, 96, 110), (160, 16, 48))
-    top_mask = face(im, [T, TR, C, TL], (255, 255, 255), (196, 214, 255))
+    # ---- The Dynamic Island: a black pill across the top of the block.
+    pw, ph = int(W * 0.56), int(W * 0.156)
+    pcx, pcy = cx, int(cy - r * 0.80)
+    box = [pcx - pw // 2, pcy - ph // 2, pcx + pw // 2, pcy + ph // 2]
 
-    # Glass: a soft diagonal gloss on each face, a lit rim along the top edges, a thin line between faces.
-    gloss = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(gloss)
-    # One broad, soft sheen across the top face and a lighter one down each side; blurred so no edge shows.
-    gd.polygon([lerp_pt(TL, T, 0.15), lerp_pt(TL, T, 0.75), lerp_pt(C, TR, 0.35), lerp_pt(TL, C, 0.45)], fill=(255, 255, 255, 60))
-    gd.polygon([TL, lerp_pt(TL, C, 0.5), lerp_pt(BL, B, 0.35), BL], fill=(255, 255, 255, 26))
-    gd.polygon([lerp_pt(C, TR, 0.5), TR, BR, lerp_pt(B, BR, 0.35)], fill=(255, 255, 255, 22))
-    gloss = gloss.filter(ImageFilter.GaussianBlur(W * 0.03))
-    all_mask = ImageChops.lighter(ImageChops.lighter(left_mask, right_mask), top_mask)
-    gloss.putalpha(ImageChops.multiply(gloss.getchannel("A"), all_mask))
-    im.alpha_composite(gloss)
+    # A Live Activity glow around it, blue to red.
+    glowl = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    ring = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(ring)
+    grad = Image.new("RGBA", (W, W))
+    gd = ImageDraw.Draw(grad)
+    for x in range(box[0] - 20, box[2] + 20):
+        t = min(1, max(0, (x - box[0]) / (box[2] - box[0])))
+        gd.line([(x, 0), (x, W)], fill=tuple(int(v) for v in lerp(blue, red, t)) + (255,))
+    pad = int(W * 0.010)
+    mask = Image.new("L", (W, W), 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad], radius=(ph + 2 * pad) // 2, fill=255)
+    md.rounded_rectangle(box, radius=ph // 2, fill=0)
+    ring.paste(grad, (0, 0), mask)
+    glowl = ring.filter(ImageFilter.GaussianBlur(W * 0.014))
+    im.alpha_composite(glowl)
+    im.alpha_composite(ring)
 
-    # A 2 x 2 grid of pixels on each side face, like a block texture.
-    tex = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    td = ImageDraw.Draw(tex)
-    for (a, b, c_, d_) in ((TL, C, B, BL), (C, TR, BR, B)):
-        for t in (0.5,):
-            td.line([lerp_pt(a, b, t), lerp_pt(d_, c_, t)], fill=(255, 255, 255, 46), width=max(2, int(W * 0.003)))
-            td.line([lerp_pt(a, d_, t), lerp_pt(b, c_, t)], fill=(255, 255, 255, 46), width=max(2, int(W * 0.003)))
-    tex.putalpha(ImageChops.multiply(tex.getchannel("A"), ImageChops.lighter(left_mask, right_mask)))
-    im.alpha_composite(tex)
+    # Its shadow on the block, then the pill itself.
+    psh = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    ImageDraw.Draw(psh).rounded_rectangle([box[0], box[1] + int(W * 0.018), box[2], box[3] + int(W * 0.018)], radius=ph // 2, fill=(0, 0, 0, 150))
+    im.alpha_composite(psh.filter(ImageFilter.GaussianBlur(W * 0.014)))
+    d = ImageDraw.Draw(im, "RGBA")
+    d.rounded_rectangle(box, radius=ph // 2, fill=(6, 6, 9, 255))
+    # A faint highlight along the top edge.
+    hl = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    ImageDraw.Draw(hl).rounded_rectangle([box[0] + 4, box[1] + 3, box[2] - 4, box[1] + ph // 2], radius=ph // 2, fill=(255, 255, 255, 9))
+    pm = Image.new("L", (W, W), 0)
+    ImageDraw.Draw(pm).rounded_rectangle(box, radius=ph // 2, fill=255)
+    hl.putalpha(ImageChops.multiply(hl.getchannel("A"), pm))
+    im.alpha_composite(hl)
 
     d = ImageDraw.Draw(im, "RGBA")
-    d.line([TL, C, TR], fill=(255, 255, 255, 150), width=max(3, int(W * 0.0045)), joint="curve")
-    d.line([C, B], fill=(255, 255, 255, 110), width=max(3, int(W * 0.004)))
-    d.line([T, TR, BR, B, BL, TL, T], fill=(255, 255, 255, 80), width=max(2, int(W * 0.003)), joint="curve")
-    d.line([TL, T, TR], fill=(255, 255, 255, 230), width=max(3, int(W * 0.0045)), joint="curve")
+    # The camera lens, right: dark ring, deep blue glass, a small reflection.
+    lr = int(ph * 0.30)
+    lx, ly = box[2] - int(ph * 0.52), pcy
+    d.ellipse([lx - lr, ly - lr, lx + lr, ly + lr], fill=(26, 28, 38, 255))
+    d.ellipse([lx - lr * 0.72, ly - lr * 0.72, lx + lr * 0.72, ly + lr * 0.72], fill=(12, 16, 44, 255))
+    d.ellipse([lx - lr * 0.36, ly - lr * 0.46, lx - lr * 0.06, ly - lr * 0.16], fill=(120, 140, 255, 200))
+    # The sensor dot, left of the lens.
+    sr = int(ph * 0.075)
+    sx = lx - int(ph * 0.62)
+    d.ellipse([sx - sr, ly - sr, sx + sr, ly + sr], fill=(22, 24, 32, 255))
+    # A tiny dirt block as the Live Activity icon, left: the app inside its own island.
+    mini = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    draw_dirt_block(mini, box[0] + int(ph * 0.62), pcy, int(ph * 0.34), n=4, seed=7)
+    im.alpha_composite(mini)
 
     out = im.convert("RGB").resize((S, S), Image.LANCZOS)
     if mode == "tinted":
-        # A greyscale design, iOS colours it: keep the contrast between the three faces.
-        g = out.convert("L")
-        g = g.point(lambda v: min(255, int(v * 1.12)))
+        g = out.convert("L").point(lambda v: min(255, int(v * 1.15)))
         out = Image.merge("RGB", (g, g, g))
     return out
 

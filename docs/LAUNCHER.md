@@ -12,18 +12,24 @@ The app opens to a native launcher, not to the game. Source: `platform/ios/App/L
 Every launcher screen is SwiftUI now (`platform/ios/App/Swift/`); the Objective-C side keeps only the logic (account,
 download, marketplace, file rules, diagnostics readings). `Launcher.m` makes `HZLauncherHost.makeRoot()` the window's root.
 
-**Look.** A blue and a red (`Palette.swift`, dynamic for dark and light) over a navy-to-wine ground with a faint block grid
-(`Backdrop`, `BlockGrid` in `Look.swift`). The accent is blue or red (Settings > Look), with a colour balance slider and a backdrop strength.
+**Look.** Two colours (`Palette.swift`, tuned for dark and light) over a navy-to-wine ground with a faint block grid
+(`Backdrop` in `Look.swift`). The defaults are blue with a little red. Settings > Look has nine built-in presets (Blue and red,
+Red and blue, Ocean, Sunset, Forest, Violet, Ember, Mint, Slate), two colour pickers for any pair, a swap button, a colour
+balance slider and a backdrop strength; the pair is saved as `colour1:` and `colour2:` (RRGGBB) in `launcher.txt`.
+**Lightweight visuals** (Settings > Look > Performance, and automatically in Low Power Mode) draws list rows, groups, chips and
+pills as flat tinted shapes instead of Liquid Glass; the big hero cards, the primary buttons and the system's bars keep their
+glass. The file manager always uses the flat tinted cards. A surface marks itself `repeated: true` to take part in that switch
+(`SurfaceModifier` in `Look.swift`).
 Glass is only the system's: `glassEffect`, `GlassEffectContainer`, `.glass` and `.glassProminent` on iOS 26 and later, the system's
 materials before that; nothing imitates glass. The mark (`BrandMark`) is drawn in code and matches the app icon
-(`tools/make_app_icon.py` writes the three icon files).
+(`tools/make_app_icon.py` writes the three icon files). The mark and the icon are a Minecraft dirt block with an iPhone Dynamic Island over it, a blue-to-red glow around the island..
 
 **Tabs** (the system tab bar): **Play**, **Packs**, **Controls**, **Settings**.
 
 | Tab / page | File | What it does |
 |---|---|---|
 | Play | `PlayTab.swift` | Game state, Play, Download and Game files tiles, storage, a banner for a crash report not yet opened |
-| Packs | `MarketplaceTab.swift`, `MarketDetailPage.swift` | The Marketplace: tabs, search, rows with icons, a page per project with install, update, remove, and the mod switch |
+| Packs | `MarketplaceTab.swift`, `MarketDetailPage.swift`, `MarkdownText.swift` | The Marketplace: tabs, search, rows with icons, **page arrows** (first, previous, a page menu, next, last: Modrinth's pages come from its server 30 at a time, the other tabs are cut into 25), a page per project with install, update, remove, the mod switch, and an **Overview** plus a **Description** (Modrinth's full text, fetched on opening, shown as clean Markdown; the first part with an Expand button when it is long) |
 | Controls | `ControlsTab.swift`, `TouchEditor.swift`, `ControlsModel.swift` | The game's touch and performance settings (the same `horizon-imc.txt` the game reads), and the **touch editor**: full-screen landscape, drag a button, size, opacity, hide; saved to `horizon-touch-layout.txt` (the game's own format; the extra buttons' lines are kept) |
 | Settings | `SettingsTab.swift` | Account card, then Look, Game, Marketplace, Download, Game files, File manager, Diagnostics, About |
 | Account | `AccountPage.swift`, `SkinHead.swift` | Profile with the player's head (cut from the skin on Mojang's servers, off in Settings > Game), the sign-in code card, ownership, check again, sign out, switch account |

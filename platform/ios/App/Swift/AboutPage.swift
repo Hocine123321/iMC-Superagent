@@ -130,7 +130,7 @@ struct TextPage: View {
             LongText(text: text)
                 .padding(18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .glassCard(cornerRadius: 22)
+                .glassCard(cornerRadius: 22, repeated: true)
                 .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .screenBackground()

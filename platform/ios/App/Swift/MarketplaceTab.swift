@@ -84,11 +84,17 @@ final class MarketController: ObservableObject {
     @Published private(set) var loadingModrinth = false
     @Published private(set) var modrinthError: String? = nil
     @Published private(set) var modrinthTotal = 0
+    /// The page being shown, from 0. Modrinth's pages are 30 results fetched from its server; the other tabs are cut here.
+    @Published private(set) var page = 0
+    @Published private(set) var localCount = 0
+    static let localPageSize = 25
+    static let modrinthPageSize = 30
     private(set) var index: HZMarketIndex? = nil
 
     let game = "26.3"
     private var modrinthHits: [HZModrinthProject] = []
     private var modrinthQuery: String? = nil
+    private var modrinthPageLoaded = 0
     private var modrinthPending = false
     private var searchTask: Task<Void, Never>? = nil
     private let client: HZMarketClient
@@ -122,8 +128,23 @@ final class MarketController: ObservableObject {
     func select(_ t: Tab) {
         guard t != tab else { return }
         tab = t
+        page = 0
         if t == .modrinth && modrinthHits.isEmpty { searchModrinth(force: false) }
         refilter()
+    }
+
+    // MARK: pages
+
+    var pageCount: Int {
+        if tab == .modrinth { return max(1, Int((Double(modrinthTotal) / Double(Self.modrinthPageSize)).rounded(.up))) }
+        return max(1, Int((Double(localCount) / Double(Self.localPageSize)).rounded(.up)))
+    }
+
+    func goTo(_ p: Int) {
+        let target = min(max(0, p), pageCount - 1)
+        guard target != page else { return }
+        page = target
+        if tab == .modrinth { searchModrinth(force: true) } else { refilter() }
     }
 
     // MARK: loading
@@ -162,16 +183,16 @@ final class MarketController: ObservableObject {
     /// returns (an answer for older text is never shown), so typing quickly cannot leave stale results.
     func searchModrinth(force: Bool) {
         guard Prefs.shared.useModrinth else { return }
-        let q = trimmedQuery
+        let q = trimmedQuery, wantedPage = page
         if loadingModrinth { modrinthPending = true; return }
-        if !force && q == (modrinthQuery ?? "") && !modrinthHits.isEmpty { return }
-        loadingModrinth = true; modrinthError = nil; modrinthQuery = q; modrinthPending = false
+        if !force && q == (modrinthQuery ?? "") && wantedPage == modrinthPageLoaded && !modrinthHits.isEmpty { return }
+        loadingModrinth = true; modrinthError = nil; modrinthQuery = q; modrinthPageLoaded = wantedPage; modrinthPending = false
         refilter()
-        modrinth.searchText(q, offset: 0) { [weak self] projects, total, error in
+        modrinth.searchText(q, offset: UInt(wantedPage * Self.modrinthPageSize)) { [weak self] projects, total, error in
             Task { @MainActor in
                 guard let self else { return }
                 self.loadingModrinth = false
-                let stale = q != self.trimmedQuery
+                let stale = q != self.trimmedQuery || wantedPage != self.page
                 if !stale {
                     self.modrinthHits = projects ?? []
                     self.modrinthTotal = Int(total)
@@ -185,6 +206,7 @@ final class MarketController: ObservableObject {
 
     /// Modrinth is searched on its server, a moment after typing stops.
     func queryChanged() {
+        page = 0
         if tab == .modrinth {
             searchTask?.cancel()
             searchTask = Task { [weak self] in
@@ -276,6 +298,14 @@ final class MarketController: ObservableObject {
                 }
             }
         }
+        if tab != .modrinth {
+            // The other tabs are cut into pages here.
+            localCount = out.count
+            let pages = max(1, Int((Double(out.count) / Double(Self.localPageSize)).rounded(.up)))
+            if page >= pages { page = pages - 1 }
+            let start = page * Self.localPageSize
+            out = Array(out[min(start, out.count)..<min(start + Self.localPageSize, out.count)])
+        }
         rows = out
     }
 
@@ -288,7 +318,14 @@ final class MarketController: ObservableObject {
             if index == nil && tab != .modrinth { return banner ?? "The Marketplace could not be loaded." }
             return "Nothing matches."
         }
-        if tab == .modrinth { return "Showing \(rows.count) of \(modrinthTotal) resource packs for Minecraft \(game) on Modrinth." }
+        if tab == .modrinth {
+            let from = page * Self.modrinthPageSize + 1
+            return "Showing \(from) to \(from + rows.count - 1) of \(modrinthTotal) resource packs for Minecraft \(game) on Modrinth."
+        }
+        if localCount > Self.localPageSize {
+            let from = page * Self.localPageSize + 1
+            return "Showing \(from) to \(from + rows.count - 1) of \(localCount)." + (banner.map { " " + $0 } ?? "")
+        }
         return banner
     }
 }
@@ -304,10 +341,12 @@ struct MarketplaceTab: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollViewReader { proxy in
+              ScrollView {
                 GlassStack(spacing: 14) {
                     LazyVStack(spacing: 12) {
-                        chips
+                        chips.id("top")
+                        if c.pageCount > 1 { PagerBar(page: c.page, pages: c.pageCount, goTo: { c.goTo($0) }) }
                         ForEach(c.rows) { row in
                             NavigationLink(value: row) { MarketRowView(row: row, compact: prefs.compactLists) }
                                 .buttonStyle(.plain)
@@ -316,9 +355,13 @@ struct MarketplaceTab: View {
                             Text(footer).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                                 .padding(.horizontal, 24).padding(.top, 10)
                         }
+                        if c.pageCount > 1 && !c.rows.isEmpty { PagerBar(page: c.page, pages: c.pageCount, goTo: { c.goTo($0) }) }
                     }
                     .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 40)
                 }
+              }
+              // A new page starts at the top.
+              .onChange(of: c.page) { _ in withAnimation { proxy.scrollTo("top", anchor: .top) } }
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -366,6 +409,47 @@ struct MarketplaceTab: View {
     }
 }
 
+/// First, previous, "Page 2 of 14", next, last. The page number is a menu, to jump straight to a page.
+struct PagerBar: View {
+    let page: Int
+    let pages: Int
+    let goTo: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            button("backward.end.fill", "First page", enabled: page > 0) { goTo(0) }
+            button("chevron.left", "Previous page", enabled: page > 0) { goTo(page - 1) }
+            Menu {
+                ForEach(jumpTargets, id: \.self) { p in Button("Page \(p + 1)") { goTo(p) } }
+            } label: {
+                Text("Page \(page + 1) of \(pages)").font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .padding(.horizontal, 14).padding(.vertical, 9).glassCapsule(interactive: true)
+            }
+            button("chevron.right", "Next page", enabled: page < pages - 1) { goTo(page + 1) }
+            button("forward.end.fill", "Last page", enabled: page < pages - 1) { goTo(pages - 1) }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Every page when there are few; otherwise a spread of them, the neighbours of this one included.
+    private var jumpTargets: [Int] {
+        if pages <= 24 { return Array(0..<pages) }
+        var set = Set<Int>([0, pages - 1, page])
+        for i in 1..<12 { set.insert(i * pages / 12) }
+        for d in -2...2 where page + d >= 0 && page + d < pages { set.insert(page + d) }
+        return set.sorted()
+    }
+
+    private func button(_ symbol: String, _ label: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button { Haptics.select(); action() } label: {
+            Image(systemName: symbol).font(.subheadline.weight(.bold)).frame(width: 38, height: 38)
+                .glassCircle(interactive: true, repeated: true)
+        }
+        .buttonStyle(.plain).disabled(!enabled).opacity(enabled ? 1 : 0.35)
+        .accessibilityLabel(label)
+    }
+}
+
 /// A project's picture: its icon from the registry or Modrinth when it has one, otherwise a tile for its kind.
 struct ProjectIcon: View {
     let kind: String
@@ -409,7 +493,7 @@ struct MarketRowView: View {
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .glassCard(cornerRadius: 22, interactive: true)
+        .glassCard(cornerRadius: 22, interactive: true, repeated: true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.title), \(MarketKind.name(row.kind)), \(row.stateText)")
     }

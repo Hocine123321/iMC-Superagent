@@ -179,21 +179,41 @@ struct LookSettingsPage: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            SectionLabel("Colours")
+            presetGrid
+            GlassGroup {
+                colourRow("First colour", "The accent: buttons, switches, the tab bar.", first: true)
                 Sep(inset: 16)
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Accent").font(.body.weight(.semibold))
-                    HStack(spacing: 12) {
-                        ForEach(Prefs.Accent.allCases) { a in swatch(a) }
+                colourRow("Second colour", "The glow in the opposite corner and the second icon colour.", first: false)
+                Sep(inset: 16)
+                HStack(spacing: 12) {
+                    Button { Haptics.tap(); prefs.swapColours() } label: {
+                        Label("Swap", systemImage: "arrow.left.arrow.right").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 38)
                     }
+                    .secondaryAction()
+                    Button { Haptics.tap(); prefs.apply(ThemePreset.standard) } label: {
+                        Label("Reset", systemImage: "arrow.counterclockwise").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 38)
+                    }
+                    .secondaryAction().disabled(prefs.activePreset == ThemePreset.standard && prefs.balance == ThemePreset.standard.balance)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
                 Sep(inset: 16)
                 SliderRow(title: "Colour balance", detail: "How the two colours mix behind the launcher.",
-                          value: $prefs.balance, leading: prefs.accent == .blue ? "Blue" : "Red",
-                          trailing: prefs.accent == .blue ? "Red" : "Blue")
+                          value: $prefs.balance, leading: "First colour", trailing: "Second colour")
                 Sep(inset: 16)
                 SliderRow(title: "Backdrop colour", detail: "How strongly the colour shows.",
                           value: $prefs.intensity, valueText: "\(Int((prefs.intensity * 100).rounded())) %")
+            }
+            SectionLabel("Performance")
+            GlassGroup {
+                ToggleRow(symbol: "gauge.with.dots.needle.33percent", title: "Lightweight visuals",
+                          detail: "Draws list rows, groups, chips and small pills as flat tinted shapes instead of Liquid Glass. The big cards and the system's own bars keep their glass. Easier on an older phone and on the battery.",
+                          isOn: $prefs.lightweight)
+                Sep()
+                ToggleRow(symbol: "battery.25percent", tone: .brand2, title: "Also in Low Power Mode",
+                          detail: "Switches to lightweight visuals by itself while Low Power Mode is on.",
+                          isOn: $prefs.lightweightAuto)
             }
             SectionLabel("Feel")
             GlassGroup {
@@ -222,22 +242,50 @@ struct LookSettingsPage: View {
         .glassCard(cornerRadius: 28, tint: brand.opacity(0.18))
     }
 
-    private func swatch(_ a: Prefs.Accent) -> some View {
-        let selected = prefs.accent == a
-        let colour = a == .blue ? Palette.blue : Palette.red
-        return Button { Haptics.select(); prefs.accent = a } label: {
+    private var presetGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            ForEach(ThemePreset.all) { preset in presetButton(preset) }
+        }
+    }
+
+    private func presetButton(_ preset: ThemePreset) -> some View {
+        let selected = prefs.activePreset == preset
+        return Button { Haptics.select(); prefs.apply(preset) } label: {
             HStack(spacing: 10) {
-                Circle().fill(colour).frame(width: 22, height: 22)
-                Text(a.title).font(.subheadline.weight(.semibold))
+                ZStack {
+                    Circle().fill(Palette.plain(hex: preset.first)).frame(width: 26, height: 26).offset(x: -8)
+                    Circle().fill(Palette.plain(hex: preset.second)).frame(width: 26, height: 26).offset(x: 8)
+                }
+                .frame(width: 44, height: 28)
+                Text(preset.name).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
-                if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(colour) }
+                if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(brand) }
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
+            .padding(.horizontal, 12).padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .glassCard(cornerRadius: 18, tint: selected ? colour.opacity(0.25) : nil, interactive: true)
+            .glassCard(cornerRadius: 18, tint: selected ? brand.opacity(0.25) : nil, interactive: true, repeated: true)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func colourRow(_ title: String, _ detail: String, first: Bool) -> some View {
+        let binding = Binding<Color>(
+            get: { Palette.plain(hex: first ? prefs.colour1 : prefs.colour2) },
+            set: { c in
+                let hex = Palette.hex(from: c)
+                if first { prefs.colour1 = hex } else { prefs.colour2 = hex }
+            })
+        return HStack(spacing: 14) {
+            IconTile(symbol: "eyedropper.halffull", tone: first ? .brand : .brand2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body.weight(.semibold))
+                Text(detail).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            ColorPicker(title, selection: binding, supportsOpacity: false).labelsHidden()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
     }
 }
 

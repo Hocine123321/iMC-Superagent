@@ -107,7 +107,7 @@ struct PlayTab: View {
             .padding(16).frame(maxWidth: .infinity).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .glassCard(cornerRadius: 24, tint: brand2.opacity(0.22), interactive: true)
+        .glassCard(cornerRadius: 24, tint: brand2.opacity(0.22), interactive: true, repeated: true)
     }
 
     private func tile(_ title: String, _ symbol: String, _ detail: String, _ tone: IconTile.Tone, _ action: @escaping () -> Void) -> some View {
@@ -123,7 +123,7 @@ struct PlayTab: View {
             .padding(16).frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .glassCard(cornerRadius: 26, interactive: true)
+        .glassCard(cornerRadius: 26, interactive: true, repeated: true)
     }
 
     private var storageCard: some View {
@@ -145,7 +145,7 @@ struct PlayTab: View {
             }
         }
         .padding(18).frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 26)
+        .glassCard(cornerRadius: 26, repeated: true)
     }
 
     private func stat(_ label: String, _ value: String) -> some View {

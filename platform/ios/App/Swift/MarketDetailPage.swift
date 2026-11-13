@@ -22,6 +22,9 @@ final class MarketDetailController: ObservableObject {
     @Published var statusIsError = false
     @Published var installedVersion: String? = nil
     @Published var modEnabled = false
+    @Published var longDescription: String? = nil
+    @Published var loadingDescription = false
+    @Published var descriptionProblem: String? = nil
 
     private var fetcher: HZMarketFetcher?
     private var model: HZLauncherModel { HZLauncherModel.shared()! }
@@ -42,7 +45,19 @@ final class MarketDetailController: ObservableObject {
     }
 
     func onAppear() {
-        guard let mp = mproject, mversion == nil, versionProblem == nil else { return }
+        guard let mp = mproject else { return }
+        if longDescription == nil && !loadingDescription {
+            loadingDescription = true
+            HZModrinthClient().body(of: mp) { [weak self] body, err in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.loadingDescription = false
+                    self.longDescription = body
+                    self.descriptionProblem = body == nil ? err : nil
+                }
+            }
+        }
+        guard mversion == nil, versionProblem == nil else { return }
         looking = true
         HZModrinthClient().newestVersion(of: mp) { [weak self] v, err in
             Task { @MainActor in
@@ -303,8 +318,8 @@ struct MarketDetailPage: View {
                 Sep(inset: 16); fact("Source", p.source)
             }
             textCard("What the app checks", "The file must come from the registry's release address, match the size and SHA-256 the registry lists, not be taken down, and be a ZIP. The game checks the content itself when it reads it. The app does not review what is inside.")
-            if !p.details.isEmpty { textCard("Description", p.details) }
-            if let log = v?.changelog, !log.isEmpty { textCard("Changelog", log) }
+            if !p.details.isEmpty { DescriptionCard(title: "Description", source: p.details) }
+            if let log = v?.changelog, !log.isEmpty { DescriptionCard(title: "Changelog", source: log, limit: 400) }
         }
     }
 
@@ -334,6 +349,8 @@ struct MarketDetailPage: View {
                     }.buttonStyle(.plain)
                 }
             }
+            if c.loadingDescription || !(c.longDescription ?? "").isEmpty { DescriptionCard(title: "Description", source: c.longDescription ?? "", loading: c.loadingDescription) }
+            else if let why = c.descriptionProblem { textCard("Description", "Could not load it: \(why)") }
             textCard("What the app checks", "The file must come from Modrinth's file server, match the size and SHA-512 Modrinth lists, be a ZIP whose paths are all plain, and have pack.mcmeta at its root. Modrinth packs are not reviewed by Horizon.")
         }
     }

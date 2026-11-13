@@ -154,6 +154,7 @@ struct AccountPage: View {
     @Environment(\.brand) private var brand
     @Environment(\.brand2) private var brand2
     @State private var confirmSignOut = false
+    @State private var headProblem: String? = nil
 
     var body: some View {
         Page("Account") {
@@ -180,10 +181,13 @@ struct AccountPage: View {
 
     private var profileCard: some View {
         VStack(spacing: 16) {
-            MinecraftHead(uuid: c.uuid, size: 96)
+            MinecraftHead(uuid: c.uuid, size: 96, onProblem: { headProblem = $0 })
             VStack(spacing: 6) {
                 Text(c.name ?? "").font(.system(.title, design: .rounded).weight(.bold))
                 StatusPill(kind: c.owns ? .ok : .warn, text: c.owns ? "Owns Java Edition" : "Ownership not confirmed")
+            }
+            if let why = headProblem, Prefs.shared.showHead {
+                Text("No head shown: \(why)").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let uuid = c.uuid {
                 Button {

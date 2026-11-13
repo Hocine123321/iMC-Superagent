@@ -88,7 +88,7 @@ struct LogsView: View {
         if shown.isEmpty {
             Text(emptyText).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(24).frame(maxWidth: .infinity)
         } else {
-            LongText(text: shown).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassCard(cornerRadius: 20)
+            LongText(text: shown).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassCard(cornerRadius: 20, repeated: true)
         }
     }
 

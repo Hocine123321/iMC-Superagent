@@ -203,6 +203,17 @@ static NSArray *List(id d, NSString *k) {
     }];
 }
 
+- (void)bodyOfProject:(HZModrinthProject *)project completion:(void (^)(NSString *_Nullable, NSString *_Nullable))done {
+    if (![HZModrinthClient isProjectId:project.projectId]) { done(nil, @"That is not a Modrinth project id."); return; }
+    [self get:[NSString stringWithFormat:@"%@/project/%@", kAPI, project.projectId] completion:^(NSData *d, NSString *err) {
+        if (!d) { done(nil, err); return; }
+        id root = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+        NSString *body = [root isKindOfClass:[NSDictionary class]] && [root[@"body"] isKindOfClass:[NSString class]] ? root[@"body"] : nil;
+        if (!body) { done(nil, @"Modrinth sent no description for this project."); return; }
+        done(body.length > 60000 ? [body substringToIndex:60000] : body, nil);
+    }];
+}
+
 - (void)newestVersionOf:(HZModrinthProject *)project completion:(void (^)(HZModrinthVersion *_Nullable, NSString *_Nullable))done {
     [self get:[HZModrinthClient versionsURLForProject:project.projectId] completion:^(NSData *d, NSString *err) {
         if (!d) { done(nil, err); return; }
