@@ -1,75 +1,61 @@
-# Preparing the game files on your PC (Linux) and copying them to the iPhone
+# Preparing the game files on Linux, Windows, or macOS
 
-Everything below runs on your PC. Nothing is installed on the phone except the Horizon app.
-Your game files stay on your own devices.
+Prepare the files on a computer with the Horizon Launcher, then import them into iMC Horizon on your iPhone. You need your own copy of Minecraft: Java Edition; the app does not include Minecraft files. Keep the prepared folder private.
 
-## 1. Let the Horizon launcher prepare version 26.3
+## 1. Prepare the files
 
-1. Open the **official Horizon launcher** on the PC.
-2. Pick the **26.3** build and press **Play** once. It prepares the files from your own Minecraft
-   install, copies the sounds, then starts the desktop game. You can close the game as soon as it
-   reaches the title screen.
-3. If it asks for Java 25, let it download it.
+1. Open the **Horizon Launcher** on your computer.
+2. Select the **26.3** build and press **Play** once. The launcher prepares the files from your Minecraft installation, including the sounds, and then starts the desktop game. You can close the game when it reaches the title screen.
+3. If the launcher asks for Java 25, let it download and install it.
 
 ## 2. Find the prepared folder
 
-On Linux it is here (the `<tag>` is the Horizon build you pressed Play on):
+The default location depends on your computer. Replace `<tag>` with the name of the Horizon build folder you launched. The prepared files are inside that folder at `.local/horizon-client/26.3/`.
 
-```
-~/.local/share/horizon-launcher/versions/<tag>/.local/horizon-client/26.3/
-```
+| Computer | Prepared folder |
+|---|---|
+| Linux | `~/.local/share/horizon-launcher/versions/<tag>/.local/horizon-client/26.3/` |
+| macOS | `~/Library/Application Support/horizon-launcher/versions/<tag>/.local/horizon-client/26.3/` |
+| Windows | `%APPDATA%\horizon-launcher\versions\<tag>\.local\horizon-client\26.3\` |
 
-Find it with:
+On Windows, `%APPDATA%` normally expands to `C:\Users\<you>\AppData\Roaming`. You can paste `%APPDATA%\horizon-launcher\versions` into File Explorer's address bar, open the folder for the build you launched, then follow `.local\horizon-client\26.3`.
 
-```
+On macOS, in Finder press **Command-Shift-G** and enter `~/Library/Application Support/horizon-launcher/versions`; then open the folder for the build you launched and follow `.local/horizon-client/26.3`.
+
+On Linux, list the prepared folders with:
+
+```sh
 ls -d ~/.local/share/horizon-launcher/versions/*/.local/horizon-client/26.3
 ```
 
-If you moved the launcher's data folder (Settings > Data folder), look under that location instead.
-(Source: `launcher/src/backend.rs`, the resources path is `<version folder>/.local/horizon-client/<game version>`.)
+If you changed **Settings > Data folder** in the Horizon Launcher, use that selected data folder instead of the default OS location above. Under it, look for `versions/<tag>/.local/horizon-client/26.3/`.
 
-## 3. Check it is complete before copying
+## 3. Check that preparation completed
 
-```
-D=~/.local/share/horizon-launcher/versions/<tag>/.local/horizon-client/26.3
-ls "$D/horizon-resources.json"        # must exist: the app refuses the folder without it
-du -sh "$D"                           # expect roughly 500 MB
-du -sh "$D"/sounds 2>/dev/null        # expect roughly 380 MB; much smaller means a silent game
-```
+In your file manager, compress the prepared **`26.3` folder** into a ZIP archive. Check the ZIP's size: it should be **over 500 MB**. That is the quick check that the prepared game files are all there. Keep the original `26.3` folder; that is the folder iMC Horizon imports.
 
-Do not copy a folder that is missing `horizon-resources.json`.
+## 4. Transfer and import on the iPhone (recommended)
 
-## 4. Copy it to the iPhone
+Copy the whole prepared `26.3` folder to a place the iPhone's Files app can access. For example, use iCloud Drive, AirDrop from a Mac, or a cloud-storage app whose files appear in Files. On Windows, iCloud Drive or another Files-compatible cloud provider works; on Linux, use a transfer or storage method available on your iPhone. A USB connection by itself may not make the computer's folders available in Files. If you transfer the ZIP instead, extract it in Files first; the app imports a folder, not a ZIP file.
 
-**Easier route (since the launcher, never run on a phone):** copy the prepared `26.3` folder to the phone
-anywhere the Files app can see it, open Horizon, go to **Game files > Import a folder...**, and pick it.
-The app copies it beside the old files, checks it, and swaps it in only when complete, with a free-space
-check first. **Check the files** then confirms it. The manual copy below still works.
+1. Open iMC Horizon on the iPhone.
+2. Go to **Game files > Import a folder**.
+3. In the Files picker, select the prepared `26.3` folder (the one containing `horizon-resources.json`). The app copies and checks the files before using them.
+4. When the import finishes, use **Game files > Check** if you want to run the check again, then return to Play.
 
-The manual way:
+The app's files are also visible in Files under **On My iPhone > iMC Horizon > Horizon**. Its game resources live in the `resources` folder.
 
-The Horizon app creates a folder visible in the Files app. Open the app **once** first.
+## 5. Optional: copy the contents manually
 
-1. Connect the phone, or use AirDrop alternatives (a USB cable, a cloud drive, or a local share).
-2. On the phone open **Files > On My iPhone > Horizon > Horizon** (the same folder where you found
-   `diagnostics.txt`). It already holds an empty `resources` folder and a `home` folder.
-3. Fill `resources` so that this file exists:
+Open iMC Horizon once so its folder is created, then use a file-transfer method that can access the app's Files documents. Copy the **contents** of the prepared `26.3` folder into:
 
-```
-On My iPhone/Horizon/Horizon/resources/horizon-resources.json
+```text
+On My iPhone/iMC Horizon/Horizon/resources/
 ```
 
-Copy the **contents** of `26.3/` into `resources/`, not the `26.3` folder itself.
-Copying about 500 MB over the Files app is slow; a cable and a computer file manager is faster.
-
-## 5. Start the app
-
-Open Horizon. The Home screen shows the game files as ready, and Play starts the game (it closes the app and
-needs a second open, see `LAUNCHER.md`).
-If Home says the files are missing or damaged, open **Game files > Check the files** for the reason, and send the path you used and the output of `ls` for that folder.
+Copy the contents, not the `26.3` folder itself. The resulting `resources` folder must contain `horizon-resources.json`. The app's **Game files > Check** button verifies the folder.
 
 ## Things to know
 
-- The prepared folder is derived from your copy of the game. Keep it private and do not share it.
-- Which of these files the engine reads at run time is not measured yet (milestone M3). The full
-  folder is the safe choice for now.
+- The prepared folder is derived from your own game installation. Keep it private and do not share it.
+- The full folder is the safe choice for now; exactly which files the engine reads at runtime has not yet been measured (milestone M3).

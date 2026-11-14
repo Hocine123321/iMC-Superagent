@@ -2,7 +2,7 @@
 
 > **Path convention.** This repository keeps the upstream Horizon snapshot in `horizon/`. Source paths cited below (`crates/...`, `tools/...`, `docs/benchmark.md`, `research-lock.json`, `CLAUDE.md`, ...) are relative to `horizon/`. Paths under `docs/ios-evidence/` and the three `docs/IOS_*.md` files are relative to the repository root.
 
-**Status (2026-11-10):** M1 to M5 and M3b are built and published as *iMC Horizon* releases (v37 is the latest) and **the game runs on the owner's phone without issues (confirmed 2026-11-10)**, so the first goal is met and the plan moves to M15 (iOS optimisation, below). The M8b download, M9 sign-in, M12 launcher pages, M13 file manager and M14 Marketplace are written into them but never run; the extras around the game have had little phone testing. M8a is open: two device runs (2026-11-08, 2026-11-10) showed `CS_DEBUGGED` but no usable `MAP_JIT` page. See the table in `IOS_DECISIONS_AND_APP_VISION.md` for the current state of every milestone, and `IMC_SETTINGS.md` for the touch offset fix and the iMC Settings page. The sections below are the original plan; where work has happened a section carries a dated progress note. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
+**Status (2026-11-14):** The core iOS game path is established: M1–M5 are implemented, and the owner confirmed the game playable on an iPhone (2026-11-10) using files prepared on a computer. The repository has published releases through **v55**; CI now produces downloadable unsigned IPAs. This does not mean every milestone acceptance test is complete: lifecycle stress tests, measured performance baselines, and the newer launcher/Marketplace/file-manager flows still need device validation. The SwiftUI launcher, Marketplace, and file manager are present in source and compile in CI, but their current versions have not had a documented phone walkthrough. M8a's Java 25 runtime build exists; the device JIT test remains unresolved, so on-phone preparation (M8b) is not complete. Use the milestone table below for current status, `NEXT_STEPS.md` for the active work order, and `CODE_MAP.md` to locate the implementation. Earlier decision history remains in `IOS_DECISIONS_AND_APP_VISION.md`; its status snapshot is dated 2026-11-10. This roadmap distinguishes implementation/CI evidence from physical-device validation. Companion to `IOS_FEASIBILITY_REPORT.md` (findings, labels VERIFIED / INFERRED / UNRESOLVED) and `IOS_MEMORY_STRATEGY.md`.
 **Base:** `horizon-rust/horizon` `77af961`, Minecraft 26.3, protocol 777.
 
 ## Ordering principles
@@ -25,35 +25,36 @@
 
 ## Milestone overview
 
-| # | Milestone | Needs Mac+device | Needs approval | Est. size |
-|---|---|---|---|---|
-| M0 | Baseline and decision records | Mac | no | small |
-| M1 | Upstream-able compile fixes (B1-B4). **Done** (links on a Mac runner) | Mac (to link) | no | small |
-| M2 | Staticlib, Swift shell, Metal surface, test scene, footprint telemetry | Device | no | medium |
-| M3 | Resource bootstrap from the user's PC and the engine reaching the title screen | Device | no | medium |
-| M4 | Lifecycle correctness (background, foreground, memory warning) | Device | no | small-medium |
-| M5 | Touch input, minimal mobile controls, playable singleplayer | Device | no | large |
-| M6 | Baseline benchmark suite on device | Device | no | small |
-| M7 | Memory and thermal tuning from M6 data | Device | no | medium |
-| M8a | **Spike: can an embedded Java 25 iOS runtime run `horizon-prepare`?** (decision 2026-11-08) | Device with JIT | no | small, but gates M8b |
-| M8b | On-device download and preparation (owner's account, own copy, embedded JVM) | Device with JIT | Mojang app-ID for sign-in; runtime licence | large |
-| M9 | Microsoft sign-in and ownership gate | Device | Mojang app-ID | medium |
-| M10 | Multiplayer, audio polish, mobile UI | Device | no | large |
-| M11 | Distribution as a downloadable IPA | Device | no | small |
-| M12 | **Real launcher pages** (added 2026-11-10): Library, Settings, Worlds, Screenshots, About | Device | no | medium |
-| M13 | **In-app file manager** (added 2026-11-10) | Device | no | medium |
-| M14 | **Horizon Marketplace** (added 2026-11-10): browse and install from Horizon's registry | Device | no | large |
-| M15 | **iOS optimisation** (added 2026-11-10): leave the game for the launcher, measure, tune speed and battery, touch polish, launcher extras | Device | no | large |
-| M17 | **Smooth and efficient rendering**: frame pacing, 60/120 Hz, battery modes (added 2026-11-10) | Device | no | medium |
-| M18 | **Controller support on iOS** (added 2026-11-10) | Device | no | medium |
-| M19 | **Touch comfort and accessibility**: haptics, one-handed layout, screenshot and chat buttons, text size (added 2026-11-10) | Device | no | medium |
-| M20 | **Reliability and diagnostics**: clean exit, crash recovery, in-app bug report (added 2026-11-10) | Device | no | medium |
-| M22 | **Test and release pipeline**: on-device test route, regression numbers in CI, signed-IPA guide (added 2026-11-10) | Mac+device | no | medium |
-| M24 | **Launcher v2** (added 2026-11-10): SwiftUI, system Liquid Glass and floating tab bar, portrait, then Play and Quit Game inside one process | Device | horizon/ edit (approved) | large |
+| # | Milestone | Current state (2026-11-14) | Needs Mac+device | Needs approval | Est. size |
+|---|---|---|---|---|---|
+| M0 | Baseline and decision records | Decision and design records exist; the full original desktop benchmark evidence is not confirmed here. | Mac | no | small |
+| M1 | Upstream-able compile fixes (B1-B4) | **Done** for the iOS build/link; upstream PRs and the proposed macOS desktop-test job remain open. | Mac (to link) | no | small |
+| M2 | Staticlib, Swift shell, Metal surface, test scene, footprint telemetry | **Core done:** the game has run on the owner's iPhone; later telemetry and launcher changes have separate validation gates. | Device | no | medium |
+| M3 | Resource bootstrap from the user's PC and the engine reaching the title screen | **Core path done:** computer-prepared 26.3 files can be imported and the game is playable; on-phone preparation is M8b. | Device | no | medium |
+| M3b | Base native launcher, game-file import/check and Play flow | Built and released; the current SwiftUI replacement still needs a documented device walkthrough. | Device | no | medium |
+| M4 | Lifecycle correctness (background, foreground, memory warning) | Callbacks and save handling are implemented; deliberate lifecycle/memory-warning stress testing remains open. | Device | no | small-medium |
+| M5 | Touch input, minimal mobile controls, playable singleplayer | **Core playable on the owner's phone;** broader tester acceptance and newer touch additions still need validation. | Device | no | large |
+| M6 | Baseline benchmark suite on device | Session-log instrumentation exists; no completed fixed-route benchmark, engine frame-time baseline or GPU-memory breakdown is recorded. | Device | no | small |
+| M7 | Memory and thermal tuning from M6 data | Not started; waits for measured M6 results. | Device | no | medium |
+| M8a | **Spike: can an embedded Java 25 iOS runtime run `horizon-prepare`?** | Java 25 runtime built in CI; device JIT/runtime loading remains unresolved and gates phone preparation. | Device with JIT | no | small, but gates M8b |
+| M8b | On-device download and preparation (owner's account, own copy, embedded JVM) | Download code/UI are implemented; Java preparation is not complete and the flow has not been run on a phone. | Device with JIT | Mojang app-ID for sign-in; runtime licence | large |
+| M9 | Microsoft sign-in and ownership gate | Flow is implemented in source; app registration, Mojang approval and real-account device validation remain open. | Device | Mojang app-ID | medium |
+| M10 | Multiplayer, audio polish, mobile UI | Incomplete; iOS multiplayer/audio validation remains open, and multiplayer polish was later removed from the owner's active priorities. | Device | no | large |
+| M11 | Distribution as a downloadable IPA | **Partial:** CI publishes unsigned IPA prereleases; signing/install guide, checksum and clean-phone acceptance test remain open. | Device | no | small |
+| M12 | **Real launcher pages**: Library, Settings, Worlds, Screenshots, About | **Partial:** SwiftUI shell compiled in CI; Logs/Diagnostics and About exist, but Worlds/Screenshots and current-build phone walkthrough remain open. | Device | no | medium |
+| M13 | **In-app file manager** | **Partial:** root-scoped browser/UI and rule mirrors exist; device validation, generic folder import and quick links remain open. World/zip export is out of active scope. | Device | no | medium |
+| M14 | **Horizon Marketplace**: browse and install from Horizon's registry | **Partial:** registry and Modrinth resource-pack flows are implemented; device test, signed-project verification and installed-revocation handling remain open. | Device | no | large |
+| M15 | **iOS optimisation**: return to launcher, measure, tune speed/battery, touch polish | In progress; responsiveness work and telemetry exist, but no on-device benchmark or measured before/after gain is recorded. | Device | no | large |
+| M17 | **Smooth and efficient rendering**: frame pacing, 60/120 Hz, battery modes | Planned; requires M15/M6 measurements. | Device | no | medium |
+| M18 | **Controller support on iOS** | Planned; first establish what the iOS build sees from GameController devices. | Device | no | medium |
+| M19 | **Touch comfort and accessibility**: haptics, one-handed layout, chat/screenshot access, text size | Partial foundation: touch editor, calibration and cursor controls exist; haptics/accessibility and device acceptance remain open. | Device | no | medium |
+| M20 | **Reliability and diagnostics**: clean exit, crash recovery, in-app bug report | Partial foundation: crash reporting, diagnostics and logs exist; clean-exit/OOM guidance, report bundle and full failure tests remain open. | Device | no | medium |
+| M22 | **Test and release pipeline**: on-device test route, regression numbers in CI, signed-IPA guide | Partial: CI build/stack checks and shell checks exist; Objective-C rule tests, fixed device route and install guide remain open. | Mac+device | no | medium |
+| M24 | **Launcher v2**: SwiftUI, system Liquid Glass and tab bar, portrait, Play/Quit in one process | **Partial:** Xcode 26 CI and SwiftUI shell exist; experimental Play path is gated and unvalidated, and Quit-to-launcher is incomplete. | Device | `horizon/` edit (approved) | large |
 
-The state of every milestone is in the table of `IOS_DECISIONS_AND_APP_VISION.md` (section 3); the sections below carry dated progress notes.
+The table is the current status snapshot, not a claim that code has been exercised on a phone: see each dated progress note for evidence and remaining acceptance tests. `IOS_DECISIONS_AND_APP_VISION.md` preserves owner decisions and historical status (last corrected 2026-11-10); use `NEXT_STEPS.md` for the active execution order and `CODE_MAP.md` to locate code.
 
-The dependency chain is: M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a can start now and gates M8b; M8b and M9 ship after M5. M10 and M11 follow. After the game ran (2026-11-10) the order is M15 first, then M20 (it protects the player), then M17 and M19 (they need M15's numbers), then M18 and M22. Each of M17 to M20 and M22 can be done on its own. M16, M21 and M23 were proposed and removed by the owner on 2026-11-10 as not important enough (world backup and export, signature checks and update checks, multiplayer polish); the numbers are not reused.
+The core dependency chain remains M0 -> M1 -> M2 -> (M3, M4) -> M5 -> M6 -> M7. M8a gates M8b; M9 still depends on the owner's app registration and external approval. The immediate work order is in `NEXT_STEPS.md`: validate the current SwiftUI build on the phone, collect a repeatable play/telemetry run, then tune from measurements. M24's in-process Play remains an off-by-default experiment until its current revision and repeated-cycle memory behavior are tested. M16, M21 and M23 were removed by the owner on 2026-11-10; world backup/export, signature/update checks and multiplayer polish must not be reintroduced as active work without revisiting that decision.
 
 ---
 
@@ -428,7 +429,7 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 **Objective.** Get builds to testers and users as a downloadable IPA, and make staying installed painless. No App Store, no TestFlight, no Apple review.
 
 **Work.**
-- CI already produces an unsigned `Horizon-unsigned.ipa` (workflow `iOS app`). Add a release workflow that attaches it to a GitHub release with a checksum, so a tagged commit yields a downloadable file.
+- **Implemented:** CI packages an unsigned `Horizon-unsigned.ipa`, applies the startup-stack budget gate and publishes passing `main` builds as GitHub prereleases (`.github/workflows/ios-app.yml`). **Still open:** add a checksum beside each release asset.
 - Write the install guide for the route you choose (feasibility report 11.3 D10): which tool, how to re-sign, how often, and what to do when a certificate expires. This is the part users will actually hit.
 - Include the third-party notices (`THIRD_PARTY_NOTICES.md` and the iOS dependency licences), the "not an official Minecraft product" disclaimer used in `README.md:170`, and no Mojang assets in the IPA.
 - Decide the update story (D15): a release page and the sideload tool's refresh, with no in-app code download.
@@ -438,6 +439,8 @@ imports a folder, checks it, and Play starts the game. The pause menu's "back to
 **Risks.** Certificate expiry makes the app stop launching until it is re-signed (a usability problem, not a technical one). A sideload tool may strip or refuse entitlements, so any feature that needs one (increased memory limit) must be tested under the real install route. A public IPA that mentions Minecraft invites a trademark complaint; keep the naming discipline.
 
 **Success test.** A tester who has never seen the project installs the IPA on a clean phone using only the written guide, and completes the M5 scripted run.
+
+**Progress (2026-11-14).** Workflow run [43589199313](https://github.com/Hocine123321/iMC-Horizon/actions/runs/43589199313) passed and published [v55](https://github.com/Hocine123321/iMC-Horizon/releases/tag/v55) with a downloadable unsigned IPA. This proves the CI/release path, not installation or use on a phone. No checksum, first-time signing/install-and-expiry guide, or clean-phone M11/M5 acceptance result is recorded; audit the release package and settle remaining legal/release-engineering questions before broad promotion.
 
 **Depends on.** M7, M9, M10 and the install-route decision.
 
@@ -506,13 +509,13 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 6. **About.** Version, licences (MIT for Horizon, the Java runtime's licence once settled), links from `launcher/links.json` (website, Discord), and the plain statement that this is not an official Minecraft product.
 7. **Servers** (with M10): saved server list. Later.
 
-**Design.** Native UIKit like the existing screens. A tab bar replaces the current "way to the other screens" on Home. Landscape and portrait both work in the launcher (the game stays landscape). No tracking is added. Every page is reachable without a signed-in account, except what M9 gates.
+**Design (updated 2026-11-14).** The original UIKit proposal below has been superseded by M24's SwiftUI launcher. The current source has Play, Packs, Controls and Settings tabs, with other tools nested in Settings; see `LAUNCHER.md` and `CODE_MAP.md` section 7.2. The intended pages and success test below remain goals only where they are still in scope.
 
 **Risks.** The launcher and the game are two runs of the app (`LAUNCHER.md`), so anything the game must obey has to travel through a file. Each page is untested until a phone run; keep each page small enough to review in one commit.
 
 **Success test.** Each page opens, shows real data from a phone, and every destructive action asks first. Nothing the page writes breaks `--check`.
 
-**Progress (2026-11-10).** **About** is written (not run on a phone): the app's purpose, the non-affiliation statement, Horizon's MIT licence in full (a test keeps it identical to `horizon/LICENSE`), links, and what the game sends. **Update (later 2026-11-10):** the launcher was rebuilt (see `LAUNCHER.md`): Home, Settings (Look, Marketplace, Start-up), Game files, Account, Diagnostics and About are written, none run on a phone. Not started: Worlds, Screenshots, Logs. Liquid Glass was tried for the look and removed; controls are solid. **Third-party notices (2026-11-10).** Horizon's `THIRD_PARTY_NOTICES.md` (18 KB) is bundled into the app straight from the untouched `horizon/` snapshot (a `buildPhase: resources` source in `platform/ios/project.yml`, so there is no copy to drift) and About shows it unchanged, with a plain message if the file is ever missing from a build. Whether the file really lands in the built app is checked after CI, not assumed. The licences of the iOS-specific parts (the Java runtime, once it is settled) still need adding before the IPA is shared.
+**Progress (2026-11-14; source/CI, not current-build phone validation).** The UIKit design has been replaced by a SwiftUI launcher compiled in CI. Current tabs are Play, Packs, Controls and Settings; Game files, Download, Account, Diagnostics/Logs, File manager and About are reachable as pages (see `LAUNCHER.md`). Logs and About are now implemented, contrary to the older progress note. Worlds and Screenshots pages are not present. Game files/Download and Controls cover parts of the proposed Library and settings work, but there is no full Library/Versions manager or launcher-written engine-options page. The current shell still needs a physical-iPhone walkthrough. Horizon's licence and third-party notices are included by project configuration; check the actual release package and settle the Java/runtime licensing before treating distribution review as complete. World backup/export was later removed from the owner's active priorities; do not restore it to scope without asking.
 
 **Depends on.** M3b (launcher exists). Settings and Library benefit from M8b.
 
@@ -532,11 +535,11 @@ M0 -> M1 -> M2 -> M3 (with a gamepad). That is an iPhone 12 app (signed by your 
 
 **Out of scope.** Editing arbitrary files in place, anything outside the sandbox, and reading other apps' data.
 
-**Risks.** A delete is permanent and saves are the user's work: confirm, and offer a backup copy for `saves/`. Large folders need background enumeration so the UI does not freeze.
+**Risks.** A delete is permanent and saves are the user's work, so the warning and confirmation must be clear. A backup/export feature is out of the current scope unless the owner revisits that decision. Large folders need background enumeration so the UI does not freeze.
 
-**Success test.** Walk the tree, import a resource pack, export a world as a zip and re-import it, try `../` and symlink escapes (refused), delete with and without confirmation.
+**Success test (active scope).** On a phone, browse the Horizon folder, preview/share a file, create a folder, add a file, rename and delete with the correct warnings, and confirm `../` and symlink escapes are refused. Generic folder import and zip/world export are not acceptance criteria until their scope is reconciled with the owner's later decision to remove world backup/export.
 
-**Progress (2026-11-10).** The core is written and the rules are tested (`FileBrowser.m`, 61 offline checks including planted links, `..`, renames onto taken names and the delete warnings), and a screen is wired to Home > **File manager** (browse, text preview, share, rename, delete with the warnings above, new folder, add files). **Never run on a phone.** Not built: zip export, folder import, a backup offer before deleting a world, quick links.
+**Progress (2026-11-14; source/CI, not device-tested).** The current SwiftUI browser (`FileManagerPage.swift`) is under **Settings > File manager**, not Home. It supports browsing, measured sizes/free space, text preview, sharing, rename/delete warnings, new folders and adding files; `FileBrowser.m` has confinement and delete-risk rules with 61 Python mirror checks. The shell is CI-compiled, but neither the current UI nor the Objective-C rules have a recorded physical-iPhone acceptance run (the Python tests are copies, not tests of the Objective-C implementation). The prepared-game **folder import** is a separate Game files flow; generic folder import with safe copy/swap is still missing from M13. Quick links are missing. Zip/world export is not implemented and remains out of active scope after the owner's later decision; revisit before restoring it as a requirement.
 
 **Depends on.** M3b. Pairs with M12 Worlds and M14.
 
@@ -569,7 +572,7 @@ So the first release is honest and small: about 25 installable projects, with th
 
 **Risks.** Third-party code and content from the internet: the checksum, signature and host rules above are the safety net, and installs stay off by default as in the engine. Mod licences and Mojang's usage rules apply to what the registry lists (the registry's own review covers that; we only display it). Registry terms for third-party apps are unverified, so check them before a public release. `ludovic111/horizon-mods` appears as a second allowed release host in the desktop code; take the host list from the source, not from memory.
 
-**Progress (2026-11-10).** Step 1 is written and step 2 started: the index client (`MarketIndex.m`, `MarketClient.m`) and a browse screen (Home > Marketplace) with tabs, search and project pages. Rules read from the desktop source, three of them stricter on purpose; 92 offline checks pass against the real index. Never run on a phone. **Update (later 2026-11-10):** install, update and remove are written (`MarketInstaller.m`, `MarketFetcher.m`: SHA-256, atomic placement, a `mod-browser.json` record, an Installed tab), and Modrinth resource packs were added as an opt-in extra (`ModrinthClient.m`, off until switched on in Settings). Projects whose author signs their files are still refused, because the minisign check (a dependency, so your decision) is not written. Details and the not-done list: `IOS_MARKETPLACE.md`.
+**Progress (2026-11-14; source/CI, not device-tested).** Registry browsing/search/detail, paging, install/update/remove for supported unsigned Horizon content, an Installed view, and opt-in Modrinth resource-pack support are implemented in source; the UI was moved into the SwiftUI Packs tab. Python mirror checks cover copies of some Objective-C rules, not the app's actual Marketplace behavior. No physical-iPhone install/use test is recorded. Signed projects are refused until signature verification exists; a revoked project is refused on a new install, but installed-item revocation removal is not implemented. Shader compatibility on Metal, image/API coverage, registry terms and the end-to-end device scenario remain open. See `IOS_MARKETPLACE.md` for detailed evidence and limitations.
 
 **Success test.** Install one content mod, one resource pack and one shader from a clean app on a phone, see them in Options > Mods or the pack list in the game, remove them, corrupt a download and confirm it is refused, and confirm a revoked entry is refused.
 
@@ -589,7 +592,9 @@ So the first release is honest and small: about 25 installable projects, with th
 4. **Touch polish.** Drag to spread a held stack across slots (competes with scrolling, so it needs a hold-first rule), haptics on hit, break and place (`UIImpactFeedbackGenerator`, behind a setting), a better inventory layout, and a controller layout when one is paired.
 5. **Launcher extras (M12).** Worlds (list with size and date), Screenshots and Logs. Signature checks, update checks and world backup were considered and removed by the owner on 2026-11-10; signed Marketplace projects stay refused for now.
 
-**Not in M15, still open.** Play without the relaunch (winit upgrade or a launcher window inside winit's run, both risky, see `LAUNCHER.md`), preparing the game files on the phone (M8a/M8b, needs the JIT test), Mojang's approval for sign-in (M9), multiplayer polish (M10), distribution (M11).
+**Progress (2026-11-14; implementation evidence only).** Launcher responsiveness work moved file/settings reads and other repeated work off the main thread and added main-thread tick/stall columns to `session-log.csv` (`SESSION_LOG.md`). The log also records footprint, available memory, thermal state and battery, but has no engine frame times or GPU-memory breakdown and has not been tested on a phone. Mobile/Auto Performance controls and the touch editor/calibration/cursor have implementation and unit-test coverage, but no measured before/after performance or battery result is recorded. In-process Play remains experimental and off by default; Quit Game still exits rather than returning to the launcher. Logs/Diagnostics exist; Worlds and Screenshots do not. M15 remains open pending a current-build phone test, the return-path decision/test and a repeatable measured route.
+
+**Not in M15, still open.** Completing Play-without-relaunch and Quit-to-launcher (M24; the experimental entry path is built but unvalidated), preparing the game files on the phone (M8a/M8b, needs the JIT test), Mojang's approval for sign-in (M9), multiplayer work if restored to scope (M10), and M11's signing/install guide and clean-phone acceptance test.
 
 **Risks.** Tuning to one device (the owner's iPhone 12, 4 GB); thermal throttling makes runs hard to compare, so each run records its starting thermal state; an `horizon/` edit for item 1 adds to the rebase list.
 
@@ -599,7 +604,7 @@ So the first release is honest and small: about 25 installable projects, with th
 
 ## Milestones M17 to M20 and M22 (added 2026-11-10, after the game ran on the phone)
 
-These come after M15. They were chosen because each one removes a real risk or a real annoyance for someone who plays on an iPhone, not because the engine has a feature to show off. Facts about the engine below were read from the source on 2026-11-10; things not yet checked are marked **to check**. None of them has been built or run.
+These come after M15. They were chosen because each one removes a real risk or a real annoyance for someone who plays on an iPhone, not because the engine has a feature to show off. Facts about the engine below were read from the source on 2026-11-10; things not yet checked are marked **to check**. Since this section was written, partial foundations have landed (touch editor/calibration/cursor, Auto Performance, crash reporting/diagnostics/logs, session telemetry, and CI build/stack/shell checks). None of M17–M20 or M22 has met its full success test; the overview table and M15 note distinguish those pieces from completed device work.
 
 ### M17. Smooth and efficient rendering
 
@@ -706,9 +711,11 @@ These come after M15. They were chosen because each one removes a real risk or a
 - Native glass needs the iOS 26 SDK. The `macos-15` runner has Xcode 16; `macos-26` has Xcode 26.6 and the iOS 26 SDK.
 
 **Stages (each ends in a build you can test on the phone).**
-1. **Toolchain.** CI moves to `macos-26` and Xcode 26.6, deployment target stays iOS 16. The existing UIKit launcher must build and behave the same. Success test: the build passes and the IPA runs as before.
-2. **SwiftUI launcher, still with the relaunch.** Play, Packs and Settings tabs with the system tab bar, portrait; the existing Objective-C logic (downloader, Marketplace client, file rules, accounts, settings) is reused through a bridge. Success test: every screen reachable, the tab bar is the system's, nothing hand-drawn.
+1. **Toolchain (implemented).** CI runs on `macos-26` with Xcode 26.6; deployment target stays iOS 16. The build is passing, but the current IPA still needs a physical-phone test.
+2. **SwiftUI launcher, still with the relaunch.** Play, Packs, Controls and Settings tabs with the system tab bar, portrait; the existing Objective-C logic (downloader, Marketplace client, file rules, accounts, settings) is reused through a bridge. Success test: every screen reachable, the tab bar is the system's, nothing hand-drawn.
 3. **Engine: Play and Quit Game in one process.** The launcher is presented over the game window; Play starts a fresh engine, Quit Game tears it down and shows the launcher. Memory after repeated cycles is measured on the phone (the fork measured only on a simulator).
 4. **Polish.** Download screen with speed and time left, button states that say what is happening, empty states, screenshots.
 
-**Risks.** Stage 3 is the risky one: the engine tear-down must release GPU and memory on a 4 GB phone, and a mistake can crash or leak. It is kept behind a flag until the repeated-cycle numbers are good. Moving to Xcode 26 may expose compile errors in code written under Xcode 16; stage 1 isolates that.
+**Progress (2026-11-14).** Stage 1 (macOS 26/Xcode 26 CI) is in place. Stage 2's SwiftUI launcher is implemented and CI-built, but the current shell has no documented phone walkthrough. Stage 3 has a source implementation of the engine hold, launcher overlay and orientation transition behind the off-by-default `inProcessPlay` flag; it has not been validated on the current phone build. The full Quit Game return-to-launcher path is not implemented, and the five-cycle memory test remains open. Stage 4's download progress/speed/time-left UI exists in source; device behavior and the full polish acceptance test remain open. See `LAUNCHER.md` and `NEXT_STEPS.md`.
+
+**Risks.** Stage 3 is the risky one: the engine tear-down must release GPU and memory on a 4 GB phone, and a mistake can crash or leak. It is kept behind a flag until the repeated-cycle numbers are good. Xcode 26 CI is already in place; the remaining gate is current-build testing on a physical phone, not the toolchain migration.
