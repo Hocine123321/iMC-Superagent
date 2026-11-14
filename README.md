@@ -7,7 +7,7 @@
 A native iOS port of [Horizon](https://github.com/horizon-rust/horizon), the Rust-based Minecraft: Java Edition client,
 rendered with wgpu on Metal, wrapped in a SwiftUI launcher built for touch.
 
-[Download the latest IPA](https://github.com/Hocine123321/iMC-Superagent/releases) ·
+[Download the latest IPA](https://github.com/Hocine123321/iMC-Horizon/releases) ·
 [Roadmap](docs/IOS_IMPLEMENTATION_ROADMAP.md) ·
 [How it works](docs/IOS_DECISIONS_AND_APP_VISION.md)
 
@@ -44,7 +44,7 @@ it feel made for iOS. See [Status](#status) for what is and isn't done.
 
 ## Install
 
-1. Open [Releases](https://github.com/Hocine123321/iMC-Superagent/releases) and download the newest `iMC-Horizon-vN.ipa`.
+1. Open [Releases](https://github.com/Hocine123321/iMC-Horizon/releases) and download the newest `iMC-Horizon-vN.ipa`.
 2. Sign and install it with a sideloading tool such as AltStore, SideStore or Sideloadly (the IPA is unsigned).
 3. Bring your own prepared Java Edition game files for now (see [`docs/PC_PREPARATION_GUIDE.md`](docs/PC_PREPARATION_GUIDE.md)),
    and put them in the app's folder through the Files app.

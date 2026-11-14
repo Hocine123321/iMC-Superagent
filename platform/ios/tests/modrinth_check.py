@@ -173,7 +173,7 @@ check("zip: a directory offset past the end is unreadable", pack_ok(bytes(cut))[
 check("zip: a zip with a comment is still read", pack_ok(z[:-2] + struct.pack("<H", 5) + b"hello")[0])
 
 if "--live" in sys.argv:
-    H = {"User-Agent": "iMC-Horizon-iOS-check (github.com/Hocine123321/iMC-Superagent)"}
+    H = {"User-Agent": "iMC-Horizon-iOS-check (github.com/Hocine123321/iMC-Horizon)"}
     def get(u): return urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=90).read()
     r = json.loads(get(search_url("", "26.3", 0, 30)))
     hits = parse_search(r)

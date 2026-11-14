@@ -47,7 +47,7 @@
     cfg.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
     self.session = [NSURLSession sessionWithConfiguration:cfg delegate:self delegateQueue:NSOperationQueue.mainQueue];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-    [req setValue:@"iMC-Horizon-iOS (github.com/Hocine123321/iMC-Superagent)" forHTTPHeaderField:@"User-Agent"];
+    [req setValue:@"iMC-Horizon-iOS (github.com/Hocine123321/iMC-Horizon)" forHTTPHeaderField:@"User-Agent"];
     self.task = [self.session downloadTaskWithRequest:req];
     [self.task resume];
 }

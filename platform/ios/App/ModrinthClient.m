@@ -182,7 +182,7 @@ static NSArray *List(id d, NSString *k) {
     NSURLSession *s = [NSURLSession sessionWithConfiguration:cfg];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u];
     // Modrinth asks for a user agent that names the project.
-    [req setValue:@"Hocine123321/iMC-Superagent iMC-Horizon-iOS" forHTTPHeaderField:@"User-Agent"];
+    [req setValue:@"Hocine123321/iMC-Horizon iMC-Horizon-iOS" forHTTPHeaderField:@"User-Agent"];
     [[s dataTaskWithRequest:req completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
         NSInteger code = [r isKindOfClass:[NSHTTPURLResponse class]] ? ((NSHTTPURLResponse *)r).statusCode : 0;
         NSString *err = nil;

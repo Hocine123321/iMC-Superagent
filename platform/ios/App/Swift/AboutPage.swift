@@ -46,7 +46,7 @@ struct AboutPage: View {
                 Sep()
                 linkRow("Horizon source", "https://github.com/horizon-rust/horizon", "chevron.left.forwardslash.chevron.right")
                 Sep()
-                linkRow("This app's source", "https://github.com/Hocine123321/iMC-Superagent", "shippingbox")
+                linkRow("This app's source", "https://github.com/Hocine123321/iMC-Horizon", "shippingbox")
             }
             card("Privacy", "The launcher keeps its logs on the phone and sends them nowhere unless you share them yourself. The game itself sends Horizon's anonymous \"I'm playing\" ping to telemetry.playhorizon.dev once a minute while you play, as Horizon does on every platform.")
             GlassGroup {

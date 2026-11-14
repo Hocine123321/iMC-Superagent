@@ -32,7 +32,7 @@ will be when it is done, and how much of that is real today.
 | 9 | **One JVM only** (`HORIZON_PREPARE_JOBS=1`). | A phone has limited memory; one JVM is also all that can exist in-process. | PLANNED |
 | 10 | **Pin the Java build to tag `jdk-25.0.5.0.3-ga`.** | The iOS patches apply cleanly to that tag and fail on newer ones. | DONE |
 | 11 | **Test device: iPhone 12 (A14), iOS 27.2, JIT through StikDebug.** | The A14 has no TXM, so JIT only needs a debugger attached. | **Partly shown.** The 2026-11-08 diagnostics report `CS_DEBUGGED` set (a debugger is attached), but the `MAP_JIT` test page was refused: `errno 1 (Operation not permitted)`. So a JIT page could not be made by this app in that run. Earlier text here said "JIT works (owner-confirmed)"; the log does not show that. **Second run, 2026-11-10 (v33, probes B, C, D with a debugger attached): B and C killed the app, D was refused with `errno 1`; A was not re-run.** No executable page was possible. The app has no `com.apple.developer.cs.allow-jit` entitlement, which is the next thing to try (`ios-evidence/diagnostics-2026-11-10-run2-probes.txt`). See `ios-evidence/diagnostics-2026-11-08-run1.txt`. |
-| 12 | **Repository: `Hocine123321/iMC-Superagent`**, upstream in `horizon/`, port in the root. | Keeps the port and the clone separate. | DONE |
+| 12 | **Repository: `Hocine123321/iMC-Horizon`**, upstream in `horizon/`, port in the root. | Keeps the port and the clone separate. Renamed from `iMC-Superagent` on 2026-11-13; GitHub redirects the old address. | DONE |
 
 ---
 
