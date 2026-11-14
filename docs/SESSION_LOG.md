@@ -133,9 +133,22 @@ sets of commits were rebased onto each other without conflict except one duplica
 | Change | Why |
 |---|---|
 | The engine draws nothing and wakes every 50 ms while it waits for Play behind the launcher (`Loading::about_to_wait`, `Loading::draw`; `HORIZON_CHANGES.md`) | With Play without closing the app, the covered engine window rendered its title panorama every frame under `ControlFlow::Poll`: GPU and main-thread work for nothing, heat, and a launcher that competed with it |
-| New app icon and mark: a dirt block with a Dynamic Island over it | The owner's idea; `tools/make_app_icon.py`, `BrandMark` |
+| New app icon and mark: a dirt block with a Dynamic Island over it | The owner's idea; `tools/make_app_icon.py`, `BrandMark`. The island was removed the next day (the dirt block alone), and one icon per colour theme was added (see below) |
 | Two free colours, nine presets, default blue with a little red; Lightweight visuals | `Palette.swift`, `Prefs.swift`, `Look.swift`, Settings > Look |
 | The Account head loads: Mojang names its skins with an `http://textures.minecraft.net` address, which the first version refused (it required https); it now asks the same server over https, and the page says why when there is no head | `SkinHead.swift` |
 | Marketplace pages; Modrinth Description with Expand | `MarketplaceTab.swift`, `MarketDetailPage.swift`, `MarkdownText.swift`, `ModrinthClient.m` (`bodyOfProject`) |
 | File manager rows are flat tinted cards | Glass on a long list is the expensive case |
 | "Checking the game files" no longer waits for the whole manifest to be parsed and the folder to be walked: the verdict is remembered per manifest size and date (`filesOK:`), the size of the files likewise (`resourcesKey:`), the Play tab paints the remembered answer at once, and the slow reads arrive after the first | `LauncherModel.m` `checkFiles:`, `LauncherState.refresh()` |
+
+## One app icon per colour theme (2026-11-14)
+
+The Dynamic Island came off the icon: the dirt block alone. Each of the nine colour themes has its own icon (the block lit in the
+theme's two colours, light, dark and tinted), shipped as iOS alternate icons: `AppIcon` for Blue and red and `AppIcon-red-blue`,
+`-ocean`, `-sunset`, `-forest`, `-violet`, `-ember`, `-mint`, `-slate`, listed in `project.yml`
+(`ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`). `AppIconTheme.swift` changes the home screen icon when the theme changes,
+after the colours have been still for 1.2 s, only if it would be a different icon, and only while the app is active.
+Because iOS shows a system notice on every icon change, Settings > Look > Match the app icon can turn it off (it then goes back
+to the default icon). The theme list exists in two places (`ThemePreset.all` in `Palette.swift`, `PRESETS` in the icon script):
+`tools/make_app_icon.py --check` compares them and the shell-check workflow runs it. The app build now also fails if the built
+app lacks an alternate icon in its Info.plist. Not tried on a phone: whether a re-signed install keeps working alternate icons is
+the thing to check first.

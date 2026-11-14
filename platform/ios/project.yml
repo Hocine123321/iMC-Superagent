@@ -78,6 +78,9 @@ targets:
         # Empty unless the build passes HZ_MSA_CLIENT_ID (xcodebuild HZ_MSA_CLIENT_ID=...): no sign-in then.
         HZ_MSA_CLIENT_ID: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # One alternate icon per colour theme (the first theme is the AppIcon itself). tools/make_app_icon.py draws them and
+        # checks this list; AppIconTheme.swift switches to the one that matches the theme.
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-red-blue AppIcon-ocean AppIcon-sunset AppIcon-forest AppIcon-violet AppIcon-ember AppIcon-mint AppIcon-slate"
         # Where CI (or scripts/build-rust.sh) leaves the staticlib for the SDK being built.
         LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: "$(SRCROOT)/build/rust/device"
         LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(SRCROOT)/build/rust/sim"

@@ -6,7 +6,7 @@ name: iOS shell check
 on:
   push:
     branches: [main]
-    paths: ["platform/ios/App/**", ".github/workflows/ios-shell-check.yml"]
+    paths: ["platform/ios/App/**", "platform/ios/Assets.xcassets/**", "platform/ios/project.yml", "tools/make_app_icon.py", ".github/workflows/ios-shell-check.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -20,6 +20,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      # The colour themes, their icon sets and the project.yml list of alternate icons must name the same icons.
+      - name: The theme icons agree
+        run: python3 tools/make_app_icon.py --check
       - name: Compile each file for the iOS SDK
         working-directory: platform/ios/App
         run: |

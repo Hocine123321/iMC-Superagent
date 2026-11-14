@@ -139,6 +139,17 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print" "$APP/Info.plist" | grep -E "UISupportedInterfaceOrientations|Landscape|Portrait|UIRequiresFullScreen|UIFileSharingEnabled|LSSupportsOpening|UIStatusBarHidden|MinimumOSVersion" || echo "keys missing"
           wc -c "$APP/Info.plist"
           echo "--- minimum OS / platform:"; otool -l "$APP/Horizon" | grep -E -A4 "LC_BUILD_VERSION" | head -8
+      # The home screen icon follows the colour theme (AppIconTheme.swift): the built app must carry every alternate icon,
+      # or iOS refuses the switch at run time and nothing on CI would say so.
+      - name: Check the alternate icons are in the app
+        working-directory: platform/ios
+        run: |
+          APP=$(find build/dd -name Horizon.app -maxdepth 6 | head -1)
+          WANT=$(grep ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES project.yml | sed 's/.*"\(.*\)".*/\1/' | tr ' ' '\n' | grep -c .)
+          HAVE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundleAlternateIcons" "$APP/Info.plist" 2>/dev/null | grep -c "AppIcon-" || true)
+          echo "alternate icons wanted: $WANT, in the built Info.plist: $HAVE"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" "$APP/Info.plist" 2>/dev/null | head -40 || true
+          [ "$HAVE" -ge "$WANT" ] || { echo "::error title=icons::the built app lists $HAVE alternate icons, expected $WANT"; exit 1; }
       - name: Launch on the iOS Simulator and record what happens
         if: matrix.sdk == 'iphonesimulator'
         working-directory: platform/ios

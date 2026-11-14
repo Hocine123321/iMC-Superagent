@@ -42,8 +42,10 @@ final class Prefs: ObservableObject {
     // Look
     @Published var appearance: Int { didSet { HZTheme.setAppearance(HZAppearance(rawValue: appearance) ?? .system) } }
     /// The two colours of the launcher (RRGGBB), chosen from the presets or picked freely. The first is the accent.
-    @Published var colour1: UInt32 { didSet { LauncherFile.set("colour1", Palette.hexString(colour1)) } }
-    @Published var colour2: UInt32 { didSet { LauncherFile.set("colour2", Palette.hexString(colour2)) } }
+    @Published var colour1: UInt32 { didSet { LauncherFile.set("colour1", Palette.hexString(colour1)); AppIconTheme.schedule() } }
+    @Published var colour2: UInt32 { didSet { LauncherFile.set("colour2", Palette.hexString(colour2)); AppIconTheme.schedule() } }
+    /// The home screen icon follows the theme (AppIconTheme).
+    @Published var matchIcon: Bool { didSet { LauncherFile.set("matchIcon", String(matchIcon)); if matchIcon { AppIconTheme.schedule() } else { AppIconTheme.useDefault() } } }
     /// 0 is all the first colour, 1 is all the second; the middle is an even mix behind the launcher. The default
     /// (0.3) is blue with a little red.
     @Published var balance: Double { didSet { LauncherFile.set("balance", String(format: "%.2f", balance)) } }
@@ -105,6 +107,7 @@ final class Prefs: ObservableObject {
         reduceMotion = HZPrefs.reduceMotion()
         compactLists = HZPrefs.compactLists()
         showHead = LauncherFile.flag("showHead", default: true)
+        matchIcon = LauncherFile.flag("matchIcon", default: true)
         lightweight = LauncherFile.flag("lightweight", default: false)
         lightweightAuto = LauncherFile.flag("lightweightAuto", default: true)
         opensGameDirectly = HZLauncherModel.shared()!.opensGameDirectly
@@ -127,6 +130,7 @@ final class Prefs: ObservableObject {
         intensity = 0.5
         haptics = true
         showHead = true
+        matchIcon = true
         lightweight = false
         lightweightAuto = true
         confirmPlay = true

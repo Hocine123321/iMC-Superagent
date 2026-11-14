@@ -183,6 +183,11 @@ struct LookSettingsPage: View {
             SectionLabel("Colours")
             presetGrid
             GlassGroup {
+                ToggleRow(symbol: "app.badge.fill", title: "Match the app icon",
+                          detail: "Changes the icon on the home screen to the one made for the colour theme (a custom pair gets the nearest theme's). iOS shows a short notice each time the icon changes.",
+                          isOn: $prefs.matchIcon)
+            }
+            GlassGroup {
                 colourRow("First colour", "The accent: buttons, switches, the tab bar.", first: true)
                 Sep(inset: 16)
                 colourRow("Second colour", "The glow in the opposite corner and the second icon colour.", first: false)

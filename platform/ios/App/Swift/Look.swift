@@ -457,10 +457,9 @@ struct LongText: View {
 
 // MARK: - The mark
 
-/// The app's mark: a Minecraft dirt block with an iPhone Dynamic Island over it, a thin blue-to-red glow around the island.
-/// Drawn in code, so it is the same picture as the app icon (tools/make_app_icon.py) at any size.
+/// The app's mark: a Minecraft dirt block. Drawn in code, so it is the same picture as the app icon
+/// (tools/make_app_icon.py) at any size.
 struct BrandMark: View {
-    var showsIsland = true
 
     // The dirt texture's browns (the game's own dirt, three of them common, a few darker and lighter).
     private static let dirt: [(Double, Double, Double)] = [
@@ -475,8 +474,8 @@ struct BrandMark: View {
     var body: some View {
         Canvas { ctx, size in
             let s = min(size.width, size.height)
-            let cx = size.width / 2, cy = size.height / 2 + s * 0.06
-            let r = s * 0.40, h = r * 0.8660254
+            let cx = size.width / 2, cy = size.height / 2
+            let r = s * 0.46, h = r * 0.8660254
             let T = CGPoint(x: cx, y: cy - r), TR = CGPoint(x: cx + h, y: cy - r / 2), TL = CGPoint(x: cx - h, y: cy - r / 2)
             let C = CGPoint(x: cx, y: cy), BL = CGPoint(x: cx - h, y: cy + r / 2), B = CGPoint(x: cx, y: cy + r)
             let n = 6
@@ -503,27 +502,6 @@ struct BrandMark: View {
             var edge = Path()
             edge.move(to: TL); edge.addLine(to: C); edge.addLine(to: TR)
             ctx.stroke(edge, with: .color(Color(red: 1, green: 0.92, blue: 0.82).opacity(0.5)), lineWidth: max(0.8, s * 0.012))
-
-            guard showsIsland else { return }
-            // The Dynamic Island: a black pill across the top of the block, a blue-to-red glow around it, the camera lens on the right.
-            let pw = s * 0.60, ph = s * 0.17
-            let pill = CGRect(x: cx - pw / 2, y: cy - r * 0.80 - ph / 2, width: pw, height: ph)
-            let shape = Path(roundedRect: pill, cornerRadius: ph / 2)
-            ctx.fill(Path(roundedRect: pill.offsetBy(dx: 0, dy: s * 0.015), cornerRadius: ph / 2), with: .color(.black.opacity(0.35)))
-            ctx.fill(shape, with: .color(Color(red: 0.024, green: 0.024, blue: 0.035)))
-            ctx.stroke(shape, with: .linearGradient(Gradient(colors: [Color(red: 0.2, green: 0.4, blue: 1), Color(red: 1, green: 0.24, blue: 0.33)]),
-                                                    startPoint: CGPoint(x: pill.minX, y: pill.midY), endPoint: CGPoint(x: pill.maxX, y: pill.midY)),
-                       lineWidth: max(1, s * 0.016))
-            let lr = ph * 0.30, lx = pill.maxX - ph * 0.52, ly = pill.midY
-            ctx.fill(Path(ellipseIn: CGRect(x: lx - lr, y: ly - lr, width: lr * 2, height: lr * 2)), with: .color(Color(red: 0.10, green: 0.11, blue: 0.15)))
-            ctx.fill(Path(ellipseIn: CGRect(x: lx - lr * 0.72, y: ly - lr * 0.72, width: lr * 1.44, height: lr * 1.44)), with: .color(Color(red: 0.05, green: 0.06, blue: 0.17)))
-            ctx.fill(Path(ellipseIn: CGRect(x: lx - lr * 0.36, y: ly - lr * 0.46, width: lr * 0.3, height: lr * 0.3)), with: .color(Color(red: 0.47, green: 0.55, blue: 1)))
-            // The app inside its own island: a tiny dirt block.
-            let mr = ph * 0.34, mcx = pill.minX + ph * 0.62, mcy = pill.midY, mh = mr * 0.8660254
-            func tri(_ pts: [CGPoint], _ c: Color) { var p = Path(); p.addLines(pts); p.closeSubpath(); ctx.fill(p, with: .color(c)) }
-            tri([CGPoint(x: mcx, y: mcy - mr), CGPoint(x: mcx + mh, y: mcy - mr / 2), CGPoint(x: mcx, y: mcy), CGPoint(x: mcx - mh, y: mcy - mr / 2)], Color(red: 0.62, green: 0.45, blue: 0.31))
-            tri([CGPoint(x: mcx - mh, y: mcy - mr / 2), CGPoint(x: mcx, y: mcy), CGPoint(x: mcx, y: mcy + mr), CGPoint(x: mcx - mh, y: mcy + mr / 2)], Color(red: 0.46, green: 0.33, blue: 0.22))
-            tri([CGPoint(x: mcx, y: mcy), CGPoint(x: mcx + mh, y: mcy - mr / 2), CGPoint(x: mcx + mh, y: mcy + mr / 2), CGPoint(x: mcx, y: mcy + mr)], Color(red: 0.34, green: 0.24, blue: 0.16))
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityHidden(true)

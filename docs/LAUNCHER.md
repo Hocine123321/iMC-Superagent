@@ -22,7 +22,7 @@ glass. The file manager always uses the flat tinted cards. A surface marks itsel
 (`SurfaceModifier` in `Look.swift`).
 Glass is only the system's: `glassEffect`, `GlassEffectContainer`, `.glass` and `.glassProminent` on iOS 26 and later, the system's
 materials before that; nothing imitates glass. The mark (`BrandMark`) is drawn in code and matches the app icon
-(`tools/make_app_icon.py` writes the three icon files). The mark and the icon are a Minecraft dirt block with an iPhone Dynamic Island over it, a blue-to-red glow around the island..
+(`tools/make_app_icon.py` writes the three icon files). The mark and the icon are a Minecraft dirt block. There is one icon per colour theme (the dirt block lit in that theme's two colours: `AppIcon` for Blue and red, `AppIcon-<theme>` for the other eight); `AppIconTheme.swift` switches the home screen icon to the one that matches when the theme changes (a custom colour pair gets the nearest theme's), through iOS alternate icons, once the colours have been still for a moment. iOS shows its own short notice each time the icon changes; that cannot be turned off. Settings > Look > Match the app icon turns it off. `tools/make_app_icon.py --check` (run by the shell-check workflow) keeps the theme list, the icon sets and `project.yml` in agreement, and the app build fails if the built Info.plist lacks an alternate icon..
 
 **Tabs** (the system tab bar): **Play**, **Packs**, **Controls**, **Settings**.
 
