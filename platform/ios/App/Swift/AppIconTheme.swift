@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// The home screen icon follows the colour theme, or is picked by hand (Settings > Look > App icon): each preset has an icon of its own (the dirt block lit in that
