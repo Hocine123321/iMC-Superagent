@@ -8,7 +8,6 @@ Each icon is three 1024x1024 files for iOS (any / dark / tinted), no transparenc
     python3 tools/make_app_icon.py             # writes icon_<theme>_<variant>.png here, for a look
 
 PRESETS below is the same list as ThemePreset.all in platform/ios/App/Swift/Palette.swift; --check compares them."""
-from PIL import Image, ImageDraw, ImageFilter
 import json
 import math
 import os
@@ -105,6 +104,8 @@ def draw_dirt_block(im, cx, cy, r, n=16, seed=26):
 
 
 def draw(variant, first, second):
+    global Image, ImageDraw, ImageFilter
+    from PIL import Image, ImageDraw, ImageFilter          # only drawing needs Pillow; --check runs without it
     light = variant == "light"
     top, bot = ((222, 232, 255), (255, 228, 236)) if light else ((6, 10, 30), (30, 9, 22))
     c1, c2 = rgb(first), rgb(second)
