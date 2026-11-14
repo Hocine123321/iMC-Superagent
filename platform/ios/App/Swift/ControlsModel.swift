@@ -35,6 +35,13 @@ enum ImcSchema {
         Entry(key: "autoResolution", kind: .flag, fallback: 0),
         Entry(key: "cursorInventory", kind: .flag, fallback: 0),
         Entry(key: "cursorSpeed", kind: .steps(5), fallback: 2),
+        // Written by the game after cursorSpeed (imc_settings.rs, serialize). The launcher has no row for them, but it
+        // rewrites the whole file, so it must know them or saving here would put them back to their defaults.
+        Entry(key: "cursorHold", kind: .steps(4), fallback: 1),
+        Entry(key: "cursorDragGrab", kind: .flag, fallback: 0),
+        Entry(key: "worldControls", kind: .flag, fallback: 0),
+        Entry(key: "airHold", kind: .flag, fallback: 0),
+        Entry(key: "airHoldDelay", kind: .steps(4), fallback: 1),
     ]
 
     static func entry(_ key: String) -> Entry? { entries.first { $0.key == key } }
@@ -196,7 +203,7 @@ enum TouchLayoutFile {
     static var path: String { DiagFiles.path("home", fileName) }
     /// The buttons by their saved name (touch_layout::NAMES). The ones after "back" are the game's extra buttons, which
     /// the launcher does not edit but keeps when it saves.
-    static let names = ["jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back", "chat", "debug", "shot", "view", "key1", "key2"]
+    static let names = ["jump", "sneak", "run", "use", "pause", "prev", "next", "drop", "inv", "back", "chat", "debug", "shot", "view", "key1", "key2", "cursor", "shift"]
 
     private static func parseLine(_ line: String) -> (Int, TouchSlot)? {
         guard let colon = line.firstIndex(of: ":") else { return nil }
