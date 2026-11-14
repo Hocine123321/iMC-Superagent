@@ -11,6 +11,8 @@ rendered with wgpu on Metal, wrapped in a SwiftUI launcher built for touch.
 [Roadmap](docs/IOS_IMPLEMENTATION_ROADMAP.md) ·
 [How it works](docs/IOS_DECISIONS_AND_APP_VISION.md)
 
+![45 seconds of gameplay: breaking wood, crafting and walking through the world](docs/media/gameplay/long-gameplay.gif)
+
 </div>
 
 > **Unofficial.** iMC Horizon is not an official Minecraft product and is not made by, approved by or associated with
@@ -94,6 +96,14 @@ A local build shows `dev` and `local` in About instead of a release number and c
 - [`docs/IOS_IMPLEMENTATION_ROADMAP.md`](docs/IOS_IMPLEMENTATION_ROADMAP.md): every milestone.
 - [`docs/LAUNCHER.md`](docs/LAUNCHER.md) and [`docs/IMC_SETTINGS.md`](docs/IMC_SETTINGS.md): the launcher and the settings page.
 - [`docs/IOS_CRASH_STACK.md`](docs/IOS_CRASH_STACK.md): the stack overflow that killed the title screen.
+
+## Gameplay footage
+
+![Using the inventory and crafting grid to make tools](docs/media/gameplay/inventory-crafting.gif)
+
+![Placing torches to light a cave](docs/media/gameplay/place-torches.gif)
+
+![Mining coal and stone with a pickaxe](docs/media/gameplay/mine-blocks.gif)
 
 ## Credits and licence
 
