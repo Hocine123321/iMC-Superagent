@@ -45,7 +45,19 @@ final class Prefs: ObservableObject {
     @Published var colour1: UInt32 { didSet { LauncherFile.set("colour1", Palette.hexString(colour1)); AppIconTheme.schedule() } }
     @Published var colour2: UInt32 { didSet { LauncherFile.set("colour2", Palette.hexString(colour2)); AppIconTheme.schedule() } }
     /// The home screen icon follows the theme (AppIconTheme).
-    @Published var matchIcon: Bool { didSet { LauncherFile.set("matchIcon", String(matchIcon)); if matchIcon { AppIconTheme.schedule() } else { AppIconTheme.useDefault() } } }
+    @Published var matchIcon: Bool {
+        didSet {
+            LauncherFile.set("matchIcon", String(matchIcon))
+            if matchIcon { AppIconTheme.schedule() } else { iconChoice = AppIconTheme.activeID }   // off: keep the icon it is now
+        }
+    }
+    /// The icon the person picked by hand (a theme's id), used while "Match the colour theme" is off.
+    @Published var iconChoice: String {
+        didSet {
+            LauncherFile.set("iconChoice", iconChoice)
+            if !matchIcon { AppIconTheme.apply() }
+        }
+    }
     /// 0 is all the first colour, 1 is all the second; the middle is an even mix behind the launcher. The default
     /// (0.3) is blue with a little red.
     @Published var balance: Double { didSet { LauncherFile.set("balance", String(format: "%.2f", balance)) } }
@@ -108,6 +120,7 @@ final class Prefs: ObservableObject {
         compactLists = HZPrefs.compactLists()
         showHead = LauncherFile.flag("showHead", default: true)
         matchIcon = LauncherFile.flag("matchIcon", default: true)
+        iconChoice = ThemePreset.all.contains { $0.id == LauncherFile.get("iconChoice") } ? (LauncherFile.get("iconChoice") ?? ThemePreset.standard.id) : ThemePreset.standard.id
         lightweight = LauncherFile.flag("lightweight", default: false)
         lightweightAuto = LauncherFile.flag("lightweightAuto", default: true)
         opensGameDirectly = HZLauncherModel.shared()!.opensGameDirectly
@@ -131,6 +144,7 @@ final class Prefs: ObservableObject {
         haptics = true
         showHead = true
         matchIcon = true
+        iconChoice = ThemePreset.standard.id
         lightweight = false
         lightweightAuto = true
         confirmPlay = true

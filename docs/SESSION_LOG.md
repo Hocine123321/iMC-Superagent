@@ -152,3 +152,11 @@ to the default icon). The theme list exists in two places (`ThemePreset.all` in 
 `tools/make_app_icon.py --check` compares them and the shell-check workflow runs it. The app build now also fails if the built
 app lacks an alternate icon in its Info.plist. Not tried on a phone: whether a re-signed install keeps working alternate icons is
 the thing to check first.
+
+### Icon follow-up (2026-11-14)
+
+The app icon now uses the in-app mark's block (six cells to a face, same browns by the same formula in `make_app_icon.py` and
+`BrandMark`) instead of the larger, finer 16-cell block. The background went back to the original icon's style, a sky with a soft
+glow behind the block, stepped ground and a horizon line (the faint grid of squares, which was added on the first overhaul and
+never asked for, is gone), in each theme's two colours. Settings > Look has an App icon section: the match-the-theme switch and a grid of
+the nine icons to pick by hand (`AppIconTheme.choose`, `IconPreview`), saved as `iconChoice:` in `launcher.txt`.

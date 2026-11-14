@@ -1,6 +1,8 @@
-"""Draws the iMC Horizon app icons with code: a Minecraft dirt block on a navy-to-wine ground, lit in the two colours of a
-launcher theme. One icon per colour theme (the presets of Settings > Look); the launcher switches to the matching one when
-the theme changes (platform/ios/App/Swift/AppIconTheme.swift). The in-app mark is the same picture (BrandMark in Look.swift).
+"""Draws the iMC Horizon app icons with code: a Minecraft dirt block over a horizon (a sky with a soft glow behind the block,
+stepped ground, a thin horizon line), in the two colours of a launcher theme. One icon per colour theme (the presets of
+Settings > Look); the launcher switches to the matching one when the theme changes, or the person picks one by hand
+(platform/ios/App/Swift/AppIconTheme.swift). The block is drawn exactly as the in-app mark is (BrandMark in Look.swift: six
+cells to a face, the same browns chosen by the same formula), so the icon and the mark are one picture.
 Each icon is three 1024x1024 files for iOS (any / dark / tinted), no transparency, no baked rounded corners: iOS masks it.
 
     python3 tools/make_app_icon.py --install   # writes every AppIcon*.appiconset into platform/ios/Assets.xcassets
@@ -53,92 +55,93 @@ def lerp(a, b, t):
     return tuple(a[i] + (b[i] - a[i]) * t for i in range(len(a)))
 
 
-def vgradient(top, bottom):
-    im = Image.new("RGBA", (W, W))
-    d = ImageDraw.Draw(im)
-    for y in range(W):
-        c = lerp(top, bottom, y / (W - 1))
-        d.line([(0, y), (W, y)], fill=tuple(int(v) for v in c) + (255,))
-    return im
+def mix(a, b, t):
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def glow(center, radius, colour, alpha):
-    layer = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    ImageDraw.Draw(layer).ellipse([center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius], fill=colour + (alpha,))
-    return layer.filter(ImageFilter.GaussianBlur(radius * 0.55))
+def cell_colour(face, i, j):
+    """The brown of one cell, by the same formula BrandMark uses in SwiftUI (Look.swift)."""
+    h = abs((face * 7919) ^ (i * 73856093) ^ (j * 19349663))
+    return DIRT[h % len(DIRT)]
 
 
-def texture(seed, n=16):
-    rnd = random.Random(seed)
-    tex = [[rnd.choice(DIRT) for _ in range(n)] for _ in range(n)]
-    for _ in range(n):                      # a few darker clumps, as in the game's dirt
-        tex[rnd.randrange(n)][rnd.randrange(n)] = (96, 66, 44)
-    return tex
-
-
-def draw_dirt_block(im, cx, cy, r, n=16, seed=26):
-    """An isometric dirt block centred on (cx, cy), `r` from the centre to the top corner."""
+def draw_dirt_block(im, cx, cy, r, n=6):
+    """An isometric dirt block centred on (cx, cy), `r` from the centre to the top corner, n cells to a face."""
     h = r * math.sqrt(3) / 2
     T = (cx, cy - r); TR = (cx + h, cy - r / 2); TL = (cx - h, cy - r / 2)
-    C = (cx, cy); BL = (cx - h, cy + r / 2); BR = (cx + h, cy + r / 2); B = (cx, cy + r)
-    tex = texture(seed, n)
+    C = (cx, cy); BL = (cx - h, cy + r / 2); B = (cx, cy + r)
     d = ImageDraw.Draw(im)
 
-    def face(origin, u_end, v_end, shade):
+    def face(face_id, origin, u_end, v_end, shade):
         ux, uy = u_end[0] - origin[0], u_end[1] - origin[1]
         vx, vy = v_end[0] - origin[0], v_end[1] - origin[1]
         for j in range(n):
             for i in range(n):
                 p = lambda a, b: (origin[0] + ux * a / n + vx * b / n, origin[1] + uy * a / n + vy * b / n)
+                colour = tuple(min(255, int(v * shade)) for v in cell_colour(face_id, i, j)) + (255,)
                 poly = [p(i, j), p(i + 1, j), p(i + 1, j + 1), p(i, j + 1)]
-                gx = sum(q[0] for q in poly) / 4; gy = sum(q[1] for q in poly) / 4
-                poly = [(q[0] + (q[0] - gx) * 0.04, q[1] + (q[1] - gy) * 0.04) for q in poly]   # no seams between cells
-                d.polygon(poly, fill=tuple(min(255, int(v * shade)) for v in tex[j][i]) + (255,))
+                d.polygon(poly, fill=colour)
+                d.line(poly + [poly[0]], fill=colour, width=2)      # no seams between cells (the mark strokes its cells too)
 
-    face(T, TR, TL, 1.12)       # top
-    face(TL, C, BL, 0.86)       # left
-    face(C, TR, B, 0.64)        # right
-    d.line([TL, C, TR], fill=(255, 235, 210, 120), width=max(3, int(W * 0.004)), joint="curve")
-    d.line([C, B], fill=(0, 0, 0, 90), width=max(3, int(W * 0.004)))
-    d.line([T, TR, BR, B, BL, TL, T], fill=(30, 18, 10, 150), width=max(3, int(W * 0.0045)), joint="curve")
+    face(0, T, TR, TL, 1.12)    # top
+    face(1, TL, C, BL, 0.86)    # left
+    face(2, C, TR, B, 0.64)     # right
+    # The one highlight the mark has: a light rim along the two top edges that meet at the front corner.
+    d.line([TL, C, TR], fill=(255, 235, 209, 128), width=max(3, int(r * 0.026)), joint="curve")
 
 
 def draw(variant, first, second):
     global Image, ImageDraw, ImageFilter
     from PIL import Image, ImageDraw, ImageFilter          # only drawing needs Pillow; --check runs without it
-    light = variant == "light"
-    top, bot = ((222, 232, 255), (255, 228, 236)) if light else ((6, 10, 30), (30, 9, 22))
     c1, c2 = rgb(first), rgb(second)
-    a1, a2 = (125, 125) if light else (190, 190)
+    if variant == "light":
+        sky_top, sky_bot = mix((255, 255, 255), c1, 0.45), mix((255, 246, 232), c2, 0.35)
+        hill1, hill2 = tuple(int(v * 0.66) for v in c2), tuple(int(v * 0.50) for v in c2)
+        glow = mix((255, 255, 255), c1, 0.30)
+        line = mix((255, 255, 255), c1, 0.20)
+    else:
+        sky_top, sky_bot = (8, 12, 34), mix((14, 20, 46), c1, 0.30)
+        hill1, hill2 = mix((10, 16, 30), c2, 0.24), mix((8, 12, 24), c2, 0.13)
+        glow = c1
+        line = c1
 
-    im = vgradient(top, bot)
-    im.alpha_composite(glow((int(W * 0.15), int(W * 0.08)), int(W * 0.55), c1, a1))
-    im.alpha_composite(glow((int(W * 0.88), int(W * 0.96)), int(W * 0.60), c2, a2))
-
-    # A faint block grid behind the block, tinted in the two colours, fading downwards.
-    grid = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(grid)
-    cell = W // 14
-    for r_ in range(15):
-        for c_ in range(15):
-            hsh = (r_ * 73856093) ^ (c_ * 19349663)
-            v = (abs(hsh) % 1000) / 1000
-            if v < 0.64:
-                continue
-            col = c1 if (hsh & 4) == 0 else c2
-            gd.rounded_rectangle([c_ * cell + 6, r_ * cell + 6, (c_ + 1) * cell - 6, (r_ + 1) * cell - 6], radius=18,
-                                 fill=col + (int(30 + (v - 0.64) * 140),))
-    fade = Image.new("L", (W, W))
-    fd = ImageDraw.Draw(fade)
+    # The sky.
+    im = Image.new("RGB", (W, W))
+    d = ImageDraw.Draw(im)
     for y in range(W):
-        fd.line([(0, y), (W, y)], fill=int(255 * (1 - y / W)))
-    im.alpha_composite(Image.composite(grid, Image.new("RGBA", (W, W), (0, 0, 0, 0)), fade))
+        d.line([(0, y), (W, y)], fill=mix(sky_top, sky_bot, y / (W - 1)))
+    im = im.convert("RGBA")
 
-    cx, cy, r = W // 2, int(W * 0.50), int(W * 0.37)
+    # A soft glow behind the block, like a sun or a moon.
+    gl = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(gl)
+    gcx, gcy = W // 2, int(W * 0.46)
+    for i in range(14):
+        rad = int(W * (0.40 - i * 0.022))
+        gd.ellipse([gcx - rad, gcy - rad, gcx + rad, gcy + rad], fill=glow + (int(10 + i * 7),))
+    im = Image.alpha_composite(im, gl.filter(ImageFilter.GaussianBlur(W * 0.02)))
+    d = ImageDraw.Draw(im, "RGBA")
+
+    # Stepped ground made of whole blocks, in two layers, and a thin horizon line.
+    horizon_y = int(W * 0.66)
+    cell = W // 16
+
+    def hills(base, colour, seed, amp):
+        v = seed
+        for i in range(18):
+            v = (v * 37 + 11) % 7
+            hy = base - (v % amp) * cell // 2
+            d.rectangle([i * cell - cell // 2, hy, (i + 1) * cell - cell // 2, W], fill=colour)
+
+    hills(horizon_y - cell // 2, hill1, 3, 4)
+    hills(horizon_y + cell, hill2, 5, 3)
+    d.rectangle([0, horizon_y + cell // 3, W, horizon_y + cell // 3 + int(W * 0.006)], fill=line + (150,))
+
+    # The block's soft shadow, then the block.
     sh = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    ImageDraw.Draw(sh).ellipse([W * 0.22, W * 0.80, W * 0.78, W * 0.91], fill=(0, 0, 0, 135 if not light else 80))
-    im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(W * 0.026)))
-    draw_dirt_block(im, cx, cy, r)
+    ImageDraw.Draw(sh).ellipse([W * 0.28, W * 0.745, W * 0.72, W * 0.83], fill=(0, 0, 0, 120 if variant != "light" else 80))
+    im = Image.alpha_composite(im, sh.filter(ImageFilter.GaussianBlur(W * 0.02)))
+    draw_dirt_block(im, W // 2, int(W * 0.49), int(W * 0.30))
 
     out = im.convert("RGB").resize((S, S), Image.LANCZOS)
     if variant == "tinted":

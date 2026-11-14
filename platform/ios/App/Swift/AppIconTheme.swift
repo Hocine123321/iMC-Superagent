@@ -1,6 +1,6 @@
 import UIKit
 
-/// The home screen icon follows the colour theme: each preset has an icon of its own (the dirt block lit in that
+/// The home screen icon follows the colour theme, or is picked by hand (Settings > Look > App icon): each preset has an icon of its own (the dirt block lit in that
 /// preset's two colours; tools/make_app_icon.py draws them, project.yml lists them). A pair of colours that is not a
 /// preset gets the icon of the nearest preset. iOS only allows icons that are in the app, so a free colour pair cannot
 /// have an icon of its own.
@@ -33,16 +33,33 @@ enum AppIconTheme {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: item)
     }
 
-    static func sync() {
-        guard Prefs.shared.matchIcon else { return }
-        let preset = nearest(Prefs.shared.colour1, Prefs.shared.colour2)
+    /// The icon that should be showing: the nearest theme's while the icon follows the theme, otherwise the picked one.
+    static var wantedID: String {
+        Prefs.shared.matchIcon ? nearest(Prefs.shared.colour1, Prefs.shared.colour2).id : Prefs.shared.iconChoice
+    }
+
+    /// The theme id of the icon that is showing now.
+    static var activeID: String {
+        guard let name = UIApplication.shared.alternateIconName, name.hasPrefix("AppIcon-") else { return ThemePreset.standard.id }
+        return String(name.dropFirst("AppIcon-".count))
+    }
+
+    static func sync() { apply() }
+
+    /// Puts the wanted icon on the home screen (nothing happens when it is already showing).
+    static func apply() {
+        let id = wantedID
+        guard let preset = ThemePreset.all.first(where: { $0.id == id }) else { return }
         set(iconName(for: preset))
     }
 
-    /// The app's own icon again (Match the icon was turned off).
-    static func useDefault() {
+    /// The person picked this icon: it stays, whatever the theme does.
+    static func choose(_ preset: ThemePreset) {
         pending?.cancel()
-        set(nil)
+        // Off first (turning it off remembers the icon showing now), then the choice, which is what gets applied.
+        Prefs.shared.matchIcon = false
+        Prefs.shared.iconChoice = preset.id
+        apply()
     }
 
     private static func set(_ name: String?) {
@@ -51,5 +68,25 @@ enum AppIconTheme {
         app.setAlternateIconName(name) { error in
             if let error { NSLog("iMC: could not change the app icon: %@", error.localizedDescription) }
         }
+    }
+}
+
+/// A small picture of one of the app icons for the picker: the sky, the ground and the dirt block, in the theme's colours.
+/// (The real icons are the files tools/make_app_icon.py draws; iOS does not let an app load its own icon files by name.)
+struct IconPreview: View {
+    let preset: ThemePreset
+    var size: CGFloat = 72
+
+    var body: some View {
+        let c1 = Palette.plain(hex: preset.first), c2 = Palette.plain(hex: preset.second)
+        ZStack(alignment: .bottom) {
+            LinearGradient(colors: [Color(red: 0.03, green: 0.05, blue: 0.13), Color(red: 0.055, green: 0.078, blue: 0.18)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [.clear, c1.opacity(0.30)], startPoint: .top, endPoint: .bottom)
+            Rectangle().fill(Color(red: 0.04, green: 0.06, blue: 0.10)).overlay(c2.opacity(0.24)).frame(height: size * 0.36)
+            BrandMark().frame(width: size * 0.72, height: size * 0.72).offset(y: -size * 0.06)
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+        .accessibilityHidden(true)
     }
 }

@@ -183,11 +183,6 @@ struct LookSettingsPage: View {
             SectionLabel("Colours")
             presetGrid
             GlassGroup {
-                ToggleRow(symbol: "app.badge.fill", title: "Match the app icon",
-                          detail: "Changes the icon on the home screen to the one made for the colour theme (a custom pair gets the nearest theme's). iOS shows a short notice each time the icon changes.",
-                          isOn: $prefs.matchIcon)
-            }
-            GlassGroup {
                 colourRow("First colour", "The accent: buttons, switches, the tab bar.", first: true)
                 Sep(inset: 16)
                 colourRow("Second colour", "The glow in the opposite corner and the second icon colour.", first: false)
@@ -210,6 +205,15 @@ struct LookSettingsPage: View {
                 SliderRow(title: "Backdrop colour", detail: "How strongly the colour shows.",
                           value: $prefs.intensity, valueText: "\(Int((prefs.intensity * 100).rounded())) %")
             }
+            SectionLabel("App icon")
+            GlassGroup {
+                ToggleRow(symbol: "app.badge.fill", title: "Match the colour theme",
+                          detail: "The icon on the home screen follows the theme (a custom colour pair gets the nearest theme's icon). Pick an icon below to choose one by hand instead.",
+                          isOn: $prefs.matchIcon)
+            }
+            iconGrid
+            Text("iOS shows a short notice each time the icon changes; an app cannot turn that off.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 20)
             SectionLabel("Performance")
             GlassGroup {
                 ToggleRow(symbol: "gauge.with.dots.needle.33percent", title: "Lightweight visuals",
@@ -251,6 +255,29 @@ struct LookSettingsPage: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             ForEach(ThemePreset.all) { preset in presetButton(preset) }
         }
+    }
+
+    /// The nine icons, as the home screen will show them. The one showing (or wanted) has a ring.
+    private var iconGrid: some View {
+        let wanted = prefs.matchIcon ? AppIconTheme.nearest(prefs.colour1, prefs.colour2).id : prefs.iconChoice
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 14) {
+            ForEach(ThemePreset.all) { preset in
+                let selected = preset.id == wanted
+                Button { Haptics.select(); AppIconTheme.choose(preset) } label: {
+                    VStack(spacing: 8) {
+                        IconPreview(preset: preset, size: 72)
+                            .overlay(RoundedRectangle(cornerRadius: 72 * 0.225, style: .continuous).strokeBorder(selected ? brand : Color.clear, lineWidth: 3).padding(-3))
+                        Text(preset.name).font(.caption.weight(selected ? .bold : .medium)).lineLimit(1).minimumScaleFactor(0.8)
+                            .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(preset.name) icon")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 6)
     }
 
     private func presetButton(_ preset: ThemePreset) -> some View {
